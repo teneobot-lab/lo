@@ -7,7 +7,7 @@ import { storageService } from '../services/storageService';
 
 interface HistoryProps {
   transactions: Transaction[];
-  items: InventoryItem[]; // Added for Autocomplete & Stock Calculation
+  items: InventoryItem[]; 
   onRefresh: () => void;
 }
 
@@ -78,10 +78,9 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
       let openingStock = item.stock;
       
-      // Get all transactions for this item
       const allItemTrans = transactions
         .filter(t => t.items.some(i => i.itemId === item.id))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Newest first
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
 
       // 1. Calculate Opening Stock (Reverse logic)
       allItemTrans.forEach(t => {
@@ -103,7 +102,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       const periodTrans = allItemTrans.filter(t => {
           const d = new Date(t.date);
           return d >= start && d <= end;
-      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Oldest First
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
 
       // 3. Calculate running balance and totals
       let runningBalance = openingStock;
@@ -154,13 +153,9 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return calculateItemMovement(scSelectedItem, scStartDate, scEndDate);
   }, [scSelectedItem, scStartDate, scEndDate, transactions]);
 
-  // --- Export Logic ---
-
   const handleAdvancedExport = (mode: 'single' | 'all') => {
       if (mode === 'single') {
-          // Export Single Item Detail
           if (!scSelectedItem || !stockCardData) return;
-          
           const exportData = [
               ['STOCK CARD REPORT'],
               [`Item: ${scSelectedItem.name} (${scSelectedItem.sku})`],
@@ -168,50 +163,29 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
               [],
               ['Date', 'Time', 'Transaction ID', 'Type', 'Reference', 'In', 'Out', 'Balance', 'Unit']
           ];
-
-          // Add Opening Row
           exportData.push(['', '', 'OPENING STOCK', '', '', '', '', stockCardData.openingStock.toString(), scSelectedItem.unit]);
-
           stockCardData.rows.forEach(r => {
               exportData.push([
                   new Date(r.date).toLocaleDateString(),
                   new Date(r.date).toLocaleTimeString(),
-                  r.id,
-                  r.type.toUpperCase(),
-                  r.ref,
-                  r.in > 0 ? r.in.toString() : '-',
-                  r.out > 0 ? r.out.toString() : '-',
-                  r.balance.toString(),
-                  r.uom
+                  r.id, r.type.toUpperCase(), r.ref, r.in > 0 ? r.in.toString() : '-', r.out > 0 ? r.out.toString() : '-', r.balance.toString(), r.uom
               ]);
           });
-
-          // Add Closing Row
           exportData.push(['', '', 'CLOSING STOCK', '', '', '', '', stockCardData.closingStock.toString(), scSelectedItem.unit]);
-
           const ws = XLSX.utils.aoa_to_sheet(exportData);
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, "Stock Card");
           XLSX.writeFile(wb, `StockCard_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
-
       } else {
-          // Export ALL Items Summary
           const summaryData: any[] = [];
-          
           items.forEach(item => {
-              if(!item.active) return; // Skip inactive
+              if(!item.active) return;
               const data = calculateItemMovement(item, scStartDate, scEndDate);
               summaryData.push({
-                  SKU: item.sku,
-                  Name: item.name,
-                  Unit: item.unit,
-                  'Opening Stock': data.openingStock,
-                  'Total In': data.totalIn,
-                  'Total Out': data.totalOut,
-                  'Closing Stock': data.closingStock
+                  SKU: item.sku, Name: item.name, Unit: item.unit,
+                  'Opening Stock': data.openingStock, 'Total In': data.totalIn, 'Total Out': data.totalOut, 'Closing Stock': data.closingStock
               });
           });
-
           const ws = XLSX.utils.json_to_sheet(summaryData);
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, "Inventory Summary");
@@ -220,10 +194,10 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       setShowExportMenu(false);
   };
 
-  // Actions (Existing)
-  const handleDelete = (id: string) => {
+  // Actions
+  const handleDelete = async (id: string) => {
       if (window.confirm("Are you sure you want to delete this transaction? Stock levels will be reverted.")) {
-          storageService.deleteTransaction(id);
+          await storageService.deleteTransaction(id);
           onRefresh();
       }
   };
@@ -233,9 +207,9 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       setIsEditModalOpen(true);
   };
 
-  const handleUpdate = (updatedTx: Transaction) => {
+  const handleUpdate = async (updatedTx: Transaction) => {
      if (editingTransaction) {
-         storageService.updateTransaction(editingTransaction, updatedTx);
+         await storageService.updateTransaction(editingTransaction, updatedTx);
          setIsEditModalOpen(false);
          onRefresh();
      }
@@ -370,8 +344,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
             {/* Modal Container: Increased max-w to 7xl for bigger view */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col max-h-[90vh] border border-white/50 dark:border-gray-700">
-                
-                {/* Modal Header: Fixed Dark Mode Colors */}
+                {/* Modal Header */}
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-ice-gradient dark:bg-gray-900">
                     <div className="flex items-center gap-3">
                         <div className="bg-white/50 dark:bg-gray-800/50 p-2.5 rounded-xl shadow-sm"><LineChart size={24} className="text-slate-800 dark:text-white" /></div>
@@ -382,7 +355,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                     </div>
                     <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white/40 dark:hover:bg-gray-800 rounded-full transition-colors"><X size={24} className="text-slate-800 dark:text-white"/></button>
                 </div>
-
+                {/* ... Rest of Stock Card (Filter & Display) remains same but uses state calculated data ... */}
                 {/* Filters Section */}
                 <div className="p-6 bg-slate-50 dark:bg-gray-800/50 border-b border-ice-100 dark:border-gray-800 grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
                     <div className="md:col-span-5 relative" ref={autocompleteRef}>
@@ -398,7 +371,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                                 onFocus={() => setIsAutocompleteOpen(true)}
                             />
                         </div>
-                        {/* Autocomplete Dropdown */}
                         {isAutocompleteOpen && scSearchItem && (
                             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-ice-100 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
                                 {filteredItems.length > 0 ? filteredItems.map(item => (
@@ -486,7 +458,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                                     <span className="text-[10px] text-indigo-400 mt-1 relative z-10">Per {new Date(scEndDate).toLocaleDateString()}</span>
                                 </div>
                             </div>
-
                             {/* Detailed Table */}
                             <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
                                 <table className="w-full text-left text-sm">

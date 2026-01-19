@@ -23,7 +23,6 @@ function App() {
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
 
-  // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('nexus_theme') === 'dark';
@@ -31,7 +30,6 @@ function App() {
     return false;
   });
 
-  // Apply Dark Mode Class
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -44,21 +42,14 @@ function App() {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Reject Module State
   const [rejectMaster, setRejectMaster] = useState<RejectItem[]>([]);
   const [rejectLogs, setRejectLogs] = useState<RejectLog[]>([]);
 
-  // Load Data on Mount
   useEffect(() => {
-    try {
-      refreshData();
-    } catch (e) {
-      notify("Failed to load initial data", 'error');
-    }
-  }, []);
+    refreshData();
+  }, [user]); // Refresh when user logs in
 
   const notify = (message: string, type: ToastType) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -69,17 +60,34 @@ function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const refreshData = () => {
-    setItems(storageService.getItems());
-    setTransactions(storageService.getTransactions());
-    setStats(storageService.getStats());
-    setRejectMaster(storageService.getRejectMaster());
-    setRejectLogs(storageService.getRejectLogs());
+  const refreshData = async () => {
+    try {
+      const [fetchedItems, fetchedTransactions, fetchedRejectMaster, fetchedRejectLogs] = await Promise.all([
+        storageService.getItems(),
+        storageService.getTransactions(),
+        storageService.getRejectMaster(),
+        storageService.getRejectLogs()
+      ]);
+      
+      setItems(fetchedItems);
+      setTransactions(fetchedTransactions);
+      setRejectMaster(fetchedRejectMaster);
+      setRejectLogs(fetchedRejectLogs);
+
+      // Calc stats locally to ensure sync
+      setStats({
+        totalValue: fetchedItems.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
+        totalUnits: fetchedItems.reduce((acc, curr) => acc + curr.stock, 0),
+        lowStockCount: fetchedItems.filter(i => i.stock <= i.minLevel).length,
+        skuCount: fetchedItems.length
+      });
+    } catch (e) {
+      notify("Failed to load data from server", 'error');
+    }
   };
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
-    refreshData();
     notify(`Welcome back, ${loggedInUser.name}`, 'success');
   };
 
@@ -89,41 +97,41 @@ function App() {
     notify('Logged out successfully', 'info');
   };
 
-  // Reject Module Handlers
-  const handleUpdateRejectMaster = (newItems: RejectItem[]) => {
+  // Async Handlers for Reject Manager
+  const handleUpdateRejectMaster = async (newItems: RejectItem[]) => {
       try {
-        storageService.saveRejectMaster(newItems);
-        setRejectMaster(newItems);
+        await storageService.saveRejectMaster(newItems);
+        refreshData();
         notify("Master data updated", 'success');
       } catch (e) {
         notify("Failed to save master data", 'error');
       }
   };
 
-  const handleAddRejectLog = (log: RejectLog) => {
+  const handleAddRejectLog = async (log: RejectLog) => {
       try {
-        storageService.saveRejectLog(log);
-        setRejectLogs(storageService.getRejectLogs());
+        await storageService.saveRejectLog(log);
+        refreshData();
         notify("Reject log saved", 'success');
       } catch (e) {
         notify("Failed to save reject log", 'error');
       }
   };
 
-  const handleUpdateRejectLog = (log: RejectLog) => {
+  const handleUpdateRejectLog = async (log: RejectLog) => {
       try {
-        storageService.updateRejectLog(log);
-        setRejectLogs(storageService.getRejectLogs());
+        await storageService.updateRejectLog(log);
+        refreshData();
         notify("Log updated", 'success');
       } catch (e) {
         notify("Update failed", 'error');
       }
   };
 
-  const handleDeleteRejectLog = (id: string) => {
+  const handleDeleteRejectLog = async (id: string) => {
       try {
-        storageService.deleteRejectLog(id);
-        setRejectLogs(storageService.getRejectLogs());
+        await storageService.deleteRejectLog(id);
+        refreshData();
         notify("Log deleted", 'info');
       } catch (e) {
         notify("Delete failed", 'error');

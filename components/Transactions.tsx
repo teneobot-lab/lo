@@ -152,7 +152,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = async (evt) => {
         try {
           const bstr = evt.target?.result;
           const wb = XLSX.read(bstr, { type: 'binary' });
@@ -163,10 +163,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           const cartItemsToAdd: TransactionItem[] = [];
           let createdCount = 0;
 
-          data.forEach(row => {
+          for (const row of data) {
               const sku = String(row.SKU || '').trim();
               const qty = Number(row.Qty || 0);
-              if (!sku || qty <= 0) return;
+              if (!sku || qty <= 0) continue;
+              
               let item = items.find(i => i.sku === sku) || newItemsToCreate.find(i => i.sku === sku);
               if (!item) {
                   item = {
@@ -189,9 +190,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       itemId: item.id, sku: item.sku, name: item.name, qty: qty, uom: item.unit, unitPrice: item.price, total: qty * item.price
                   });
               }
-          });
+          }
           if (newItemsToCreate.length > 0) {
-              newItemsToCreate.forEach(newItem => { storageService.saveItem(newItem); });
+              for (const newItem of newItemsToCreate) {
+                  await storageService.saveItem(newItem);
+              }
               onSuccess();
           }
           if (cartItemsToAdd.length > 0) {
@@ -208,7 +211,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       e.target.value = '';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (cart.length === 0) return;
     if (type === 'outbound') {
         const totals: {[id: string]: number} = {};
@@ -234,7 +237,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       documents: documentImage ? [documentImage] : []
     };
     try {
-        storageService.saveTransaction(transaction);
+        await storageService.saveTransaction(transaction);
         onSuccess();
         setCart([]);
         setSupplier('');

@@ -42,10 +42,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     });
   }, [items, searchTerm, categoryFilter, statusFilter]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     try {
       if (window.confirm('Are you sure you want to delete this item?')) {
-        storageService.deleteItem(id);
+        await storageService.deleteItem(id);
         onRefresh();
         notify('Item deleted successfully', 'success');
       }
@@ -54,9 +54,9 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     }
   };
 
-  const handleToggleStatus = (item: InventoryItem) => {
+  const handleToggleStatus = async (item: InventoryItem) => {
     try {
-      storageService.saveItem({ ...item, active: !item.active });
+      await storageService.saveItem({ ...item, active: !item.active });
       onRefresh();
       notify(`Item ${item.active ? 'deactivated' : 'activated'}`, 'info');
     } catch (e) {
@@ -94,16 +94,16 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws) as any[];
-        // ... Logic preserved ...
+        
         let importedCount = 0;
-        data.forEach(row => {
+        for (const row of data) {
           if (row.SKU && row.Name && row.Price) {
               const newItem: InventoryItem = {
                   id: crypto.randomUUID(), 
@@ -125,10 +125,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
               };
               const existing = items.find(i => i.sku === newItem.sku);
               if (existing) newItem.id = existing.id;
-              storageService.saveItem(newItem);
+              await storageService.saveItem(newItem);
               importedCount++;
           }
-        });
+        }
         if (importedCount > 0) { notify(`Successfully processed ${importedCount} items.`, 'success'); onRefresh(); } 
         else { notify('No valid items found in file', 'warning'); }
       } catch (e) { notify("Failed to process file.", 'error'); }
@@ -284,7 +284,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
           </table>
         </div>
       </div>
-      {isModalOpen && <ItemModal item={editingItem} onClose={() => setIsModalOpen(false)} onSave={(item) => { storageService.saveItem(item); onRefresh(); setIsModalOpen(false); notify('Inventory item saved', 'success'); }} />}
+      {isModalOpen && <ItemModal item={editingItem} onClose={() => setIsModalOpen(false)} onSave={async (item) => { await storageService.saveItem(item); onRefresh(); setIsModalOpen(false); notify('Inventory item saved', 'success'); }} />}
     </div>
   );
 };

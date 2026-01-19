@@ -2,29 +2,37 @@
 import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save } from 'lucide-react';
+import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database } from 'lucide-react';
 
 export const Admin: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
-    const [apiUrl, setApiUrl] = useState('https://api.nexus-wms.com/v1');
+    const [apiUrl, setApiUrl] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
     useEffect(() => {
         refreshUsers();
+        // Load API config
+        setApiUrl(localStorage.getItem('nexus_api_url') || '');
     }, []);
 
-    const refreshUsers = () => {
-        setUsers(storageService.getUsers());
+    const refreshUsers = async () => {
+        setUsers(await storageService.getUsers());
     };
 
-    const handleDelete = (id: string) => {
+    const handleSaveConfig = () => {
+        localStorage.setItem('nexus_api_url', apiUrl);
+        alert("Configuration saved. Please reload the application.");
+        window.location.reload();
+    };
+
+    const handleDelete = async (id: string) => {
         if (id === 'admin') {
             alert("Cannot delete the main admin account.");
             return;
         }
         if (window.confirm("Are you sure you want to delete this user?")) {
-            storageService.deleteUser(id);
+            await storageService.deleteUser(id);
             refreshUsers();
         }
     };
@@ -78,21 +86,36 @@ export const Admin: React.FC = () => {
                 {/* System Config */}
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700">
                     <h3 className="flex items-center gap-2 font-bold text-lg mb-4 text-dark dark:text-white">
-                        <Server size={20} className="text-indigo-500" /> System Configuration
+                        <Server size={20} className="text-indigo-500" /> Database Connection
                     </h3>
                     <div className="space-y-4">
                          <div>
-                             <label className="block text-xs font-bold text-muted dark:text-gray-400 uppercase mb-1">Backend API Endpoint</label>
-                             <input 
-                                value={apiUrl} 
-                                onChange={(e) => setApiUrl(e.target.value)}
-                                className="w-full p-2 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900" 
-                             />
-                             <p className="text-xs text-muted dark:text-gray-500 mt-1">Supports Vercel Proxy for SSL/Mixed Content</p>
+                             <label className="block text-xs font-bold text-muted dark:text-gray-400 uppercase mb-1">Backend API URL</label>
+                             <div className="flex gap-2">
+                                 <input 
+                                    value={apiUrl} 
+                                    onChange={(e) => setApiUrl(e.target.value)}
+                                    placeholder="Leave empty for LocalStorage or use '/api'"
+                                    className="flex-1 p-3 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none" 
+                                 />
+                                 <button onClick={handleSaveConfig} className="bg-primary text-white p-3 rounded-lg hover:bg-blue-600"><Save size={18}/></button>
+                             </div>
+                             <p className="text-[10px] text-muted dark:text-gray-500 mt-2">
+                                * Use <strong>/api</strong> if you configured <code>vercel.json</code> proxy.<br/>
+                                * Use full URL (e.g. <code>https://my-api.railway.app</code>) for external hosting.<br/>
+                                * Clear this field to use Browser Local Storage.
+                             </p>
                          </div>
-                         <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/40">
-                             <span className="text-sm font-medium text-emerald-800 dark:text-emerald-400">Database Sync</span>
-                             <span className="text-xs bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-100 px-2 py-1 rounded-full font-bold">Active</span>
+                         <div className={`flex items-center justify-between p-3 rounded-xl border ${apiUrl ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/20'}`}>
+                             <div className="flex items-center gap-2">
+                                 <Database size={16} className={apiUrl ? 'text-emerald-600' : 'text-amber-600'} />
+                                 <span className={`text-sm font-medium ${apiUrl ? 'text-emerald-800 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-400'}`}>
+                                     {apiUrl ? 'MySQL Database Mode' : 'Local Storage Mode'}
+                                 </span>
+                             </div>
+                             <span className={`text-xs px-2 py-1 rounded-full font-bold ${apiUrl ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>
+                                 Active
+                             </span>
                          </div>
                     </div>
                 </div>
@@ -145,7 +168,7 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
         password: ''
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const newUser: User = {
             id: user?.id || crypto.randomUUID(),
@@ -153,7 +176,7 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
             username: formData.username,
             role: formData.role as Role
         };
-        storageService.saveUser(newUser, formData.password || undefined);
+        await storageService.saveUser(newUser, formData.password || undefined);
         onSave();
     };
 

@@ -26,7 +26,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
     await new Promise(resolve => setTimeout(resolve, 800));
 
     const hash = storageService.hashPassword(password);
-    const user = storageService.login(username, hash);
+    const user = await storageService.login(username, hash);
     
     if (user) {
       setIsSuccess(true);
