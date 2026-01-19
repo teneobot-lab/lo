@@ -160,7 +160,7 @@ function App() {
           />
         );
       case 'history':
-        return <History transactions={transactions} onRefresh={refreshData} />;
+        return <History transactions={transactions} items={items} onRefresh={refreshData} />;
       case 'ai':
         return <AIAssistant inventory={items} transactions={transactions} />;
       case 'admin':
