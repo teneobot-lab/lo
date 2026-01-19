@@ -1,10 +1,10 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend 
 } from 'recharts';
 import { InventoryItem, Transaction, DashboardStats } from '../types';
-import { TrendingUp, Package, AlertTriangle, Layers, X, AlertCircle, ArrowRight } from 'lucide-react';
+import { TrendingUp, Package, AlertTriangle, Layers, X, AlertCircle } from 'lucide-react';
 
 interface DashboardProps {
   items: InventoryItem[];
@@ -16,6 +16,33 @@ const COLORS = ['#4F8CFF', '#6A5CFF', '#3DDCFF', '#FF8042', '#FFBB28'];
 
 export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats }) => {
   const [isLowStockModalOpen, setIsLowStockModalOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Realtime Clock Effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Format Date: Hari DD Month YYYY (e.g., Senin 20 Januari 2026)
+  const formattedDate = useMemo(() => {
+    return currentTime.toLocaleDateString('id-ID', { 
+        weekday: 'long', 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+    });
+  }, [currentTime]);
+
+  // Format Time: HH.mm.ss (e.g., 15.30.45)
+  const formattedTime = useMemo(() => {
+    const h = currentTime.getHours().toString().padStart(2, '0');
+    const m = currentTime.getMinutes().toString().padStart(2, '0');
+    const s = currentTime.getSeconds().toString().padStart(2, '0');
+    return `${h}.${m}.${s}`;
+  }, [currentTime]);
 
   // Calculate Low Stock Items locally to apply the "minLevel > 0" logic
   // Logic: Only count as low stock if active AND minLevel is set (greater than 0) AND stock <= minLevel
@@ -66,6 +93,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Date & Time Header */}
+      {/* Color Palette applied: #deecf7 #dde8f8 #d9e8f7 #d0e2f6 via gradient */}
+      <div className="bg-gradient-to-r from-[#deecf7] via-[#dde8f8] to-[#d0e2f6] rounded-2xl p-6 text-slate-800 shadow-sm border border-blue-100 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div>
+              <h2 className="text-2xl font-bold text-slate-800">Dashboard Overview</h2>
+              <p className="text-slate-600 text-sm opacity-90">Real-time inventory insights</p>
+          </div>
+          <div className="flex flex-col items-end gap-1 bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-white/40 min-w-[200px] shadow-sm">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                  <span>{formattedDate}</span>
+              </div>
+              <div className="flex items-center gap-2 text-2xl font-bold tracking-widest font-mono text-slate-800">
+                  <span>{formattedTime}</span>
+              </div>
+          </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 

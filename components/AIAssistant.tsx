@@ -46,19 +46,20 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-140px)] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700 overflow-hidden transition-colors">
       {/* Header */}
-      <div className="p-4 border-b border-border dark:border-gray-700 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex justify-between items-center">
+      {/* Color Palette applied: #deecf7 #dde8f8 #d9e8f7 #d0e2f6 via gradient */}
+      <div className="p-4 border-b border-border dark:border-gray-700 bg-gradient-to-r from-[#deecf7] via-[#dde8f8] to-[#d0e2f6] text-slate-800 flex justify-between items-center">
         <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-full">
+            <div className="p-2 bg-white/60 rounded-full shadow-sm text-indigo-600">
                 <Bot size={24} />
             </div>
             <div>
-                <h3 className="font-bold">Nexus AI Assistant</h3>
-                <p className="text-xs text-indigo-100">Powered by Gemini 3 Flash</p>
+                <h3 className="font-bold text-slate-800">Nexus AI Assistant</h3>
+                <p className="text-xs text-slate-600">Powered by Gemini 3 Flash</p>
             </div>
         </div>
         <button 
             onClick={handleQuickAction}
-            className="text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-full font-bold shadow hover:bg-indigo-50 flex items-center gap-1"
+            className="text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-full font-bold shadow hover:bg-indigo-50 flex items-center gap-1 border border-indigo-100"
         >
             <Sparkles size={12} /> Generate Insights
         </button>
