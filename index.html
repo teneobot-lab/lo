@@ -8,6 +8,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
+      // Shim process.env for browser compatibility to prevent "process is not defined" errors
+      window.process = {
+        env: {
+          NODE_ENV: 'development',
+          API_KEY: '' // Placeholder to prevent crash on startup
+        }
+      };
+
       tailwind.config = {
         darkMode: 'class',
         theme: {
@@ -87,14 +95,15 @@
   <script type="importmap">
 {
   "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "crypto-js": "https://esm.sh/crypto-js@^4.2.0",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5"
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "react": "https://esm.sh/react@18.3.1",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.460.0",
+    "recharts": "https://esm.sh/recharts@2.12.7",
+    "crypto-js": "https://esm.sh/crypto-js@4.2.0",
+    "xlsx": "https://esm.sh/xlsx@0.18.5"
   }
 }
 </script>
