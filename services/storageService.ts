@@ -1,4 +1,3 @@
-
 import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog } from '../types';
 import CryptoJS from 'crypto-js';
 
@@ -53,8 +52,13 @@ const KEYS = {
 };
 
 const safeGet = (key: string): any => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : null;
+  try {
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+  } catch (e) {
+      console.error(`Error parsing key ${key}`, e);
+      return null;
+  }
 };
 const safeSet = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
 

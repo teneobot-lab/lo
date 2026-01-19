@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
-import { Lock, User as UserIcon, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
+import { Lock, User as UserIcon, ArrowRight, Loader2, CheckCircle, Shield, Users, Database } from 'lucide-react';
 import { ToastType } from './Toast';
 
 interface LoginProps {
@@ -11,34 +10,50 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('12345');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLogin = async (u: string, p: string) => {
     setError('');
     setIsLoading(true);
 
-    // Artificial delay for better UX (animation)
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Artificial delay for UX
+    await new Promise(resolve => setTimeout(resolve, 600));
 
-    const hash = storageService.hashPassword(password);
-    const user = await storageService.login(username, hash);
+    const hash = storageService.hashPassword(p);
+    const user = await storageService.login(u, hash);
     
     if (user) {
       setIsSuccess(true);
-      // Wait for success animation to finish before changing state in App
       setTimeout(() => {
         onLogin(user);
-      }, 1000);
+      }, 800);
     } else {
       setIsLoading(false);
       setError('Invalid credentials');
-      notify('Invalid credentials. Try admin / 12345', 'error');
+      notify('Login failed. Please check credentials.', 'error');
     }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    performLogin(username, password);
+  };
+
+  // Quick Login Helper
+  const quickLogin = (u: string, p: string) => {
+    setUsername(u);
+    setPassword(p);
+    performLogin(u, p);
+  };
+
+  const handleResetMode = () => {
+    localStorage.removeItem('nexus_api_url');
+    notify('Switched to Local Mode. Please login again.', 'success');
+    window.location.reload();
   };
 
   return (
@@ -60,7 +75,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
                 <p className="text-muted dark:text-gray-400 mt-2">Sign in to your warehouse dashboard</p>
             </div>
             
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted dark:text-gray-400 uppercase ml-1">Username</label>
                 <div className="relative">
@@ -114,8 +129,33 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
               </button>
             </form>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 dark:border-gray-700 text-center">
-                <p className="text-xs text-muted dark:text-gray-500">Protected by SHA-256 Encryption. <br/> Demo Accounts: admin/12345, staff/12345</p>
+            {/* Quick Login Section */}
+            <div className="mt-8 pt-6 border-t border-slate-100 dark:border-gray-700">
+                <p className="text-xs text-center text-muted dark:text-gray-500 mb-4 font-bold uppercase tracking-wider">Quick Access (Demo)</p>
+                <div className="grid grid-cols-2 gap-3">
+                    <button 
+                        onClick={() => quickLogin('admin', '12345')}
+                        disabled={isLoading}
+                        className="flex flex-col items-center justify-center p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors group"
+                    >
+                        <Shield size={20} className="text-indigo-600 dark:text-indigo-400 mb-1 group-hover:scale-110 transition-transform"/>
+                        <span className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Admin</span>
+                    </button>
+                    <button 
+                        onClick={() => quickLogin('staff', '12345')}
+                        disabled={isLoading}
+                        className="flex flex-col items-center justify-center p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors group"
+                    >
+                        <Users size={20} className="text-emerald-600 dark:text-emerald-400 mb-1 group-hover:scale-110 transition-transform"/>
+                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Staff</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div className="mt-4 text-center">
+               <button onClick={handleResetMode} className="text-[10px] text-slate-400 hover:text-rose-500 flex items-center justify-center gap-1 mx-auto transition-colors">
+                  <Database size={10} /> Reset Connection Mode
+               </button>
             </div>
           </div>
         )}

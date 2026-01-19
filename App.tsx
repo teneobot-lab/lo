@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -48,8 +47,10 @@ function App() {
   const [rejectLogs, setRejectLogs] = useState<RejectLog[]>([]);
 
   useEffect(() => {
-    refreshData();
-  }, [user]); // Refresh when user logs in
+    if (user) {
+        refreshData();
+    }
+  }, [user]); 
 
   const notify = (message: string, type: ToastType) => {
     const id = Math.random().toString(36).substr(2, 9);
