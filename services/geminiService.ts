@@ -3,7 +3,7 @@ import { InventoryItem, Transaction } from "../types";
 
 // In a real app, this comes from process.env.API_KEY.
 // The strict prompt rules require assuming process.env.API_KEY is available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const geminiService = {
   askAssistant: async (

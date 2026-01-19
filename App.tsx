@@ -9,6 +9,8 @@ import { AIAssistant } from './components/AIAssistant';
 import { Admin } from './components/Admin';
 import { Login } from './components/Login';
 import { RejectManager } from './components/RejectManager';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
 import { storageService } from './services/storageService';
 import { User, InventoryItem, Transaction, DashboardStats, RejectItem, RejectLog } from './types';
 
@@ -21,14 +23,30 @@ function App() {
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
 
+  // Toast State
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
   // Reject Module State
   const [rejectMaster, setRejectMaster] = useState<RejectItem[]>([]);
   const [rejectLogs, setRejectLogs] = useState<RejectLog[]>([]);
 
   // Load Data on Mount
   useEffect(() => {
-    refreshData();
+    try {
+      refreshData();
+    } catch (e) {
+      notify("Failed to load initial data", 'error');
+    }
   }, []);
+
+  const notify = (message: string, type: ToastType) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   const refreshData = () => {
     setItems(storageService.getItems());
@@ -41,36 +59,63 @@ function App() {
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
     refreshData();
+    notify(`Welcome back, ${loggedInUser.name}`, 'success');
   };
 
   const handleLogout = () => {
     setUser(null);
     setActivePage('dashboard');
+    notify('Logged out successfully', 'info');
   };
 
   // Reject Module Handlers
   const handleUpdateRejectMaster = (newItems: RejectItem[]) => {
-      storageService.saveRejectMaster(newItems);
-      setRejectMaster(newItems);
+      try {
+        storageService.saveRejectMaster(newItems);
+        setRejectMaster(newItems);
+        notify("Master data updated", 'success');
+      } catch (e) {
+        notify("Failed to save master data", 'error');
+      }
   };
 
   const handleAddRejectLog = (log: RejectLog) => {
-      storageService.saveRejectLog(log);
-      setRejectLogs(storageService.getRejectLogs());
+      try {
+        storageService.saveRejectLog(log);
+        setRejectLogs(storageService.getRejectLogs());
+        notify("Reject log saved", 'success');
+      } catch (e) {
+        notify("Failed to save reject log", 'error');
+      }
   };
 
   const handleUpdateRejectLog = (log: RejectLog) => {
-      storageService.updateRejectLog(log);
-      setRejectLogs(storageService.getRejectLogs());
+      try {
+        storageService.updateRejectLog(log);
+        setRejectLogs(storageService.getRejectLogs());
+        notify("Log updated", 'success');
+      } catch (e) {
+        notify("Update failed", 'error');
+      }
   };
 
   const handleDeleteRejectLog = (id: string) => {
-      storageService.deleteRejectLog(id);
-      setRejectLogs(storageService.getRejectLogs());
+      try {
+        storageService.deleteRejectLog(id);
+        setRejectLogs(storageService.getRejectLogs());
+        notify("Log deleted", 'info');
+      } catch (e) {
+        notify("Delete failed", 'error');
+      }
   };
 
   if (!user) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <ErrorBoundary>
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <Login onLogin={handleLogin} notify={notify} />
+      </ErrorBoundary>
+    );
   }
 
   const renderContent = () => {
@@ -78,10 +123,10 @@ function App() {
       case 'dashboard':
         return <Dashboard items={items} transactions={transactions} stats={stats} />;
       case 'inventory':
-        return <Inventory items={items} role={user.role} onRefresh={refreshData} />;
+        return <Inventory items={items} role={user.role} onRefresh={refreshData} notify={notify} />;
       case 'transactions':
         if (user.role === 'viewer') return <div className="text-center p-10 text-muted">Viewer access restricted.</div>;
-        return <Transactions items={items} user={user} onSuccess={refreshData} />;
+        return <Transactions items={items} user={user} onSuccess={refreshData} notify={notify} />;
       case 'reject':
         return (
           <RejectManager 
@@ -106,14 +151,17 @@ function App() {
   };
 
   return (
-    <Layout 
-      user={user} 
-      activePage={activePage} 
-      onNavigate={setActivePage} 
-      onLogout={handleLogout}
-    >
-      {renderContent()}
-    </Layout>
+    <ErrorBoundary>
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      <Layout 
+        user={user} 
+        activePage={activePage} 
+        onNavigate={setActivePage} 
+        onLogout={handleLogout}
+      >
+        {renderContent()}
+      </Layout>
+    </ErrorBoundary>
   );
 }
 

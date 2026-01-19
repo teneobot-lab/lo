@@ -12,7 +12,8 @@ import {
   X, 
   Cloud,
   CloudOff,
-  AlertTriangle
+  AlertTriangle,
+  Hexagon
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -74,12 +75,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
       <aside 
         className={`fixed lg:relative z-50 h-full bg-white border-r border-border transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
       >
-        <div className="h-16 flex items-center justify-center border-b border-border bg-gradient-to-r from-indigo-600 to-primary/90 text-white">
-            {isSidebarOpen ? (
-                <h1 className="text-xl font-bold tracking-wide">NEXUS WMS</h1>
-            ) : (
-                <span className="text-xl font-bold">N</span>
-            )}
+        <div className="h-20 flex items-center justify-center border-b border-border bg-white">
+            <div className={`flex items-center gap-3 transition-all duration-300 ${isSidebarOpen ? 'px-4' : 'px-0'}`}>
+                {/* Logo Icon */}
+                <div className="relative group cursor-pointer">
+                    <div className="absolute -inset-2 bg-indigo-500/20 rounded-full blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                    <div className="relative w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 text-white">
+                        <Hexagon size={20} strokeWidth={3} className="fill-indigo-500/20" />
+                    </div>
+                </div>
+                
+                {/* Logo Text */}
+                {isSidebarOpen && (
+                    <div className="flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
+                        <span className="font-bold text-xl text-slate-800 tracking-tight leading-none">NEXUS</span>
+                        <span className="text-[9px] font-bold text-indigo-500 tracking-[0.25em] uppercase mt-0.5">Systems</span>
+                    </div>
+                )}
+            </div>
         </div>
 
         <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto">
@@ -90,13 +103,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 onNavigate(item.id);
                 if (isMobile) setIsSidebarOpen(false);
               }}
-              className={`w-full flex items-center px-3 py-3 rounded-xl transition-colors ${
+              className={`w-full flex items-center px-3 py-3 rounded-xl transition-all duration-200 group ${
                 activePage === item.id 
-                  ? 'bg-primary/10 text-primary font-medium shadow-sm' 
-                  : 'text-muted hover:bg-slate-50 hover:text-dark'
+                  ? 'bg-indigo-50 text-indigo-600 font-medium shadow-sm' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <item.icon size={22} strokeWidth={1.5} />
+              <item.icon 
+                size={22} 
+                strokeWidth={1.5} 
+                className={`transition-colors ${activePage === item.id ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`} 
+              />
               {isSidebarOpen && <span className="ml-3">{item.label}</span>}
             </button>
           ))}
@@ -106,11 +123,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {isSidebarOpen && (
                     <div className="flex flex-col">
-                        <span className="text-sm font-semibold truncate w-32">{user.name}</span>
-                        <span className="text-xs text-muted capitalize">{user.role}</span>
+                        <span className="text-sm font-semibold truncate w-32 text-slate-700">{user.name}</span>
+                        <span className="text-xs text-slate-400 capitalize">{user.role}</span>
                     </div>
                 )}
-                <button onClick={onLogout} className="text-muted hover:text-red-500 transition-colors p-2" title="Logout">
+                <button onClick={onLogout} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 rounded-lg" title="Logout">
                     <LogOut size={20} />
                 </button>
             </div>
@@ -124,16 +141,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             <div className="flex items-center gap-4">
                 <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="p-2 hover:bg-slate-100 rounded-lg text-muted"
+                    className="p-2 hover:bg-slate-100 rounded-lg text-muted transition-colors"
                 >
-                    {isSidebarOpen ? <Menu size={20} /> : <Menu size={20} />}
+                    <Menu size={20} />
                 </button>
-                <h2 className="text-lg font-medium text-dark capitalize">{activePage}</h2>
+                <h2 className="text-lg font-medium text-dark capitalize tracking-tight">{activePage}</h2>
             </div>
 
             <div className="flex items-center gap-4">
                 {/* Cloud Status */}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${cloudStatus ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${cloudStatus ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                     {cloudStatus ? <Cloud size={14} /> : <CloudOff size={14} />}
                     <span className="hidden sm:inline">{cloudStatus ? 'Cloud Active' : 'Offline'}</span>
                 </div>

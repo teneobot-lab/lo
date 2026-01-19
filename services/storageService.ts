@@ -26,230 +26,296 @@ const KEYS = {
   REJECT_LOGS: 'nexus_reject_logs'
 };
 
+// Internal safe wrappers
+const safeGet = (key: string): any => {
+  try {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch (error) {
+    console.error(`StorageService: Error parsing data for key "${key}"`, error);
+    return null;
+  }
+};
+
+const safeSet = (key: string, data: any): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error(`StorageService: Error saving data for key "${key}"`, error);
+    if (error instanceof Error && error.name === 'QuotaExceededError') {
+      alert("Storage Error: Local storage is full. Please clear some data or history.");
+    }
+    throw new Error(`Failed to save data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
 export const storageService = {
   // --- Auth & User Management ---
   getUsers: (): User[] => {
-    const data = localStorage.getItem(KEYS.USERS);
-    if (!data) {
-      localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    const users = safeGet(KEYS.USERS);
+    if (!users) {
+      safeSet(KEYS.USERS, INITIAL_USERS);
       return INITIAL_USERS;
     }
-    return JSON.parse(data);
+    return users;
   },
 
   saveUser: (user: User, password?: string) => {
-    const users = storageService.getUsers();
-    const index = users.findIndex(u => u.id === user.id);
-    
-    if (index >= 0) {
-      users[index] = { ...users[index], ...user };
-    } else {
-      users.push(user);
-    }
-    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    try {
+      const users = storageService.getUsers();
+      const index = users.findIndex(u => u.id === user.id);
+      
+      if (index >= 0) {
+        users[index] = { ...users[index], ...user };
+      } else {
+        users.push(user);
+      }
+      safeSet(KEYS.USERS, users);
 
-    // Handle Password (in a real app, this would be salted and hashed securely on server)
-    if (password) {
-        localStorage.setItem(`pwd_${user.username}`, storageService.hashPassword(password));
+      if (password) {
+          localStorage.setItem(`pwd_${user.username}`, storageService.hashPassword(password));
+      }
+    } catch (error) {
+      throw error;
     }
   },
 
   deleteUser: (id: string) => {
+    try {
       const users = storageService.getUsers();
       const filtered = users.filter(u => u.id !== id);
-      localStorage.setItem(KEYS.USERS, JSON.stringify(filtered));
+      safeSet(KEYS.USERS, filtered);
+    } catch (error) {
+      throw error;
+    }
   },
 
   login: (username: string, passwordHash: string): User | null => {
-    const users = storageService.getUsers();
-    const user = users.find(u => u.username === username);
-    
-    if (!user) return null;
+    try {
+      const users = storageService.getUsers();
+      const user = users.find(u => u.username === username);
+      
+      if (!user) return null;
 
-    // Check specific stored password first
-    const storedHash = localStorage.getItem(`pwd_${username}`);
-    if (storedHash) {
-        return storedHash === passwordHash ? user : null;
+      const storedHash = localStorage.getItem(`pwd_${username}`);
+      if (storedHash) {
+          return storedHash === passwordHash ? user : null;
+      }
+
+      // SHA-256 for '12345'
+      const defaultHash = '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5'; 
+      if (passwordHash === defaultHash) return user;
+      
+      return null;
+    } catch (error) {
+      console.error("Login process failed", error);
+      return null;
     }
-
-    // Fallback for demo initial users (password '12345')
-    const defaultHash = '827ccb0eea8a706c4c34a16891f84e7b'; 
-    if (passwordHash === defaultHash) return user;
-    
-    return null;
   },
 
   hashPassword: (password: string): string => {
-    return CryptoJS.MD5(password).toString();
+    try {
+      return CryptoJS.SHA256(password).toString();
+    } catch (e) {
+      console.error("Hashing failed", e);
+      return password; // Fallback
+    }
   },
 
   // --- Items ---
   getItems: (): InventoryItem[] => {
-    const data = localStorage.getItem(KEYS.ITEMS);
-    if (!data) {
-      localStorage.setItem(KEYS.ITEMS, JSON.stringify(INITIAL_ITEMS));
+    const items = safeGet(KEYS.ITEMS);
+    if (!items) {
+      safeSet(KEYS.ITEMS, INITIAL_ITEMS);
       return INITIAL_ITEMS;
     }
-    return JSON.parse(data);
+    return items;
   },
 
   saveItem: (item: InventoryItem) => {
-    const items = storageService.getItems();
-    const index = items.findIndex(i => i.id === item.id);
-    if (index >= 0) {
-      items[index] = item;
-    } else {
-      items.push(item);
+    try {
+      const items = storageService.getItems();
+      const index = items.findIndex(i => i.id === item.id);
+      if (index >= 0) {
+        items[index] = item;
+      } else {
+        items.push(item);
+      }
+      safeSet(KEYS.ITEMS, items);
+    } catch (error) {
+      throw error;
     }
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
   },
 
   deleteItem: (id: string) => {
-    const items = storageService.getItems();
-    const filtered = items.filter(i => i.id !== id);
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(filtered));
+    try {
+      const items = storageService.getItems();
+      const filtered = items.filter(i => i.id !== id);
+      safeSet(KEYS.ITEMS, filtered);
+    } catch (error) {
+      throw error;
+    }
   },
 
   // --- Transactions ---
   generateTransactionId: (): string => {
       const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
-      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, ''); // HHMMSS
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); 
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, ''); 
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return `TRX-${dateStr}-${timeStr}-${random}`;
   },
 
   getTransactions: (): Transaction[] => {
-    const data = localStorage.getItem(KEYS.TRANSACTIONS);
-    return data ? JSON.parse(data) : [];
+    return safeGet(KEYS.TRANSACTIONS) || [];
   },
 
   saveTransaction: (transaction: Transaction) => {
-    const transactions = storageService.getTransactions();
-    transactions.unshift(transaction); // Add to top
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    try {
+      const transactions = storageService.getTransactions();
+      transactions.unshift(transaction); 
+      safeSet(KEYS.TRANSACTIONS, transactions);
 
-    // Update Stock Levels
-    const items = storageService.getItems();
-    transaction.items.forEach(tItem => {
-      const dbItemIndex = items.findIndex(i => i.id === tItem.itemId);
-      if (dbItemIndex >= 0) {
-        if (transaction.type === 'inbound') {
-          items[dbItemIndex].stock += tItem.qty;
-        } else {
-          items[dbItemIndex].stock -= tItem.qty;
+      // Update Stock Levels
+      const items = storageService.getItems();
+      transaction.items.forEach(tItem => {
+        const dbItemIndex = items.findIndex(i => i.id === tItem.itemId);
+        if (dbItemIndex >= 0) {
+          if (transaction.type === 'inbound') {
+            items[dbItemIndex].stock += tItem.qty;
+          } else {
+            items[dbItemIndex].stock -= tItem.qty;
+          }
         }
-      }
-    });
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
+      });
+      safeSet(KEYS.ITEMS, items);
+    } catch (error) {
+      console.error("Failed to save transaction", error);
+      throw error;
+    }
   },
 
   updateTransaction: (oldTx: Transaction, newTx: Transaction) => {
-    const items = storageService.getItems();
-    
-    // 1. Revert Old Transaction Impact
-    oldTx.items.forEach(tItem => {
-      const itemIndex = items.findIndex(i => i.id === tItem.itemId);
-      if (itemIndex >= 0) {
-        // If it was inbound (added stock), we remove it. If outbound (removed stock), we add it back.
-        if (oldTx.type === 'inbound') items[itemIndex].stock -= tItem.qty;
-        else items[itemIndex].stock += tItem.qty;
+    try {
+      const items = storageService.getItems();
+      
+      // 1. Revert Old Impact
+      oldTx.items.forEach(tItem => {
+        const itemIndex = items.findIndex(i => i.id === tItem.itemId);
+        if (itemIndex >= 0) {
+          if (oldTx.type === 'inbound') items[itemIndex].stock -= tItem.qty;
+          else items[itemIndex].stock += tItem.qty;
+        }
+      });
+
+      // 2. Apply New Impact
+      newTx.items.forEach(tItem => {
+        const itemIndex = items.findIndex(i => i.id === tItem.itemId);
+        if (itemIndex >= 0) {
+          if (newTx.type === 'inbound') items[itemIndex].stock += tItem.qty;
+          else items[itemIndex].stock -= tItem.qty;
+        }
+      });
+
+      // 3. Save Items
+      safeSet(KEYS.ITEMS, items);
+
+      // 4. Update Transaction Record
+      const transactions = storageService.getTransactions();
+      const txIndex = transactions.findIndex(t => t.id === oldTx.id);
+      if (txIndex >= 0) {
+          transactions[txIndex] = newTx;
+          safeSet(KEYS.TRANSACTIONS, transactions);
       }
-    });
-
-    // 2. Apply New Transaction Impact
-    newTx.items.forEach(tItem => {
-      const itemIndex = items.findIndex(i => i.id === tItem.itemId);
-      if (itemIndex >= 0) {
-        if (newTx.type === 'inbound') items[itemIndex].stock += tItem.qty;
-        else items[itemIndex].stock -= tItem.qty;
-      }
-    });
-
-    // 3. Save Items
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
-
-    // 4. Update Transaction Record
-    const transactions = storageService.getTransactions();
-    const txIndex = transactions.findIndex(t => t.id === oldTx.id);
-    if (txIndex >= 0) {
-        transactions[txIndex] = newTx;
-        localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    } catch (error) {
+      throw error;
     }
   },
 
   deleteTransaction: (id: string) => {
-    const transactions = storageService.getTransactions();
-    const tx = transactions.find(t => t.id === id);
-    if (!tx) return;
+    try {
+      const transactions = storageService.getTransactions();
+      const tx = transactions.find(t => t.id === id);
+      if (!tx) return;
 
-    const items = storageService.getItems();
-
-    // Revert Stock
-    tx.items.forEach(tItem => {
-      const itemIndex = items.findIndex(i => i.id === tItem.itemId);
-      if (itemIndex >= 0) {
-        // If it was inbound (added), remove it. If outbound (removed), add it back.
-        if (tx.type === 'inbound') {
-          items[itemIndex].stock -= tItem.qty;
-        } else {
-          items[itemIndex].stock += tItem.qty;
+      const items = storageService.getItems();
+      tx.items.forEach(tItem => {
+        const itemIndex = items.findIndex(i => i.id === tItem.itemId);
+        if (itemIndex >= 0) {
+          if (tx.type === 'inbound') {
+            items[itemIndex].stock -= tItem.qty;
+          } else {
+            items[itemIndex].stock += tItem.qty;
+          }
         }
-      }
-    });
+      });
 
-    // Save updated items
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
-
-    // Remove transaction
-    const filteredTx = transactions.filter(t => t.id !== id);
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(filteredTx));
+      safeSet(KEYS.ITEMS, items);
+      const filteredTx = transactions.filter(t => t.id !== id);
+      safeSet(KEYS.TRANSACTIONS, filteredTx);
+    } catch (error) {
+      throw error;
+    }
   },
 
   // --- Reject Module Storage ---
   getRejectMaster: (): RejectItem[] => {
-    const data = localStorage.getItem(KEYS.REJECT_MASTER);
-    return data ? JSON.parse(data) : [];
+    return safeGet(KEYS.REJECT_MASTER) || [];
   },
 
   saveRejectMaster: (items: RejectItem[]) => {
-    localStorage.setItem(KEYS.REJECT_MASTER, JSON.stringify(items));
+    safeSet(KEYS.REJECT_MASTER, items);
   },
 
   getRejectLogs: (): RejectLog[] => {
-    const data = localStorage.getItem(KEYS.REJECT_LOGS);
-    return data ? JSON.parse(data) : [];
+    return safeGet(KEYS.REJECT_LOGS) || [];
   },
 
   saveRejectLog: (log: RejectLog) => {
-    const logs = storageService.getRejectLogs();
-    logs.unshift(log);
-    localStorage.setItem(KEYS.REJECT_LOGS, JSON.stringify(logs));
+    try {
+      const logs = storageService.getRejectLogs();
+      logs.unshift(log);
+      safeSet(KEYS.REJECT_LOGS, logs);
+    } catch (e) {
+      throw e;
+    }
   },
 
   updateRejectLog: (updatedLog: RejectLog) => {
-    const logs = storageService.getRejectLogs();
-    const index = logs.findIndex(l => l.id === updatedLog.id);
-    if (index >= 0) {
-      logs[index] = updatedLog;
-      localStorage.setItem(KEYS.REJECT_LOGS, JSON.stringify(logs));
+    try {
+      const logs = storageService.getRejectLogs();
+      const index = logs.findIndex(l => l.id === updatedLog.id);
+      if (index >= 0) {
+        logs[index] = updatedLog;
+        safeSet(KEYS.REJECT_LOGS, logs);
+      }
+    } catch (e) {
+      throw e;
     }
   },
 
   deleteRejectLog: (id: string) => {
-    const logs = storageService.getRejectLogs();
-    const filtered = logs.filter(l => l.id !== id);
-    localStorage.setItem(KEYS.REJECT_LOGS, JSON.stringify(filtered));
+    try {
+      const logs = storageService.getRejectLogs();
+      const filtered = logs.filter(l => l.id !== id);
+      safeSet(KEYS.REJECT_LOGS, filtered);
+    } catch (e) {
+      throw e;
+    }
   },
 
   // --- Stats ---
   getStats: (): DashboardStats => {
-    const items = storageService.getItems();
-    return {
-      totalValue: items.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
-      totalUnits: items.reduce((acc, curr) => acc + curr.stock, 0),
-      lowStockCount: items.filter(i => i.stock <= i.minLevel).length,
-      skuCount: items.length
-    };
+    try {
+      const items = storageService.getItems();
+      return {
+        totalValue: items.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
+        totalUnits: items.reduce((acc, curr) => acc + curr.stock, 0),
+        lowStockCount: items.filter(i => i.stock <= i.minLevel).length,
+        skuCount: items.length
+      };
+    } catch (e) {
+      return { totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0 };
+    }
   }
 };

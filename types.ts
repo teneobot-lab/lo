@@ -20,8 +20,19 @@ export interface InventoryItem {
   minLevel: number;
   imageUrl?: string;
   active: boolean;
-  conversionRatio?: number; // e.g. 10 (1 Box = 10 Pcs)
-  conversionUnit?: string; // e.g. "Box"
+  
+  // Legacy fields (kept for backward compat, mapped to unit2)
+  conversionRatio?: number; 
+  conversionUnit?: string; 
+
+  // New Multi-Unit Fields
+  unit2?: string;
+  ratio2?: number;
+  op2?: 'multiply' | 'divide';
+  
+  unit3?: string;
+  ratio3?: number;
+  op3?: 'multiply' | 'divide';
 }
 
 export interface TransactionItem {
@@ -66,8 +77,10 @@ export interface RejectItem {
   baseUnit: string;
   unit2?: string;
   ratio2?: number;
+  op2?: 'multiply' | 'divide'; // New: Determines if we multiply or divide input by ratio
   unit3?: string;
   ratio3?: number;
+  op3?: 'multiply' | 'divide'; // New
   lastUpdated: string;
 }
 
@@ -79,12 +92,15 @@ export interface RejectItemDetail {
   quantity: number;
   unit: string;
   ratio: number;
+  operation: 'multiply' | 'divide'; // New: Store the operation used
   totalBaseQuantity: number;
   reason: string;
   unit2?: string;
   ratio2?: number;
+  op2?: 'multiply' | 'divide';
   unit3?: string;
   ratio3?: number;
+  op3?: 'multiply' | 'divide';
 }
 
 export interface RejectLog {

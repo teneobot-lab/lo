@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Trash2, Search, X, AlertCircle, Layers, Scale, Edit3, Save, Keyboard, ClipboardCheck, History, Copy, Edit2, Database, Download, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Search, X, AlertCircle, Layers, Scale, Edit3, Save, Keyboard, ClipboardCheck, History, Copy, Edit2, Database, Download, FileSpreadsheet, ArrowRightLeft } from 'lucide-react';
 import useDebounce from '../hooks/useDebounce';
 import * as XLSX from 'xlsx';
 
@@ -45,7 +45,9 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [editingMasterItem, setEditingMasterItem] = useState<RejectItem | null>(null);
   const [newMasterItem, setNewMasterItem] = useState<Partial<RejectItem>>({
-    sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: 1, unit3: '', ratio3: 1
+    sku: '', name: '', baseUnit: 'Pcs', 
+    unit2: '', ratio2: undefined, op2: 'divide',
+    unit3: '', ratio3: undefined, op3: 'divide'
   });
 
   // Item Selection State (Input Log)
@@ -54,6 +56,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   const [selectedItem, setSelectedItem] = useState<RejectItem | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [conversionRatio, setConversionRatio] = useState<number>(1);
+  const [conversionOp, setConversionOp] = useState<'multiply'|'divide'>('divide');
   const [quantityInput, setQuantityInput] = useState<number | undefined>(undefined);
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   
@@ -63,6 +66,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   const [editSelectedItem, setEditSelectedItem] = useState<RejectItem | null>(null);
   const [editSelectedUnit, setEditSelectedUnit] = useState<string>('');
   const [editConversionRatio, setEditConversionRatio] = useState<number>(1);
+  const [editConversionOp, setEditConversionOp] = useState<'multiply'|'divide'>('divide');
   const [editQuantityInput, setEditQuantityInput] = useState<number | undefined>(undefined);
   const [editRejectReason, setEditRejectReason] = useState('Damaged');
   const [isEditAutocompleteOpen, setIsEditAutocompleteOpen] = useState(false);
@@ -104,6 +108,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     setSearchQuery(item.name);
     setSelectedUnit(item.baseUnit);
     setConversionRatio(1);
+    setConversionOp('divide'); // Default for base
     setIsAutocompleteOpen(false);
   };
 
@@ -111,34 +116,45 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     setSelectedUnit(unitName);
     if (selectedItem?.baseUnit === unitName) {
         setConversionRatio(1);
+        setConversionOp('divide');
     } else if (selectedItem?.unit2 === unitName) {
         setConversionRatio(selectedItem.ratio2 || 1);
+        setConversionOp(selectedItem.op2 || 'divide');
     } else if (selectedItem?.unit3 === unitName) {
         setConversionRatio(selectedItem.ratio3 || 1);
+        setConversionOp(selectedItem.op3 || 'divide');
     }
+  };
+
+  const calculateBaseQuantity = (qty: number, ratio: number, op: 'multiply' | 'divide') => {
+      if (!ratio || ratio === 0) return 0;
+      if (op === 'multiply') return qty * ratio;
+      return qty / ratio;
   };
 
   const handleAddToCart = () => {
     if (!selectedItem || !quantityInput) return;
     
-    // LOGIKA PEMBAGIAN: Qty / Ratio = Base Qty
-    // Contoh: 500 GR / 1000 = 0.5 KG
-    const requestedBase = conversionRatio !== 0 ? quantityInput / conversionRatio : 0;
+    // Calculate using selected operation
+    const requestedBase = calculateBaseQuantity(quantityInput, conversionRatio, conversionOp);
 
     const newItem: RejectItemDetail = {
       itemId: selectedItem.id, 
       itemName: selectedItem.name, 
-      sku: selectedItem.sku,
+      sku: selectedItem.sku, 
       baseUnit: selectedItem.baseUnit,
       quantity: quantityInput, 
       unit: selectedUnit, 
       ratio: conversionRatio, 
+      operation: conversionOp,
       totalBaseQuantity: requestedBase,
       reason: rejectReason,
       unit2: selectedItem.unit2,
       ratio2: selectedItem.ratio2,
+      op2: selectedItem.op2,
       unit3: selectedItem.unit3,
       ratio3: selectedItem.ratio3,
+      op3: selectedItem.op3
     };
 
     setCartItems([...cartItems, newItem]);
@@ -178,6 +194,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     setEditSearchQuery(item.name);
     setEditSelectedUnit(item.baseUnit);
     setEditConversionRatio(1);
+    setEditConversionOp('divide');
     setIsEditAutocompleteOpen(false);
   };
 
@@ -185,17 +202,20 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     setEditSelectedUnit(unitName);
     if (editSelectedItem?.baseUnit === unitName) {
         setEditConversionRatio(1);
+        setEditConversionOp('divide');
     } else if (editSelectedItem?.unit2 === unitName) {
         setEditConversionRatio(editSelectedItem.ratio2 || 1);
+        setEditConversionOp(editSelectedItem.op2 || 'divide');
     } else if (editSelectedItem?.unit3 === unitName) {
         setEditConversionRatio(editSelectedItem.ratio3 || 1);
+        setEditConversionOp(editSelectedItem.op3 || 'divide');
     }
   };
 
   const handleAddToEditCart = () => {
     if (!editSelectedItem || !editQuantityInput) return;
-    // LOGIKA PEMBAGIAN: Qty / Ratio
-    const requestedBase = editConversionRatio !== 0 ? editQuantityInput / editConversionRatio : 0;
+    const requestedBase = calculateBaseQuantity(editQuantityInput, editConversionRatio, editConversionOp);
+    
     const newItem: RejectItemDetail = {
       itemId: editSelectedItem.id, 
       itemName: editSelectedItem.name, 
@@ -204,10 +224,11 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
       quantity: editQuantityInput, 
       unit: editSelectedUnit, 
       ratio: editConversionRatio, 
+      operation: editConversionOp,
       totalBaseQuantity: requestedBase, 
       reason: editRejectReason,
-      unit2: editSelectedItem.unit2, ratio2: editSelectedItem.ratio2,
-      unit3: editSelectedItem.unit3, ratio3: editSelectedItem.ratio3
+      unit2: editSelectedItem.unit2, ratio2: editSelectedItem.ratio2, op2: editSelectedItem.op2,
+      unit3: editSelectedItem.unit3, ratio3: editSelectedItem.ratio3, op3: editSelectedItem.op3
     };
     setEditCartItems([...editCartItems, newItem]);
     setEditSelectedItem(null);
@@ -243,13 +264,19 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
             name: item.name,
             baseUnit: item.baseUnit,
             unit2: item.unit2 || '',
-            ratio2: item.ratio2 || 1,
+            ratio2: item.ratio2,
+            op2: item.op2 || 'divide',
             unit3: item.unit3 || '',
-            ratio3: item.ratio3 || 1
+            ratio3: item.ratio3,
+            op3: item.op3 || 'divide'
         });
     } else {
         setEditingMasterItem(null);
-        setNewMasterItem({ sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: 1, unit3: '', ratio3: 1 });
+        setNewMasterItem({ 
+            sku: '', name: '', baseUnit: 'Pcs', 
+            unit2: '', ratio2: undefined, op2: 'divide',
+            unit3: '', ratio3: undefined, op3: 'divide'
+        });
     }
     setIsMasterModalOpen(true);
   };
@@ -258,40 +285,36 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     e.preventDefault();
     if (!newMasterItem.sku || !newMasterItem.name) return;
     
+    const itemPayload: Partial<RejectItem> = {
+        sku: newMasterItem.sku!,
+        name: newMasterItem.name!,
+        baseUnit: newMasterItem.baseUnit || 'Pcs',
+        unit2: newMasterItem.unit2 || undefined,
+        ratio2: newMasterItem.unit2 ? newMasterItem.ratio2 : undefined,
+        op2: newMasterItem.unit2 ? newMasterItem.op2 : undefined,
+        unit3: newMasterItem.unit3 ? String(newMasterItem.unit3) : undefined,
+        ratio3: newMasterItem.unit3 ? newMasterItem.ratio3 : undefined,
+        op3: newMasterItem.unit3 ? newMasterItem.op3 : undefined,
+        lastUpdated: new Date().toISOString()
+    };
+
     if (editingMasterItem) {
         const updatedList = rejectMasterData.map(item => 
             item.id === editingMasterItem.id 
-            ? { 
-                ...item, 
-                sku: newMasterItem.sku!, 
-                name: newMasterItem.name!, 
-                baseUnit: newMasterItem.baseUnit || 'Pcs',
-                unit2: newMasterItem.unit2 || undefined,
-                ratio2: newMasterItem.unit2 ? Number(newMasterItem.ratio2) : undefined,
-                unit3: newMasterItem.unit3 ? String(newMasterItem.unit3) : undefined,
-                ratio3: newMasterItem.unit3 ? Number(newMasterItem.ratio3) : undefined,
-                lastUpdated: new Date().toISOString()
-              } 
+            ? { ...item, ...itemPayload } 
             : item
         );
         onUpdateMaster(updatedList);
     } else {
         const newItem: RejectItem = {
             id: generateId(),
-            sku: newMasterItem.sku!,
-            name: newMasterItem.name!,
-            baseUnit: newMasterItem.baseUnit || 'Pcs',
-            unit2: newMasterItem.unit2 || undefined,
-            ratio2: newMasterItem.unit2 ? Number(newMasterItem.ratio2) : undefined,
-            unit3: newMasterItem.unit3 ? String(newMasterItem.unit3) : undefined,
-            ratio3: newMasterItem.unit3 ? Number(newMasterItem.ratio3) : undefined,
-            lastUpdated: new Date().toISOString()
-        };
+            ...itemPayload
+        } as RejectItem;
         onUpdateMaster([...rejectMasterData, newItem]);
     }
 
     setIsMasterModalOpen(false);
-    setNewMasterItem({ sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: 1, unit3: '', ratio3: 1 });
+    setNewMasterItem({ sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: undefined, op2: 'divide', unit3: '', ratio3: undefined, op3: 'divide' });
     setEditingMasterItem(null);
   };
 
@@ -331,8 +354,10 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
             baseUnit: String(row['BASE UNIT'] || row['Base Unit'] || 'Pcs'),
             unit2: row['UNIT2'] ? String(row['UNIT2']) : undefined,
             ratio2: row['CONVERSION UNIT2'] ? Number(row['CONVERSION UNIT2']) : undefined,
+            op2: 'divide', // Default import to divide (safe bet for Grams/Kg)
             unit3: row['UNIT3'] ? String(row['UNIT3']) : undefined,
             ratio3: row['CONVERSION UNIT3'] ? Number(row['CONVERSION UNIT3']) : undefined,
+            op3: 'divide',
             lastUpdated: new Date().toISOString()
         }));
         
@@ -346,6 +371,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   };
 
   const handleCopyToClipboard = (log: RejectLog) => {
+    // ... same code ...
     let ddmmyy = '';
     try {
         const parts = log.date.split('-');
@@ -401,6 +427,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
 
       {activeTab === 'new' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto pb-4 custom-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {/* ... Left Side Form ... */}
             <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 border-l-4 border-l-rose-500">
                     <div className="flex items-center justify-between mb-6">
@@ -481,9 +508,11 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                         {selectedItem && (
                           <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter bg-white dark:bg-zinc-900 p-2 rounded-lg border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-left-1 mt-2">
                             <Layers className="w-3.5 h-3.5 text-rose-500" />
-                            Konversi: {conversionRatio} {selectedUnit} = 1 {selectedItem.baseUnit} 
+                            Konversi: {conversionOp === 'multiply' ? `1 ${selectedUnit} = ${conversionRatio} ${selectedItem.baseUnit}` : `1 ${selectedItem.baseUnit} = ${conversionRatio} ${selectedUnit}`}
                             {quantityInput !== undefined && (
-                              <span className="ml-auto text-rose-600">Terinput ke Sistem: {(quantityInput / conversionRatio).toFixed(4)} {selectedItem.baseUnit}</span>
+                              <span className="ml-auto text-rose-600">
+                                  Terinput ke Sistem: {calculateBaseQuantity(quantityInput, conversionRatio, conversionOp).toFixed(4)} {selectedItem.baseUnit}
+                              </span>
                             )}
                           </div>
                         )}
@@ -517,6 +546,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
         </div>
       )}
 
+      {/* ... History Tab (Identical) ... */}
       {activeTab === 'history' && (
         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 flex-1 overflow-hidden flex flex-col">
             <div className="overflow-auto flex-1 custom-scrollbar">
@@ -595,8 +625,16 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                           <td className="px-6 py-4 text-xs font-medium text-slate-500 dark:text-zinc-400 uppercase">{item.baseUnit}</td>
                                           <td className="px-6 py-4">
                                               <div className="flex flex-col gap-1">
-                                                  {item.unit2 && <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">1 {item.baseUnit} = {item.ratio2} {item.unit2}</span>}
-                                                  {item.unit3 && <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">1 {item.baseUnit} = {item.ratio3} {item.unit3}</span>}
+                                                  {item.unit2 && (
+                                                      <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">
+                                                          {item.op2 === 'multiply' ? `1 ${item.unit2} = ${item.ratio2} ${item.baseUnit}` : `1 ${item.baseUnit} = ${item.ratio2} ${item.unit2}`}
+                                                      </span>
+                                                  )}
+                                                  {item.unit3 && (
+                                                      <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">
+                                                           {item.op3 === 'multiply' ? `1 ${item.unit3} = ${item.ratio3} ${item.baseUnit}` : `1 ${item.baseUnit} = ${item.ratio3} ${item.unit3}`}
+                                                      </span>
+                                                  )}
                                                   {!item.unit2 && !item.unit3 && <span className="text-[9px] text-slate-300 italic">No alternative units</span>}
                                               </div>
                                           </td>
@@ -648,31 +686,87 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                   <div className="space-y-4 pt-4 border-t dark:border-zinc-800">
                       <h4 className="text-xs font-black text-slate-400 uppercase flex items-center gap-2"><Layers className="w-4 h-4" /> Multi-Unit Conversion (Opsional)</h4>
                       
-                      <div className="bg-rose-50/50 dark:bg-rose-900/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30 flex items-end gap-3">
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Unit Level 2</label>
-                            <input value={newMasterItem.unit2 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit2: e.target.value})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: GR" />
-                        </div>
-                        <div className="w-32">
-                            <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Ratio (X Unit = 1 Base)</label>
-                            <div className="relative">
-                                <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-rose-300" />
-                                <input type="number" value={newMasterItem.ratio2 || 1} onChange={e => setNewMasterItem({...newMasterItem, ratio2: Number(e.target.value)})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
+                      {/* Unit 2 Config */}
+                      <div className="bg-rose-50/50 dark:bg-rose-900/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30 space-y-3">
+                        <div className="flex gap-3">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Unit Level 2</label>
+                                <input value={newMasterItem.unit2 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit2: e.target.value})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: GR / BOX" />
                             </div>
+                            <div className="w-32">
+                                <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Ratio (Angka)</label>
+                                <div className="relative">
+                                    <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-rose-300" />
+                                    <input type="number" value={newMasterItem.ratio2 ?? ''} onChange={e => setNewMasterItem({...newMasterItem, ratio2: e.target.value ? Number(e.target.value) : undefined})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                             <span className="font-bold text-slate-500">Logika:</span>
+                             <div className="flex gap-2 bg-white dark:bg-zinc-950 p-1 rounded-lg border border-slate-200 dark:border-zinc-700">
+                                 <button 
+                                     type="button" 
+                                     onClick={() => setNewMasterItem({...newMasterItem, op2: 'divide'})} 
+                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op2 !== 'multiply' ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
+                                 >
+                                     Bagi (/)
+                                 </button>
+                                 <button 
+                                     type="button" 
+                                     onClick={() => setNewMasterItem({...newMasterItem, op2: 'multiply'})} 
+                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op2 === 'multiply' ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
+                                 >
+                                     Kali (X)
+                                 </button>
+                             </div>
+                             <span className="text-[10px] text-slate-400 italic flex-1 text-right">
+                                 {newMasterItem.op2 === 'multiply' 
+                                    ? `(1 ${newMasterItem.unit2 || 'Unit'} = ${newMasterItem.ratio2 || 'X'} ${newMasterItem.baseUnit || 'Base'})` 
+                                    : `(1 ${newMasterItem.baseUnit || 'Base'} = ${newMasterItem.ratio2 || 'X'} ${newMasterItem.unit2 || 'Unit'})`
+                                 }
+                             </span>
                         </div>
                       </div>
 
-                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 flex items-end gap-3">
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Unit Level 3</label>
-                            <input value={newMasterItem.unit3 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit3: e.target.value})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: PCS" />
-                        </div>
-                        <div className="w-32">
-                            <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Ratio (X Unit = 1 Base)</label>
-                            <div className="relative">
-                                <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-300" />
-                                <input type="number" value={newMasterItem.ratio3 || 1} onChange={e => setNewMasterItem({...newMasterItem, ratio3: Number(e.target.value)})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
+                      {/* Unit 3 Config */}
+                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 space-y-3">
+                        <div className="flex gap-3">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Unit Level 3</label>
+                                <input value={newMasterItem.unit3 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit3: e.target.value})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: PCS" />
                             </div>
+                            <div className="w-32">
+                                <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Ratio (Angka)</label>
+                                <div className="relative">
+                                    <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-300" />
+                                    <input type="number" value={newMasterItem.ratio3 ?? ''} onChange={e => setNewMasterItem({...newMasterItem, ratio3: e.target.value ? Number(e.target.value) : undefined})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                             <span className="font-bold text-slate-500">Logika:</span>
+                             <div className="flex gap-2 bg-white dark:bg-zinc-950 p-1 rounded-lg border border-slate-200 dark:border-zinc-700">
+                                 <button 
+                                     type="button" 
+                                     onClick={() => setNewMasterItem({...newMasterItem, op3: 'divide'})} 
+                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op3 !== 'multiply' ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
+                                 >
+                                     Bagi (/)
+                                 </button>
+                                 <button 
+                                     type="button" 
+                                     onClick={() => setNewMasterItem({...newMasterItem, op3: 'multiply'})} 
+                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op3 === 'multiply' ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
+                                 >
+                                     Kali (X)
+                                 </button>
+                             </div>
+                             <span className="text-[10px] text-slate-400 italic flex-1 text-right">
+                                 {newMasterItem.op3 === 'multiply' 
+                                    ? `(1 ${newMasterItem.unit3 || 'Unit'} = ${newMasterItem.ratio3 || 'X'} ${newMasterItem.baseUnit || 'Base'})` 
+                                    : `(1 ${newMasterItem.baseUnit || 'Base'} = ${newMasterItem.ratio3 || 'X'} ${newMasterItem.unit3 || 'Unit'})`
+                                 }
+                             </span>
                         </div>
                       </div>
                   </div>
@@ -775,9 +869,9 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                         onChange={e => {
                                             const val = Number(e.target.value);
                                             const updated = [...editCartItems];
-                                            // PEMBAGIAN pada edit qty
                                             const ratio = it.ratio || 1;
-                                            const baseQty = ratio !== 0 ? val / ratio : 0;
+                                            const op = it.operation || 'divide'; // Use stored op
+                                            const baseQty = calculateBaseQuantity(val, ratio, op);
                                             updated[idx] = { ...updated[idx], quantity: val, totalBaseQuantity: baseQty };
                                             setEditCartItems(updated);
                                         }} 

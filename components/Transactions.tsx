@@ -1,26 +1,27 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download } from 'lucide-react';
+import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
 interface TransactionsProps {
   items: InventoryItem[];
   user: User;
   onSuccess: () => void;
+  notify: (msg: string, type: ToastType) => void;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess }) => {
+export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
   const [type, setType] = useState<'inbound' | 'outbound'>('outbound');
   const [cart, setCart] = useState<TransactionItem[]>([]);
   
-  // Autocomplete State
   const [itemSearch, setItemSearch] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Inputs - Initialized as empty strings for clean UI
   const [qty, setQty] = useState<number | ''>('');
   const [selectedUOM, setSelectedUOM] = useState(''); 
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
@@ -32,7 +33,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const selectedItemData = items.find(i => i.id === selectedItemId);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -43,7 +43,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter items for Autocomplete
   const filteredItems = items.filter(i => 
     i.active && (
       i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
@@ -51,61 +50,86 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     )
   );
 
-  // Calculate actual stock deduction based on UOM
-  const conversionRatio = (selectedItemData?.conversionUnit === selectedUOM && selectedItemData?.conversionRatio) 
-      ? selectedItemData.conversionRatio 
-      : 1;
+  // Helper to get accurate conversion factor based on new Unit 2/3 logic
+  const getConversionFactor = (item: InventoryItem, uom: string) => {
+      if (uom === item.unit) return 1;
+      
+      // Check Unit 2
+      if (item.unit2 && uom === item.unit2 && item.ratio2) {
+          // If op2 is divide (e.g. 1 Base = 1000 Unit2), then 1 Unit2 = 1/1000 Base
+          return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;
+      }
+      
+      // Check Unit 3
+      if (item.unit3 && uom === item.unit3 && item.ratio3) {
+           return item.op3 === 'divide' ? (1 / item.ratio3) : item.ratio3;
+      }
+
+      // Legacy Fallback
+      if (item.conversionUnit && uom === item.conversionUnit && item.conversionRatio) {
+          return item.conversionRatio;
+      }
+
+      return 1;
+  };
+
+  const conversionRatio = selectedItemData ? getConversionFactor(selectedItemData, selectedUOM) : 1;
   
   const currentQty = qty === '' ? 0 : qty;
   const actualQtyToDeduct = currentQty * conversionRatio;
 
-  // Real-time Stock Validation
   const isStockInsufficient = type === 'outbound' && selectedItemData && actualQtyToDeduct > selectedItemData.stock;
 
   const handleSelectItem = (item: InventoryItem) => {
       setSelectedItemId(item.id);
       setItemSearch(item.name);
-      setSelectedUOM(item.unit); // Default to base unit
+      setSelectedUOM(item.unit);
       setShowDropdown(false);
   };
 
   const addToCart = () => {
-    if (!selectedItemData || qty === '' || qty <= 0) return;
-    if (isStockInsufficient) return;
-    
-    // Determine Price per Unit based on selected UOM
-    const unitPrice = selectedItemData.price * conversionRatio;
-
-    // Check duplication (only if same item AND same unit)
-    const existingIndex = cart.findIndex(c => c.itemId === selectedItemId && c.uom === selectedUOM);
-    
-    if (existingIndex >= 0) {
-      const updatedCart = [...cart];
-      const existingItem = updatedCart[existingIndex];
-      const newQty = existingItem.qty + actualQtyToDeduct; // total base units
+    try {
+      if (!selectedItemData || qty === '' || qty <= 0) return;
+      if (isStockInsufficient) {
+        notify("Insufficient stock for transaction", 'error');
+        return;
+      }
       
-      updatedCart[existingIndex] = {
-          ...existingItem,
-          qty: newQty, // Update total base units deducted
-          total: newQty * (unitPrice / conversionRatio) // Recalculate total price
-      };
-      setCart(updatedCart);
+      const unitPrice = selectedItemData.price * conversionRatio;
 
-    } else {
-      setCart([...cart, {
-        itemId: selectedItemData.id,
-        sku: selectedItemData.sku,
-        name: selectedItemData.name,
-        qty: actualQtyToDeduct, // Store actual stock impact
-        uom: selectedUOM,
-        unitPrice: unitPrice,
-        total: currentQty * unitPrice
-      }]);
+      const existingIndex = cart.findIndex(c => c.itemId === selectedItemId && c.uom === selectedUOM);
+      
+      if (existingIndex >= 0) {
+        const updatedCart = [...cart];
+        const existingItem = updatedCart[existingIndex];
+        const newQty = existingItem.qty + actualQtyToDeduct;
+        
+        updatedCart[existingIndex] = {
+            ...existingItem,
+            qty: newQty,
+            total: newQty * (unitPrice / conversionRatio)
+        };
+        setCart(updatedCart);
+
+      } else {
+        setCart([...cart, {
+          itemId: selectedItemData.id,
+          sku: selectedItemData.sku,
+          name: selectedItemData.name,
+          qty: actualQtyToDeduct,
+          uom: selectedUOM,
+          unitPrice: unitPrice,
+          total: currentQty * unitPrice
+        }]);
+      }
+      setQty('');
+      setSelectedItemId('');
+      setItemSearch('');
+      setSelectedUOM('');
+      notify('Item added to batch', 'info');
+    } catch (e) {
+      notify("Failed to add item", 'error');
     }
-    setQty('');
-    setSelectedItemId('');
-    setItemSearch('');
-    setSelectedUOM('');
   };
 
   const removeFromCart = (index: number) => {
@@ -115,6 +139,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        notify("File too large. Max 2MB", 'error');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setDocumentImage(reader.result as string);
@@ -140,6 +168,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
       const reader = new FileReader();
       reader.onload = (evt) => {
+        try {
           const bstr = evt.target?.result;
           const wb = XLSX.read(bstr, { type: 'binary' });
           const wsname = wb.SheetNames[0];
@@ -155,12 +184,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               const qty = Number(row.Qty || 0);
               if (!sku || qty <= 0) return;
               
-              // 1. Check if item exists in current props
-              // 2. ALSO check if we just created it in this loop (to avoid duplicates in one file)
               let item = items.find(i => i.sku === sku) || newItemsToCreate.find(i => i.sku === sku);
 
               if (!item) {
-                  // AUTO CREATE NEW ITEM
                   item = {
                       id: crypto.randomUUID(),
                       sku: sku,
@@ -169,7 +195,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       price: Number(row.Price) || 0,
                       location: String(row.Location || 'Unassigned'),
                       unit: String(row.Unit || 'Pcs'),
-                      stock: 0, // Initial stock is 0, transaction will adjust it
+                      stock: 0,
                       minLevel: 5,
                       active: true
                   };
@@ -177,13 +203,12 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                   createdCount++;
               }
 
-              // Add to cart payload
               if (item) {
                   cartItemsToAdd.push({
                       itemId: item.id,
                       sku: item.sku,
                       name: item.name,
-                      qty: qty, // Bulk import assumes Base Unit
+                      qty: qty,
                       uom: item.unit,
                       unitPrice: item.price,
                       total: qty * item.price
@@ -191,54 +216,47 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               }
           });
           
-          // Save all new items to storage
           if (newItemsToCreate.length > 0) {
               newItemsToCreate.forEach(newItem => {
                   storageService.saveItem(newItem);
               });
-              // CRITICAL: Call onSuccess to refresh parent's `items` prop immediately
-              // so that validation and subsequent saves work correctly.
               onSuccess();
           }
 
           if (cartItemsToAdd.length > 0) {
               setCart(prev => [...prev, ...cartItemsToAdd]);
-              alert(`Processed import: ${cartItemsToAdd.length} items added to cart. (${createdCount} new items created automatically).`);
+              notify(`${cartItemsToAdd.length} items added. ${createdCount} created.`, 'success');
           } else {
-              alert("No valid items found.");
+              notify("No valid items found", 'warning');
           }
+        } catch (e) {
+            notify("Import failed. Check file format.", 'error');
+        }
       };
       reader.readAsBinaryString(file);
-      e.target.value = ''; // Reset
+      e.target.value = '';
   };
 
   const handleSubmit = () => {
     if (cart.length === 0) return;
 
-    // Final Stock Check before Submit for Outbound
     if (type === 'outbound') {
         const totals: {[id: string]: number} = {};
         cart.forEach(c => {
             totals[c.itemId] = (totals[c.itemId] || 0) + c.qty;
         });
 
-        // We must re-fetch items here or trust props. 
-        // Note: If items were auto-created during import, `onSuccess` triggered a refresh, 
-        // but `items` prop might take a render cycle to update. 
-        // For safety, we use the `items` prop which should be fresh if `onSuccess` was called.
         for (const [id, totalQty] of Object.entries(totals)) {
             const dbItem = items.find(i => i.id === id);
-            // If item was just created, stock is 0. Outbound will fail. This is intended.
-            // User must Inbound first.
             if (dbItem && totalQty > dbItem.stock) {
-                 alert(`Error: Insufficient stock for ${dbItem.name}. Need: ${totalQty}, Available: ${dbItem.stock}`);
+                 notify(`Insufficient stock for ${dbItem.name}`, 'error');
                  return;
             }
         }
     }
 
     const transaction: Transaction = {
-      id: storageService.generateTransactionId(), // Use Auto Generator
+      id: storageService.generateTransactionId(),
       type,
       date: new Date(customDate).toISOString(),
       items: cart,
@@ -250,21 +268,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       documents: documentImage ? [documentImage] : []
     };
 
-    storageService.saveTransaction(transaction);
-    onSuccess();
-    // Reset
-    setCart([]);
-    setSupplier('');
-    setPoNumber('');
-    setDeliveryNote('');
-    setDocumentImage(null);
-    setCustomDate(new Date().toISOString().slice(0, 10));
-    alert(`Transaction ${transaction.id} saved successfully!`);
+    try {
+        storageService.saveTransaction(transaction);
+        onSuccess();
+        setCart([]);
+        setSupplier('');
+        setPoNumber('');
+        setDeliveryNote('');
+        setDocumentImage(null);
+        setCustomDate(new Date().toISOString().slice(0, 10));
+        notify(`Transaction ${transaction.id} processed`, 'success');
+    } catch (e) {
+        notify("Failed to save transaction", 'error');
+    }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left: Input Form */}
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100">
           <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -283,7 +303,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </button>
             </div>
             
-            {/* Date Picker */}
             <div className="relative md:w-48">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={18} />
                 <input 
@@ -296,7 +315,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           </div>
 
           <div className="space-y-4">
-            {/* Header Data for Inbound */}
             {type === 'inbound' && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div>
@@ -314,7 +332,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               </div>
             )}
 
-            {/* Advanced Autocomplete Item Selection */}
             <div className="flex flex-col md:flex-row gap-4 items-start z-20 relative">
               <div className="flex-1 w-full relative" ref={dropdownRef}>
                 <label className="block text-xs font-semibold text-muted mb-1">Search Item</label>
@@ -327,13 +344,12 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                         onChange={(e) => {
                             setItemSearch(e.target.value);
                             setShowDropdown(true);
-                            setSelectedItemId(''); // Clear selection on type
+                            setSelectedItemId(''); 
                         }}
                         onFocus={() => setShowDropdown(true)}
                     />
                 </div>
                 
-                {/* Custom Dropdown List */}
                 {showDropdown && itemSearch && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-60 overflow-y-auto z-50">
                         {filteredItems.length > 0 ? (
@@ -372,7 +388,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 )}
               </div>
               
-              {/* Unit Selection (Conversion) */}
               <div className="w-full md:w-32">
                   <label className="block text-xs font-semibold text-muted mb-1">Unit</label>
                   <select 
@@ -383,11 +398,21 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                   >
                       {selectedItemData && (
                           <>
-                              <option value={selectedItemData.unit}>{selectedItemData.unit} (1:1)</option>
-                              {selectedItemData.conversionUnit && (
-                                  <option value={selectedItemData.conversionUnit}>
-                                      {selectedItemData.conversionUnit} (1:{selectedItemData.conversionRatio})
-                                  </option>
+                              <option value={selectedItemData.unit}>{selectedItemData.unit}</option>
+                              
+                              {/* Unit 2 */}
+                              {selectedItemData.unit2 && (
+                                  <option value={selectedItemData.unit2}>{selectedItemData.unit2}</option>
+                              )}
+                              
+                              {/* Legacy Conversion Unit (only if unit2 is missing to avoid duplicates) */}
+                              {!selectedItemData.unit2 && selectedItemData.conversionUnit && (
+                                  <option value={selectedItemData.conversionUnit}>{selectedItemData.conversionUnit}</option>
+                              )}
+
+                              {/* Unit 3 */}
+                              {selectedItemData.unit3 && (
+                                  <option value={selectedItemData.unit3}>{selectedItemData.unit3}</option>
                               )}
                           </>
                       )}
@@ -414,7 +439,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               </button>
             </div>
 
-            {/* Error Message for Stock */}
             {isStockInsufficient && (
                 <div className="flex items-center gap-2 p-3 bg-rose-50 text-rose-600 rounded-xl text-sm font-medium animate-pulse">
                     <AlertCircle size={18} />
@@ -422,9 +446,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </div>
             )}
 
-            {/* Additional Actions Line */}
             <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-2">
-                 {/* Document Upload for Inbound */}
                 {type === 'inbound' ? (
                 <div className="flex-1">
                     <label className="block text-xs font-semibold text-muted mb-1">Upload Document (Image)</label>
@@ -440,7 +462,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </div>
                 ) : <div className="flex-1"></div>}
 
-                {/* Bulk Import for Cart */}
                 <div className="flex gap-3">
                      <button onClick={downloadTemplate} className="text-muted hover:text-primary transition-colors p-2" title="Download Template">
                          <Download size={20} />
@@ -463,7 +484,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         </div>
       </div>
 
-      {/* Right: Cart Summary */}
       <div className="bg-white rounded-2xl shadow-soft border border-slate-100 flex flex-col h-[calc(100vh-140px)] sticky top-24 overflow-hidden">
         <div className="p-4 border-b border-border bg-slate-50">
           <h3 className="font-bold text-dark flex items-center gap-2">
@@ -490,9 +510,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 cart.map((item, idx) => {
                     const dbItem = items.find(i => i.id === item.itemId);
                     let displayQty = item.qty;
-                    if (dbItem?.conversionUnit === item.uom && dbItem.conversionRatio) {
-                        displayQty = item.qty / dbItem.conversionRatio;
-                    }
+                    // Try to reverse calculation to show original input quantity if possible
+                    // This is complex because we don't store the exact input unit ratio in cart currently, 
+                    // but we can try to guess based on UOM match
+                    const factor = dbItem ? getConversionFactor(dbItem, item.uom) : 1;
+                    displayQty = item.qty / factor;
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/50">
@@ -501,7 +523,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                           <div className="text-xs text-muted">{item.sku}</div>
                         </td>
                         <td className="p-3 text-center text-sm">
-                            {displayQty} {item.uom}
+                            {parseFloat(displayQty.toFixed(2))} {item.uom}
                             {item.uom !== dbItem?.unit && <div className="text-[10px] text-muted">({item.qty} {dbItem?.unit})</div>}
                         </td>
                         <td className="p-3 text-right text-sm font-medium">Rp {item.total.toLocaleString()}</td>
