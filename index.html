@@ -16,16 +16,30 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
+              // Updated Palette - Softer/Dimmer for Eye Comfort
+              ice: {
+                50: '#EBF3FA',  // Was #F4F9FF (Too bright) -> Softer Blue-Grey
+                100: '#DDE8F3', // Was #deecf7 -> Slightly deeper
+                200: '#CEDBEE', // Was #dde8f8
+                300: '#BFD4EB', // Was #d9e8f7
+                400: '#AECBE8', // Was #d0e2f6
+                500: '#84ADD8', // Darker shade for text/accents
+                600: '#5a8cc2',
+              },
               primary: '#4F8CFF',
               secondary: '#6A5CFF',
-              background: '#F4F7FB',
-              accent: '#3DDCFF',
+              background: '#EEF2F6', // Was #F8FAFC -> Darker/Softer Grey-Blue base
               dark: '#1F2937',
               muted: '#6B7280',
-              border: '#E5EAF1',
+              border: '#E2E8F0', // Slightly darker border for contrast on softer bg
             },
             boxShadow: {
-              'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+              'soft': '0 4px 20px -5px rgba(0,0,0,0.05)', // Reduced shadow intensity
+              'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.05)',
+            },
+            backgroundImage: {
+              'ice-gradient': 'linear-gradient(135deg, #deecf7 0%, #dde8f8 33%, #d9e8f7 66%, #d0e2f6 100%)',
+              'ice-gradient-dark': 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
             }
           }
         }
@@ -33,7 +47,7 @@
     </script>
     <style>
       body {
-        background-color: #F4F7FB;
+        background-color: #EEF2F6; /* Softer base color */
       }
       .dark body {
         background-color: #111827;
@@ -44,20 +58,20 @@
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f1f1;
+        background: transparent;
       }
       .dark ::-webkit-scrollbar-track {
         background: #1f2937;
       }
       ::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
+        background: #cbd5e1;
         border-radius: 4px;
       }
       .dark ::-webkit-scrollbar-thumb {
         background: #4b5563;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
+        background: #94a3b8;
       }
       
       /* Hide Number Spinners */
@@ -85,7 +99,7 @@
 }
 </script>
 </head>
-  <body class="transition-colors duration-300">
+  <body class="transition-colors duration-300 antialiased selection:bg-ice-200 selection:text-ice-600">
     <div id="root"></div>
   </body>
 </html>

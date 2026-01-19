@@ -42,7 +42,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] dark:bg-gray-900 flex items-center justify-center p-4 transition-colors duration-500">
+    <div className="min-h-screen bg-[#EEF2F6] dark:bg-gray-900 flex items-center justify-center p-4 transition-colors duration-500">
       <div className={`bg-white dark:bg-gray-800 w-full max-w-md p-8 rounded-3xl shadow-xl shadow-indigo-100 dark:shadow-none border border-white dark:border-gray-700 transition-all duration-500 ease-in-out transform ${isSuccess ? 'scale-105 shadow-emerald-200 dark:shadow-emerald-900/20' : ''}`}>
         
         {isSuccess ? (
