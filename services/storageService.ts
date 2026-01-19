@@ -205,26 +205,31 @@ export const storageService = {
 
   // --- REJECT MODULE ---
   getRejectMaster: async (): Promise<RejectItem[]> => {
-      if (isApiMode()) return []; // Implement API endpoint if needed
+      if (isApiMode()) return apiCall('reject_master');
       return safeGet(KEYS.REJECT_MASTER) || [];
   },
   saveRejectMaster: async (items: RejectItem[]) => {
+      if (isApiMode()) return apiCall('reject_master', 'POST', items);
       safeSet(KEYS.REJECT_MASTER, items);
   },
   getRejectLogs: async (): Promise<RejectLog[]> => {
+      if (isApiMode()) return apiCall('reject_logs');
       return safeGet(KEYS.REJECT_LOGS) || [];
   },
   saveRejectLog: async (log: RejectLog) => {
+      if (isApiMode()) return apiCall('reject_logs', 'POST', log);
       const logs = safeGet(KEYS.REJECT_LOGS) || [];
       logs.unshift(log);
       safeSet(KEYS.REJECT_LOGS, logs);
   },
   updateRejectLog: async (log: RejectLog) => {
+      if (isApiMode()) return apiCall(`reject_logs/${log.id}`, 'PUT', log);
       const logs = safeGet(KEYS.REJECT_LOGS) || [];
       const idx = logs.findIndex((l: RejectLog) => l.id === log.id);
       if (idx >= 0) { logs[idx] = log; safeSet(KEYS.REJECT_LOGS, logs); }
   },
   deleteRejectLog: async (id: string) => {
+      if (isApiMode()) return apiCall(`reject_logs/${id}`, 'DELETE');
       const logs = safeGet(KEYS.REJECT_LOGS) || [];
       safeSet(KEYS.REJECT_LOGS, logs.filter((l: RejectLog) => l.id !== id));
   },
