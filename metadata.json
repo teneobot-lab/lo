@@ -1,0 +1,8 @@
+{
+  "name": "Nexus WMS",
+  "description": "Modern Warehouse Management System with AI integration, real-time analytics, and comprehensive inventory tracking.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
