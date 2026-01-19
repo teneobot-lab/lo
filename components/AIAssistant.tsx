@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { geminiService } from '../services/geminiService';
 import { InventoryItem, Transaction } from '../types';
@@ -43,9 +44,9 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-140px)] flex flex-col bg-white rounded-2xl shadow-soft border border-slate-100 overflow-hidden">
+    <div className="max-w-4xl mx-auto h-[calc(100vh-140px)] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700 overflow-hidden transition-colors">
       {/* Header */}
-      <div className="p-4 border-b border-border bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex justify-between items-center">
+      <div className="p-4 border-b border-border dark:border-gray-700 bg-gradient-to-r from-indigo-600 to-purple-600 text-white flex justify-between items-center">
         <div className="flex items-center gap-3">
             <div className="p-2 bg-white/20 rounded-full">
                 <Bot size={24} />
@@ -64,7 +65,7 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8FAFC]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8FAFC] dark:bg-gray-900">
         {messages.map((m, idx) => (
           <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`flex gap-3 max-w-[80%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -74,7 +75,7 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
               <div className={`p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line shadow-sm ${
                   m.role === 'user' 
                   ? 'bg-primary text-white rounded-tr-none' 
-                  : 'bg-white text-dark border border-slate-100 rounded-tl-none'
+                  : 'bg-white dark:bg-gray-800 text-dark dark:text-gray-200 border border-slate-100 dark:border-gray-700 rounded-tl-none'
               }`}>
                 {m.text}
               </div>
@@ -83,9 +84,9 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="flex gap-3 bg-white p-4 rounded-2xl rounded-tl-none border border-slate-100 shadow-sm items-center">
+            <div className="flex gap-3 bg-white dark:bg-gray-800 p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-gray-700 shadow-sm items-center">
                 <Loader2 size={18} className="animate-spin text-primary" />
-                <span className="text-xs text-muted">Thinking...</span>
+                <span className="text-xs text-muted dark:text-gray-400">Thinking...</span>
             </div>
           </div>
         )}
@@ -93,11 +94,11 @@ export const AIAssistant: React.FC<AIProps> = ({ inventory, transactions }) => {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white border-t border-border">
+      <div className="p-4 bg-white dark:bg-gray-800 border-t border-border dark:border-gray-700">
         <div className="flex gap-2">
           <input
             type="text"
-            className="flex-1 border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-slate-50"
+            className="flex-1 border border-border dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 bg-slate-50 dark:bg-gray-900 dark:text-white"
             placeholder="Ask about inventory, value, or draft an email..."
             value={input}
             onChange={(e) => setInput(e.target.value)}

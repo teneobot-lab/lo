@@ -13,7 +13,10 @@ import {
   Cloud,
   CloudOff,
   AlertTriangle,
-  Hexagon
+  Hexagon,
+  Activity,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -23,12 +26,15 @@ interface LayoutProps {
   activePage: string;
   onNavigate: (page: string) => void;
   onLogout: () => void;
+  isDarkMode: boolean;
+  toggleTheme: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout, isDarkMode, toggleTheme }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [cloudStatus, setCloudStatus] = useState(true);
+  const [latency, setLatency] = useState(24);
 
   // Responsive check
   useEffect(() => {
@@ -42,14 +48,32 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Simulate Cloud Sync Check
+  // Simulate Cloud Sync Check & Latency Fluctuation
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Randomly toggle cloud status to simulate network checks for demo
+    // Cloud Status
+    const cloudInterval = setInterval(() => {
       setCloudStatus(prev => Math.random() > 0.05 ? true : prev); 
     }, 5000);
-    return () => clearInterval(interval);
+
+    // Latency Fluctuation (Simulate Ping)
+    const latencyInterval = setInterval(() => {
+      // Generate random latency between 15ms and 150ms, with occasional spikes
+      const baseLatency = Math.floor(Math.random() * (80 - 15) + 15);
+      const spike = Math.random() > 0.9 ? 150 : 0; // 10% chance of lag spike
+      setLatency(baseLatency + spike);
+    }, 2000);
+
+    return () => {
+      clearInterval(cloudInterval);
+      clearInterval(latencyInterval);
+    };
   }, []);
+
+  const getLatencyColor = (ms: number) => {
+    if (ms < 100) return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400';
+    if (ms < 200) return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-400';
+    return 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400';
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -62,7 +86,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
   ];
 
   return (
-    <div className="flex h-screen bg-background text-dark font-sans overflow-hidden">
+    <div className="flex h-screen bg-background dark:bg-gray-900 text-dark dark:text-white font-sans overflow-hidden transition-colors duration-300">
       {/* Mobile Overlay */}
       {isMobile && isSidebarOpen && (
         <div 
@@ -73,14 +97,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
 
       {/* Sidebar */}
       <aside 
-        className={`fixed lg:relative z-50 h-full bg-white border-r border-border transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
+        className={`fixed lg:relative z-50 h-full bg-white dark:bg-gray-800 border-r border-border dark:border-gray-700 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
       >
-        <div className="h-20 flex items-center justify-center border-b border-border bg-white">
+        <div className="h-20 flex items-center justify-center border-b border-border dark:border-gray-700 bg-white dark:bg-gray-800">
             <div className={`flex items-center gap-3 transition-all duration-300 ${isSidebarOpen ? 'px-4' : 'px-0'}`}>
                 {/* Logo Icon */}
                 <div className="relative group cursor-pointer">
                     <div className="absolute -inset-2 bg-indigo-500/20 rounded-full blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                    <div className="relative w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 text-white">
+                    <div className="relative w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 dark:shadow-none text-white">
                         <Hexagon size={20} strokeWidth={3} className="fill-indigo-500/20" />
                     </div>
                 </div>
@@ -88,7 +112,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 {/* Logo Text */}
                 {isSidebarOpen && (
                     <div className="flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
-                        <span className="font-bold text-xl text-slate-800 tracking-tight leading-none">NEXUS</span>
+                        <span className="font-bold text-xl text-slate-800 dark:text-white tracking-tight leading-none">NEXUS</span>
                         <span className="text-[9px] font-bold text-indigo-500 tracking-[0.25em] uppercase mt-0.5">Systems</span>
                     </div>
                 )}
@@ -105,29 +129,29 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
               }}
               className={`w-full flex items-center px-3 py-3 rounded-xl transition-all duration-200 group ${
                 activePage === item.id 
-                  ? 'bg-indigo-50 text-indigo-600 font-medium shadow-sm' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium shadow-sm' 
+                  : 'text-slate-500 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-gray-700 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <item.icon 
                 size={22} 
                 strokeWidth={1.5} 
-                className={`transition-colors ${activePage === item.id ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`} 
+                className={`transition-colors ${activePage === item.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-gray-500 group-hover:text-slate-600 dark:group-hover:text-gray-300'}`} 
               />
               {isSidebarOpen && <span className="ml-3">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border dark:border-gray-700">
             <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {isSidebarOpen && (
                     <div className="flex flex-col">
-                        <span className="text-sm font-semibold truncate w-32 text-slate-700">{user.name}</span>
+                        <span className="text-sm font-semibold truncate w-32 text-slate-700 dark:text-gray-200">{user.name}</span>
                         <span className="text-xs text-slate-400 capitalize">{user.role}</span>
                     </div>
                 )}
-                <button onClick={onLogout} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 rounded-lg" title="Logout">
+                <button onClick={onLogout} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg" title="Logout">
                     <LogOut size={20} />
                 </button>
             </div>
@@ -137,20 +161,35 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-border sticky top-0 z-30 flex items-center justify-between px-6">
+        <header className="h-16 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-border dark:border-gray-700 sticky top-0 z-30 flex items-center justify-between px-6 transition-colors">
             <div className="flex items-center gap-4">
                 <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="p-2 hover:bg-slate-100 rounded-lg text-muted transition-colors"
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-gray-700 rounded-lg text-muted dark:text-gray-400 transition-colors"
                 >
                     <Menu size={20} />
                 </button>
-                <h2 className="text-lg font-medium text-dark capitalize tracking-tight">{activePage}</h2>
+                <h2 className="text-lg font-medium text-dark dark:text-white capitalize tracking-tight">{activePage}</h2>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+                {/* Theme Toggle */}
+                <button 
+                  onClick={toggleTheme}
+                  className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-gray-700 text-slate-500 dark:text-yellow-400 transition-all"
+                  title="Toggle Theme"
+                >
+                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+
+                {/* Server Latency Indicator */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-500 ${getLatencyColor(latency)}`}>
+                    <Activity size={14} className={latency > 200 ? 'animate-pulse' : ''} />
+                    <span className="hidden sm:inline">Server: {latency} ms</span>
+                </div>
+
                 {/* Cloud Status */}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${cloudStatus ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${cloudStatus ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400'}`}>
                     {cloudStatus ? <Cloud size={14} /> : <CloudOff size={14} />}
                     <span className="hidden sm:inline">{cloudStatus ? 'Cloud Active' : 'Offline'}</span>
                 </div>

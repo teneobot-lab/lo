@@ -286,60 +286,60 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
-        <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700">
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 flex gap-2">
                 <button 
                 onClick={() => { setType('inbound'); setCart([]); }}
-                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'inbound' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-100 text-muted'}`}
+                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'inbound' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-100 dark:bg-gray-700 text-muted dark:text-gray-400'}`}
                 >
                 INBOUND
                 </button>
                 <button 
                 onClick={() => { setType('outbound'); setCart([]); }}
-                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'outbound' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-100 text-muted'}`}
+                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'outbound' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-100 dark:bg-gray-700 text-muted dark:text-gray-400'}`}
                 >
                 OUTBOUND
                 </button>
             </div>
             
             <div className="relative md:w-48">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={18} />
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted dark:text-gray-400 pointer-events-none" size={18} />
                 <input 
                     type="date" 
                     value={customDate}
                     onChange={(e) => setCustomDate(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-dark"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-border dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-dark dark:text-white"
                 />
             </div>
           </div>
 
           <div className="space-y-4">
             {type === 'inbound' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-gray-800/50 rounded-xl border border-slate-100 dark:border-gray-700">
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1">Supplier Name</label>
-                  <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Supplier Name</label>
+                  <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-2 border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-dark dark:text-white" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1">PO Number</label>
-                  <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">PO Number</label>
+                  <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-2 border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-dark dark:text-white" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-muted mb-1">Surat Jalan / Ref</label>
-                  <input value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className="w-full p-2 border rounded-lg" />
+                  <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Surat Jalan / Ref</label>
+                  <input value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className="w-full p-2 border dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-dark dark:text-white" />
                 </div>
               </div>
             )}
 
             <div className="flex flex-col md:flex-row gap-4 items-start z-20 relative">
               <div className="flex-1 w-full relative" ref={dropdownRef}>
-                <label className="block text-xs font-semibold text-muted mb-1">Search Item</label>
+                <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Search Item</label>
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted dark:text-gray-400" size={18} />
                     <input 
                         type="text"
-                        className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white focus:outline-none focus:ring-2 transition-all ${isStockInsufficient ? 'border-rose-300 ring-rose-100' : 'border-border focus:ring-primary/20'}`}
+                        className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white dark:bg-gray-900 text-dark dark:text-white focus:outline-none focus:ring-2 transition-all ${isStockInsufficient ? 'border-rose-300 ring-rose-100' : 'border-border dark:border-gray-700 focus:ring-primary/20'}`}
                         value={itemSearch}
                         onChange={(e) => {
                             setItemSearch(e.target.value);
@@ -351,37 +351,37 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </div>
                 
                 {showDropdown && itemSearch && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-60 overflow-y-auto z-50">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-100 dark:border-gray-700 max-h-60 overflow-y-auto z-50">
                         {filteredItems.length > 0 ? (
                             filteredItems.map(item => (
                                 <div 
                                     key={item.id}
                                     onClick={() => handleSelectItem(item)}
-                                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-none flex justify-between items-center"
+                                    className="p-3 hover:bg-slate-50 dark:hover:bg-gray-700 cursor-pointer border-b border-slate-50 dark:border-gray-700 last:border-none flex justify-between items-center"
                                 >
                                     <div>
-                                        <p className="font-medium text-sm text-dark">{item.name}</p>
-                                        <p className="text-xs text-muted">{item.sku}</p>
+                                        <p className="font-medium text-sm text-dark dark:text-white">{item.name}</p>
+                                        <p className="text-xs text-muted dark:text-gray-500">{item.sku}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className={`text-xs font-bold ${item.stock === 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                                        <p className={`text-xs font-bold ${item.stock === 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                             Stock: {item.stock} {item.unit}
                                         </p>
-                                        <p className="text-xs text-muted">Rp {item.price.toLocaleString()}</p>
+                                        <p className="text-xs text-muted dark:text-gray-500">Rp {item.price.toLocaleString()}</p>
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            <div className="p-4 text-center text-sm text-muted">No items found</div>
+                            <div className="p-4 text-center text-sm text-muted dark:text-gray-500">No items found</div>
                         )}
                     </div>
                 )}
                 
                 {selectedItemData && (
                     <div className="mt-2 text-xs flex gap-4">
-                        <span className="text-emerald-600 font-medium">Selected: {selectedItemData.sku}</span>
-                        <span className="text-muted">Base Price: Rp {selectedItemData.price.toLocaleString()}</span>
-                        <span className={`${type === 'outbound' && selectedItemData.stock < actualQtyToDeduct ? 'text-rose-600 font-bold' : 'text-muted'}`}>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium">Selected: {selectedItemData.sku}</span>
+                        <span className="text-muted dark:text-gray-400">Base Price: Rp {selectedItemData.price.toLocaleString()}</span>
+                        <span className={`${type === 'outbound' && selectedItemData.stock < actualQtyToDeduct ? 'text-rose-600 font-bold' : 'text-muted dark:text-gray-400'}`}>
                             Available Stock: {selectedItemData.stock} {selectedItemData.unit}
                         </span>
                     </div>
@@ -389,9 +389,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               </div>
               
               <div className="w-full md:w-32">
-                  <label className="block text-xs font-semibold text-muted mb-1">Unit</label>
+                  <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Unit</label>
                   <select 
-                      className="w-full p-3 border border-border rounded-xl bg-white"
+                      className="w-full p-3 border border-border dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-dark dark:text-white"
                       value={selectedUOM}
                       onChange={(e) => setSelectedUOM(e.target.value)}
                       disabled={!selectedItemId}
@@ -420,13 +420,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               </div>
 
               <div className="w-full md:w-32">
-                <label className="block text-xs font-semibold text-muted mb-1">Qty</label>
+                <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Qty</label>
                 <input 
                   type="number" 
                   min="0" 
                   value={qty} 
                   onChange={(e) => setQty(e.target.value === '' ? '' : parseInt(e.target.value))}
-                  className={`w-full p-3 border rounded-xl ${isStockInsufficient ? 'border-rose-300 text-rose-600' : 'border-border'}`}
+                  className={`w-full p-3 border rounded-xl bg-white dark:bg-gray-900 text-dark dark:text-white ${isStockInsufficient ? 'border-rose-300 text-rose-600' : 'border-border dark:border-gray-700'}`}
                 />
               </div>
 
@@ -440,19 +440,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             </div>
 
             {isStockInsufficient && (
-                <div className="flex items-center gap-2 p-3 bg-rose-50 text-rose-600 rounded-xl text-sm font-medium animate-pulse">
+                <div className="flex items-center gap-2 p-3 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium animate-pulse">
                     <AlertCircle size={18} />
                     Insufficient Stock. You need {actualQtyToDeduct} {selectedItemData?.unit} but only have {selectedItemData?.stock} available.
                 </div>
             )}
 
-            <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-2">
+            <div className="flex justify-between items-center border-t border-slate-100 dark:border-gray-700 pt-4 mt-2">
                 {type === 'inbound' ? (
                 <div className="flex-1">
-                    <label className="block text-xs font-semibold text-muted mb-1">Upload Document (Image)</label>
+                    <label className="block text-xs font-semibold text-muted dark:text-gray-400 mb-1">Upload Document (Image)</label>
                     <div className="flex gap-2 items-center">
                         <div className="relative overflow-hidden">
-                             <button className="flex items-center gap-2 text-sm text-primary hover:bg-blue-50 px-3 py-2 rounded-lg border border-primary border-dashed">
+                             <button className="flex items-center gap-2 text-sm text-primary hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-2 rounded-lg border border-primary border-dashed">
                                  <Upload size={16} /> {documentImage ? 'Change Photo' : 'Upload Proof'}
                              </button>
                              <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
@@ -463,11 +463,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 ) : <div className="flex-1"></div>}
 
                 <div className="flex gap-3">
-                     <button onClick={downloadTemplate} className="text-muted hover:text-primary transition-colors p-2" title="Download Template">
+                     <button onClick={downloadTemplate} className="text-muted dark:text-gray-400 hover:text-primary transition-colors p-2" title="Download Template">
                          <Download size={20} />
                      </button>
                      <div className="relative">
-                        <button className="flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-100 px-3 py-2 rounded-lg transition-colors">
+                        <button className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors">
                             <FileSpreadsheet size={16} /> Bulk Import
                         </button>
                         <input 
@@ -484,27 +484,27 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-soft border border-slate-100 flex flex-col h-[calc(100vh-140px)] sticky top-24 overflow-hidden">
-        <div className="p-4 border-b border-border bg-slate-50">
-          <h3 className="font-bold text-dark flex items-center gap-2">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700 flex flex-col h-[calc(100vh-140px)] sticky top-24 overflow-hidden">
+        <div className="p-4 border-b border-border dark:border-gray-700 bg-slate-50 dark:bg-gray-800/50">
+          <h3 className="font-bold text-dark dark:text-white flex items-center gap-2">
             <ShoppingCart size={20} /> Current Batch
           </h3>
         </div>
         
         <div className="flex-1 overflow-y-auto">
           <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-border text-xs font-semibold text-muted uppercase">
+            <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-gray-700/50 border-b border-border dark:border-gray-700 text-xs font-semibold text-muted dark:text-gray-400 uppercase">
               <tr>
-                <th className="p-3 bg-slate-50 pl-4">Item</th>
-                <th className="p-3 bg-slate-50 text-center">Qty</th>
-                <th className="p-3 bg-slate-50 text-right">Subtotal</th>
-                <th className="p-3 bg-slate-50 w-8"></th>
+                <th className="p-3 bg-slate-50 dark:bg-gray-800 pl-4">Item</th>
+                <th className="p-3 bg-slate-50 dark:bg-gray-800 text-center">Qty</th>
+                <th className="p-3 bg-slate-50 dark:bg-gray-800 text-right">Subtotal</th>
+                <th className="p-3 bg-slate-50 dark:bg-gray-800 w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-50 dark:divide-gray-700">
               {cart.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center text-muted py-10">Cart is empty</td>
+                  <td colSpan={4} className="text-center text-muted dark:text-gray-500 py-10">Cart is empty</td>
                 </tr>
               ) : (
                 cart.map((item, idx) => {
@@ -517,16 +517,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     displayQty = item.qty / factor;
 
                     return (
-                      <tr key={idx} className="hover:bg-slate-50/50">
+                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-gray-700/30">
                         <td className="p-3 pl-4">
-                          <div className="font-medium text-sm text-dark">{item.name}</div>
-                          <div className="text-xs text-muted">{item.sku}</div>
+                          <div className="font-medium text-sm text-dark dark:text-white">{item.name}</div>
+                          <div className="text-xs text-muted dark:text-gray-500">{item.sku}</div>
                         </td>
-                        <td className="p-3 text-center text-sm">
+                        <td className="p-3 text-center text-sm dark:text-gray-300">
                             {parseFloat(displayQty.toFixed(2))} {item.uom}
-                            {item.uom !== dbItem?.unit && <div className="text-[10px] text-muted">({item.qty} {dbItem?.unit})</div>}
+                            {item.uom !== dbItem?.unit && <div className="text-[10px] text-muted dark:text-gray-500">({item.qty} {dbItem?.unit})</div>}
                         </td>
-                        <td className="p-3 text-right text-sm font-medium">Rp {item.total.toLocaleString()}</td>
+                        <td className="p-3 text-right text-sm font-medium dark:text-gray-200">Rp {item.total.toLocaleString()}</td>
                         <td className="p-3 text-right">
                           <button onClick={() => removeFromCart(idx)} className="text-rose-400 hover:text-rose-600 transition-colors">
                             <Trash size={16} />
@@ -540,10 +540,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           </table>
         </div>
 
-        <div className="p-4 border-t border-border bg-slate-50">
+        <div className="p-4 border-t border-border dark:border-gray-700 bg-slate-50 dark:bg-gray-800/50">
           <div className="flex justify-between mb-4">
-            <span className="text-muted font-medium">Total Value</span>
-            <span className="text-xl font-bold text-dark">
+            <span className="text-muted dark:text-gray-400 font-medium">Total Value</span>
+            <span className="text-xl font-bold text-dark dark:text-white">
               Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString('id-ID')}
             </span>
           </div>

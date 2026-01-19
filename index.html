@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -8,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -33,6 +35,9 @@
       body {
         background-color: #F4F7FB;
       }
+      .dark body {
+        background-color: #111827;
+      }
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
@@ -41,9 +46,15 @@
       ::-webkit-scrollbar-track {
         background: #f1f1f1;
       }
+      .dark ::-webkit-scrollbar-track {
+        background: #1f2937;
+      }
       ::-webkit-scrollbar-thumb {
         background: #c1c1c1;
         border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #4b5563;
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #a8a8a8;
@@ -74,7 +85,7 @@
 }
 </script>
 </head>
-  <body>
+  <body class="transition-colors duration-300">
     <div id="root"></div>
   </body>
 </html>

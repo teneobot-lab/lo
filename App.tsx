@@ -23,6 +23,27 @@ function App() {
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
 
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nexus_theme') === 'dark';
+    }
+    return false;
+  });
+
+  // Apply Dark Mode Class
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('nexus_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('nexus_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -125,7 +146,7 @@ function App() {
       case 'inventory':
         return <Inventory items={items} role={user.role} onRefresh={refreshData} notify={notify} />;
       case 'transactions':
-        if (user.role === 'viewer') return <div className="text-center p-10 text-muted">Viewer access restricted.</div>;
+        if (user.role === 'viewer') return <div className="text-center p-10 text-muted dark:text-gray-400">Viewer access restricted.</div>;
         return <Transactions items={items} user={user} onSuccess={refreshData} notify={notify} />;
       case 'reject':
         return (
@@ -143,7 +164,7 @@ function App() {
       case 'ai':
         return <AIAssistant inventory={items} transactions={transactions} />;
       case 'admin':
-        if (user.role !== 'admin') return <div className="text-center p-10 text-muted">Admin access restricted.</div>;
+        if (user.role !== 'admin') return <div className="text-center p-10 text-muted dark:text-gray-400">Admin access restricted.</div>;
         return <Admin />;
       default:
         return <Dashboard items={items} transactions={transactions} stats={stats} />;
@@ -158,6 +179,8 @@ function App() {
         activePage={activePage} 
         onNavigate={setActivePage} 
         onLogout={handleLogout}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
       >
         {renderContent()}
       </Layout>
