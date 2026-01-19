@@ -16,6 +16,100 @@ const INITIAL_USERS: User[] = [
   { id: 'viewer', username: 'viewer', role: 'viewer', name: 'Auditor' },
 ];
 
+// Helper to generate dates relative to today
+const getPastDate = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString();
+};
+
+const INITIAL_TRANSACTIONS: Transaction[] = [
+    {
+        id: 'TRX-INIT-001',
+        type: 'inbound',
+        date: getPastDate(30),
+        items: [
+            { itemId: '1', sku: 'ELEC-001', name: 'Wireless Headphones', qty: 30, uom: 'Pcs', unitPrice: 1400000, total: 42000000 },
+            { itemId: '4', sku: 'STAT-555', name: 'A4 Paper Ream', qty: 100, uom: 'Box', unitPrice: 40000, total: 4000000 }
+        ],
+        totalValue: 46000000,
+        userId: 'admin',
+        supplier: 'PT. Global Tech Supply',
+        poNumber: 'PO-2023-099',
+        deliveryNote: 'SJ/GTS/001'
+    },
+    {
+        id: 'TRX-INIT-002',
+        type: 'outbound',
+        date: getPastDate(25),
+        items: [
+            { itemId: '1', sku: 'ELEC-001', name: 'Wireless Headphones', qty: 5, uom: 'Pcs', unitPrice: 1500000, total: 7500000 }
+        ],
+        totalValue: 7500000,
+        userId: 'staff',
+        notes: 'Sales Order #SO-101'
+    },
+    {
+        id: 'TRX-INIT-003',
+        type: 'inbound',
+        date: getPastDate(20),
+        items: [
+            { itemId: '2', sku: 'ELEC-002', name: 'Smart Watch Gen 3', qty: 10, uom: 'Pcs', unitPrice: 3000000, total: 30000000 }
+        ],
+        totalValue: 30000000,
+        userId: 'admin',
+        supplier: 'CV. Gadget Jaya',
+        poNumber: 'PO-2023-102'
+    },
+    {
+        id: 'TRX-INIT-004',
+        type: 'outbound',
+        date: getPastDate(15),
+        items: [
+            { itemId: '4', sku: 'STAT-555', name: 'A4 Paper Ream', qty: 20, uom: 'Box', unitPrice: 45000, total: 900000 },
+            { itemId: '3', sku: 'FURN-101', name: 'Ergonomic Office Chair', qty: 2, uom: 'Unit', unitPrice: 2100000, total: 4200000 }
+        ],
+        totalValue: 5100000,
+        userId: 'staff',
+        notes: 'Internal Office Use'
+    },
+    {
+        id: 'TRX-INIT-005',
+        type: 'inbound',
+        date: getPastDate(10),
+        items: [
+             { itemId: '1', sku: 'ELEC-001', name: 'Wireless Headphones', qty: 15, uom: 'Pcs', unitPrice: 1450000, total: 21750000 }
+        ],
+        totalValue: 21750000,
+        userId: 'admin',
+        supplier: 'PT. Global Tech Supply',
+        poNumber: 'PO-2023-115'
+    },
+    {
+        id: 'TRX-INIT-006',
+        type: 'outbound',
+        date: getPastDate(5),
+        items: [
+             { itemId: '1', sku: 'ELEC-001', name: 'Wireless Headphones', qty: 10, uom: 'Pcs', unitPrice: 1500000, total: 15000000 },
+             { itemId: '2', sku: 'ELEC-002', name: 'Smart Watch Gen 3', qty: 2, uom: 'Pcs', unitPrice: 3200000, total: 6400000 }
+        ],
+        totalValue: 21400000,
+        userId: 'staff',
+        notes: 'Bulk Order Client A'
+    },
+    {
+        id: 'TRX-INIT-007',
+        type: 'outbound',
+        date: getPastDate(2),
+        items: [
+             { itemId: '4', sku: 'STAT-555', name: 'A4 Paper Ream', qty: 50, uom: 'Box', unitPrice: 45000, total: 2250000 }
+        ],
+        totalValue: 2250000,
+        userId: 'staff',
+        notes: 'Monthly Supply Dept HR'
+    }
+];
+
 // LocalStorage Keys
 const KEYS = {
   ITEMS: 'nexus_items',
@@ -167,7 +261,12 @@ export const storageService = {
   },
 
   getTransactions: (): Transaction[] => {
-    return safeGet(KEYS.TRANSACTIONS) || [];
+    const transactions = safeGet(KEYS.TRANSACTIONS);
+    if (!transactions) {
+      safeSet(KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
+      return INITIAL_TRANSACTIONS;
+    }
+    return transactions;
   },
 
   saveTransaction: (transaction: Transaction) => {
