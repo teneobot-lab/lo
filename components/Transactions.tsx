@@ -1,38 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, X, Zap, ZapOff, Image as ImageIcon, Package, Loader2, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
-import { ToastType } from './Toast';
+import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface TransactionsProps {
   items: InventoryItem[];
   user: User;
   onSuccess: () => void;
-  notify: (msg: string, type: ToastType) => void;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
+export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess }) => {
   const [type, setType] = useState<'inbound' | 'outbound'>('outbound');
   const [cart, setCart] = useState<TransactionItem[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isRapidMode, setIsRapidMode] = useState(false);
+  
+  // Autocomplete State
   const [itemSearch, setItemSearch] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const qtyInputRef = useRef<HTMLInputElement>(null);
+
+  // Inputs - Initialized as empty strings for clean UI
   const [qty, setQty] = useState<number | ''>('');
   const [selectedUOM, setSelectedUOM] = useState(''); 
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
+
   const [supplier, setSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
-  const [documentImages, setDocumentImages] = useState<string[]>([]);
+  const [documentImage, setDocumentImage] = useState<string | null>(null);
 
   const selectedItemData = items.find(i => i.id === selectedItemId);
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -43,12 +43,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (isRapidMode) {
-      searchInputRef.current?.focus();
-    }
-  }, [isRapidMode]);
-
+  // Filter items for Autocomplete
   const filteredItems = items.filter(i => 
     i.active && (
       i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
@@ -56,235 +51,486 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     )
   );
 
+  // Calculate actual stock deduction based on UOM
   const conversionRatio = (selectedItemData?.conversionUnit === selectedUOM && selectedItemData?.conversionRatio) 
       ? selectedItemData.conversionRatio 
       : 1;
+  
   const currentQty = qty === '' ? 0 : qty;
   const actualQtyToDeduct = currentQty * conversionRatio;
+
+  // Real-time Stock Validation
   const isStockInsufficient = type === 'outbound' && selectedItemData && actualQtyToDeduct > selectedItemData.stock;
 
   const handleSelectItem = (item: InventoryItem) => {
       setSelectedItemId(item.id);
       setItemSearch(item.name);
-      setSelectedUOM(item.unit);
+      setSelectedUOM(item.unit); // Default to base unit
       setShowDropdown(false);
-      if (isRapidMode) {
-        setTimeout(() => qtyInputRef.current?.focus(), 10);
-      }
   };
 
   const addToCart = () => {
-    try {
-      if (!selectedItemData || qty === '' || qty <= 0) return;
-      if (isStockInsufficient) {
-        notify("Insufficient stock for transaction", 'error');
-        return;
-      }
-      const unitPrice = selectedItemData.price * conversionRatio;
-      const existingIndex = cart.findIndex(c => c.itemId === selectedItemId && c.uom === selectedUOM);
-      if (existingIndex >= 0) {
-        const updatedCart = [...cart];
-        const existingItem = updatedCart[existingIndex];
-        const newQty = existingItem.qty + actualQtyToDeduct;
-        updatedCart[existingIndex] = { ...existingItem, qty: newQty, total: newQty * (unitPrice / conversionRatio) };
-        setCart(updatedCart);
-      } else {
-        setCart([...cart, { itemId: selectedItemData.id, sku: selectedItemData.sku, name: selectedItemData.name, qty: actualQtyToDeduct, uom: selectedUOM, unitPrice: unitPrice, total: currentQty * unitPrice }]);
-      }
-      setQty(''); setSelectedItemId(''); setItemSearch(''); setSelectedUOM('');
-      notify('Batch item added', 'info');
-      if (isRapidMode) setTimeout(() => searchInputRef.current?.focus(), 10);
-    } catch (e) {
-      notify("Failed to add item", 'error');
+    if (!selectedItemData || qty === '' || qty <= 0) return;
+    if (isStockInsufficient) return;
+    
+    // Determine Price per Unit based on selected UOM
+    const unitPrice = selectedItemData.price * conversionRatio;
+
+    // Check duplication (only if same item AND same unit)
+    const existingIndex = cart.findIndex(c => c.itemId === selectedItemId && c.uom === selectedUOM);
+    
+    if (existingIndex >= 0) {
+      const updatedCart = [...cart];
+      const existingItem = updatedCart[existingIndex];
+      const newQty = existingItem.qty + actualQtyToDeduct; // total base units
+      
+      updatedCart[existingIndex] = {
+          ...existingItem,
+          qty: newQty, // Update total base units deducted
+          total: newQty * (unitPrice / conversionRatio) // Recalculate total price
+      };
+      setCart(updatedCart);
+
+    } else {
+      setCart([...cart, {
+        itemId: selectedItemData.id,
+        sku: selectedItemData.sku,
+        name: selectedItemData.name,
+        qty: actualQtyToDeduct, // Store actual stock impact
+        uom: selectedUOM,
+        unitPrice: unitPrice,
+        total: currentQty * unitPrice
+      }]);
     }
+    setQty('');
+    setSelectedItemId('');
+    setItemSearch('');
+    setSelectedUOM('');
   };
 
   const removeFromCart = (index: number) => {
     setCart(cart.filter((_, i) => i !== index));
-    notify('Batch item removed', 'info');
-  };
-
-  const handleSubmit = async () => {
-    if (cart.length === 0 || isProcessing) return;
-    setIsProcessing(true);
-    try {
-      const transaction: Transaction = { id: storageService.generateTransactionId(), type, date: new Date(customDate).toISOString(), items: cart, totalValue: cart.reduce((acc, curr) => acc + curr.total, 0), userId: user.id, supplier: type === 'inbound' ? supplier : undefined, poNumber: type === 'inbound' ? poNumber : undefined, deliveryNote: type === 'inbound' ? deliveryNote : undefined, documents: documentImages };
-      await storageService.saveTransaction(transaction);
-      onSuccess(); setCart([]); setSupplier(''); setPoNumber(''); setDeliveryNote(''); setDocumentImages([]);
-      notify(`Transaction ${transaction.id} processed`, 'success');
-    } catch (error) {
-      notify("Failed to process transaction", 'error');
-    } finally { setIsProcessing(false); }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      // Fix: explicitly type the file as File to fix "Property 'size' does not exist on type 'unknown'" and related inference errors.
-      Array.from(files).forEach((file: File) => {
-        if (file.size > 2 * 1024 * 1024) { notify(`File ${file.name} too large`, 'error'); return; }
-        const reader = new FileReader();
-        reader.onloadend = () => setDocumentImages(prev => [...prev, reader.result as string]);
-        reader.readAsDataURL(file);
-      });
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDocumentImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
-      <div className="lg:col-span-2 space-y-8">
-        <div className="glass-card p-8 rounded-3xl shadow-glass">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-            <div className="flex-1 flex gap-3 w-full">
-                <button 
-                  onClick={() => { setType('inbound'); setCart([]); }}
-                  className={`flex-1 flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-black transition-all duration-500 group ${
-                    type === 'inbound' 
-                      ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-xl shadow-emerald-500/30 scale-[1.03]' 
-                      : 'bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
-                  }`}
-                >
-                  <ArrowDownLeft size={24} strokeWidth={3} />
-                  <span className="tracking-widest text-xs">STOCK IN</span>
-                </button>
+  const downloadTemplate = () => {
+      const template = [
+          { SKU: 'NEW-001', Name: 'Auto Created Item', Qty: 50, Price: 50000, Unit: 'Pcs', Category: 'General' },
+          { SKU: 'ELEC-001', Qty: 10 }
+      ];
+      const ws = XLSX.utils.json_to_sheet(template);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template");
+      XLSX.writeFile(wb, "Nexus_Import_Template.xlsx");
+  };
 
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+          const newItemsToCreate: InventoryItem[] = [];
+          const cartItemsToAdd: TransactionItem[] = [];
+          let createdCount = 0;
+
+          data.forEach(row => {
+              const sku = String(row.SKU || '').trim();
+              const qty = Number(row.Qty || 0);
+              if (!sku || qty <= 0) return;
+              
+              // 1. Check if item exists in current props
+              // 2. ALSO check if we just created it in this loop (to avoid duplicates in one file)
+              let item = items.find(i => i.sku === sku) || newItemsToCreate.find(i => i.sku === sku);
+
+              if (!item) {
+                  // AUTO CREATE NEW ITEM
+                  item = {
+                      id: crypto.randomUUID(),
+                      sku: sku,
+                      name: String(row.Name || 'Imported Item'),
+                      category: String(row.Category || 'General'),
+                      price: Number(row.Price) || 0,
+                      location: String(row.Location || 'Unassigned'),
+                      unit: String(row.Unit || 'Pcs'),
+                      stock: 0, // Initial stock is 0, transaction will adjust it
+                      minLevel: 5,
+                      active: true
+                  };
+                  newItemsToCreate.push(item);
+                  createdCount++;
+              }
+
+              // Add to cart payload
+              if (item) {
+                  cartItemsToAdd.push({
+                      itemId: item.id,
+                      sku: item.sku,
+                      name: item.name,
+                      qty: qty, // Bulk import assumes Base Unit
+                      uom: item.unit,
+                      unitPrice: item.price,
+                      total: qty * item.price
+                  });
+              }
+          });
+          
+          // Save all new items to storage
+          if (newItemsToCreate.length > 0) {
+              newItemsToCreate.forEach(newItem => {
+                  storageService.saveItem(newItem);
+              });
+              // CRITICAL: Call onSuccess to refresh parent's `items` prop immediately
+              // so that validation and subsequent saves work correctly.
+              onSuccess();
+          }
+
+          if (cartItemsToAdd.length > 0) {
+              setCart(prev => [...prev, ...cartItemsToAdd]);
+              alert(`Processed import: ${cartItemsToAdd.length} items added to cart. (${createdCount} new items created automatically).`);
+          } else {
+              alert("No valid items found.");
+          }
+      };
+      reader.readAsBinaryString(file);
+      e.target.value = ''; // Reset
+  };
+
+  const handleSubmit = () => {
+    if (cart.length === 0) return;
+
+    // Final Stock Check before Submit for Outbound
+    if (type === 'outbound') {
+        const totals: {[id: string]: number} = {};
+        cart.forEach(c => {
+            totals[c.itemId] = (totals[c.itemId] || 0) + c.qty;
+        });
+
+        // We must re-fetch items here or trust props. 
+        // Note: If items were auto-created during import, `onSuccess` triggered a refresh, 
+        // but `items` prop might take a render cycle to update. 
+        // For safety, we use the `items` prop which should be fresh if `onSuccess` was called.
+        for (const [id, totalQty] of Object.entries(totals)) {
+            const dbItem = items.find(i => i.id === id);
+            // If item was just created, stock is 0. Outbound will fail. This is intended.
+            // User must Inbound first.
+            if (dbItem && totalQty > dbItem.stock) {
+                 alert(`Error: Insufficient stock for ${dbItem.name}. Need: ${totalQty}, Available: ${dbItem.stock}`);
+                 return;
+            }
+        }
+    }
+
+    const transaction: Transaction = {
+      id: storageService.generateTransactionId(), // Use Auto Generator
+      type,
+      date: new Date(customDate).toISOString(),
+      items: cart,
+      totalValue: cart.reduce((acc, curr) => acc + curr.total, 0),
+      userId: user.id,
+      supplier: type === 'inbound' ? supplier : undefined,
+      poNumber: type === 'inbound' ? poNumber : undefined,
+      deliveryNote: type === 'inbound' ? deliveryNote : undefined,
+      documents: documentImage ? [documentImage] : []
+    };
+
+    storageService.saveTransaction(transaction);
+    onSuccess();
+    // Reset
+    setCart([]);
+    setSupplier('');
+    setPoNumber('');
+    setDeliveryNote('');
+    setDocumentImage(null);
+    setCustomDate(new Date().toISOString().slice(0, 10));
+    alert(`Transaction ${transaction.id} saved successfully!`);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Left: Input Form */}
+      <div className="lg:col-span-2 space-y-6">
+        <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100">
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1 flex gap-2">
                 <button 
-                  onClick={() => { setType('outbound'); setCart([]); }}
-                  className={`flex-1 flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-black transition-all duration-500 group ${
-                    type === 'outbound' 
-                      ? 'bg-gradient-to-br from-indigo-400 to-indigo-600 text-white shadow-xl shadow-indigo-500/30 scale-[1.03]' 
-                      : 'bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'
-                  }`}
+                onClick={() => { setType('inbound'); setCart([]); }}
+                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'inbound' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-100 text-muted'}`}
                 >
-                  <ArrowUpRight size={24} strokeWidth={3} />
-                  <span className="tracking-widest text-xs">STOCK OUT</span>
+                INBOUND
+                </button>
+                <button 
+                onClick={() => { setType('outbound'); setCart([]); }}
+                className={`flex-1 py-3 rounded-xl font-bold transition-all ${type === 'outbound' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-100 text-muted'}`}
+                >
+                OUTBOUND
                 </button>
             </div>
             
-            <div className="flex items-center gap-3 w-full md:w-auto">
-                <button 
-                  onClick={() => setIsRapidMode(!isRapidMode)}
-                  className={`flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black tracking-widest transition-all duration-300 ${isRapidMode ? 'bg-amber-500 text-white border-amber-600 shadow-lg shadow-amber-500/20' : 'bg-slate-100/50 dark:bg-slate-800/50 border-slate-200/50 dark:border-slate-700/50 text-slate-500'}`}
-                >
-                  {isRapidMode ? <Zap size={14} className="fill-white" /> : <ZapOff size={14} />}
-                  RAPID INPUT
-                </button>
-
-                <div className="relative flex-1 md:w-48">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                    <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50 rounded-xl focus:ring-2 focus:ring-primary/20 transition-all font-bold text-slate-800 dark:text-slate-100 text-xs" />
-                </div>
+            {/* Date Picker */}
+            <div className="relative md:w-48">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={18} />
+                <input 
+                    type="date" 
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-dark"
+                />
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
+            {/* Header Data for Inbound */}
             {type === 'inbound' && (
-              <div className="space-y-4 animate-slide-up">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 bg-white/30 dark:bg-slate-900/30 rounded-2xl border border-slate-200/50 dark:border-slate-800/50">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
-                    <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-2.5 bg-white/70 dark:bg-slate-800/70 border border-slate-200/50 dark:border-slate-700/50 rounded-xl text-sm outline-none" placeholder="Vendor" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1">PO #</label>
-                    <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-2.5 bg-white/70 dark:bg-slate-800/70 border border-slate-200/50 dark:border-slate-700/50 rounded-xl text-sm outline-none" placeholder="P-000" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1">SJ #</label>
-                    <input value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className="w-full p-2.5 bg-white/70 dark:bg-slate-800/70 border border-slate-200/50 dark:border-slate-700/50 rounded-xl text-sm outline-none" placeholder="SJ-000" />
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Supplier Name</label>
+                  <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-2 border rounded-lg" />
                 </div>
-
-                <div className="p-5 bg-white/30 dark:bg-slate-900/30 rounded-2xl border border-slate-200/50 dark:border-slate-800/50">
-                    <div className="flex justify-between items-center mb-4">
-                        <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1">Attachments ({documentImages.length})</label>
-                        <div className="relative">
-                            <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                            <button className="flex items-center gap-1.5 text-[10px] text-primary font-black uppercase hover:underline"><Plus size={14} /> Add Photos</button>
-                        </div>
-                    </div>
-                    {documentImages.length > 0 ? (
-                        <div className="flex flex-wrap gap-4">
-                            {documentImages.map((img, idx) => (
-                                <div key={idx} className="relative w-20 h-20 group">
-                                    <img src={img} className="w-full h-full object-cover rounded-xl border border-white shadow-xl" alt="Attachment" />
-                                    <button onClick={() => setDocumentImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><X size={10} /></button>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl py-8 flex flex-col items-center justify-center text-slate-400 opacity-50">
-                            <ImageIcon size={32} strokeWidth={1.5} className="mb-2" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest">No Documents</p>
-                        </div>
-                    )}
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">PO Number</label>
+                  <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-2 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted mb-1">Surat Jalan / Ref</label>
+                  <input value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className="w-full p-2 border rounded-lg" />
                 </div>
               </div>
             )}
 
-            <div className="flex flex-col md:flex-row gap-4 items-end z-20 relative">
+            {/* Advanced Autocomplete Item Selection */}
+            <div className="flex flex-col md:flex-row gap-4 items-start z-20 relative">
               <div className="flex-1 w-full relative" ref={dropdownRef}>
-                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Quick Search</label>
+                <label className="block text-xs font-semibold text-muted mb-1">Search Item</label>
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input ref={searchInputRef} type="text" placeholder="SKU / Name" className={`w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border rounded-2xl text-sm font-bold focus:ring-4 transition-all ${isStockInsufficient ? 'border-rose-400 ring-rose-500/10' : 'border-slate-200/50 dark:border-slate-700/50 focus:ring-primary/10'}`} value={itemSearch} onKeyDown={e => e.key === 'Enter' && filteredItems.length === 1 && handleSelectItem(filteredItems[0])} onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); if (selectedItemId) setSelectedItemId(''); }} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+                    <input 
+                        type="text"
+                        className={`w-full pl-10 pr-4 py-3 border rounded-xl bg-white focus:outline-none focus:ring-2 transition-all ${isStockInsufficient ? 'border-rose-300 ring-rose-100' : 'border-border focus:ring-primary/20'}`}
+                        value={itemSearch}
+                        onChange={(e) => {
+                            setItemSearch(e.target.value);
+                            setShowDropdown(true);
+                            setSelectedItemId(''); // Clear selection on type
+                        }}
+                        onFocus={() => setShowDropdown(true)}
+                    />
                 </div>
-                {showDropdown && itemSearch && !selectedItemId && (
-                    <div className="absolute top-full left-0 right-0 mt-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/50 dark:border-slate-700/50 max-h-60 overflow-y-auto z-50 animate-slide-up">
-                        {filteredItems.length > 0 ? filteredItems.map(item => (
-                            <div key={item.id} onClick={() => handleSelectItem(item)} className="p-4 hover:bg-primary/10 cursor-pointer border-b border-slate-50 dark:border-slate-800 last:border-none flex justify-between items-center transition-colors">
-                                <div><p className="font-black text-sm text-slate-800 dark:text-slate-100">{item.name}</p><p className="text-[9px] font-bold text-slate-400 uppercase">{item.sku} • {item.category}</p></div>
-                                <div className="text-right"><p className={`text-xs font-black ${item.stock <= item.minLevel ? 'text-rose-500' : 'text-emerald-500'}`}>{item.stock} {item.unit}</p></div>
-                            </div>
-                        )) : <div className="p-6 text-center text-xs text-slate-400 font-bold italic">Item not found</div>}
+                
+                {/* Custom Dropdown List */}
+                {showDropdown && itemSearch && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 max-h-60 overflow-y-auto z-50">
+                        {filteredItems.length > 0 ? (
+                            filteredItems.map(item => (
+                                <div 
+                                    key={item.id}
+                                    onClick={() => handleSelectItem(item)}
+                                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-none flex justify-between items-center"
+                                >
+                                    <div>
+                                        <p className="font-medium text-sm text-dark">{item.name}</p>
+                                        <p className="text-xs text-muted">{item.sku}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-xs font-bold ${item.stock === 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                                            Stock: {item.stock} {item.unit}
+                                        </p>
+                                        <p className="text-xs text-muted">Rp {item.price.toLocaleString()}</p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-sm text-muted">No items found</div>
+                        )}
+                    </div>
+                )}
+                
+                {selectedItemData && (
+                    <div className="mt-2 text-xs flex gap-4">
+                        <span className="text-emerald-600 font-medium">Selected: {selectedItemData.sku}</span>
+                        <span className="text-muted">Base Price: Rp {selectedItemData.price.toLocaleString()}</span>
+                        <span className={`${type === 'outbound' && selectedItemData.stock < actualQtyToDeduct ? 'text-rose-600 font-bold' : 'text-muted'}`}>
+                            Available Stock: {selectedItemData.stock} {selectedItemData.unit}
+                        </span>
                     </div>
                 )}
               </div>
+              
+              {/* Unit Selection (Conversion) */}
+              <div className="w-full md:w-32">
+                  <label className="block text-xs font-semibold text-muted mb-1">Unit</label>
+                  <select 
+                      className="w-full p-3 border border-border rounded-xl bg-white"
+                      value={selectedUOM}
+                      onChange={(e) => setSelectedUOM(e.target.value)}
+                      disabled={!selectedItemId}
+                  >
+                      {selectedItemData && (
+                          <>
+                              <option value={selectedItemData.unit}>{selectedItemData.unit} (1:1)</option>
+                              {selectedItemData.conversionUnit && (
+                                  <option value={selectedItemData.conversionUnit}>
+                                      {selectedItemData.conversionUnit} (1:{selectedItemData.conversionRatio})
+                                  </option>
+                              )}
+                          </>
+                      )}
+                  </select>
+              </div>
 
               <div className="w-full md:w-32">
-                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1 mb-1 block">UOM</label>
-                <select value={selectedUOM} onChange={(e) => setSelectedUOM(e.target.value)} disabled={!selectedItemData} className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 rounded-2xl text-xs font-black focus:ring-4 focus:ring-primary/10 transition-all outline-none disabled:opacity-30">
-                    {selectedItemData ? (<><option value={selectedItemData.unit}>{selectedItemData.unit}</option>{selectedItemData.conversionUnit && <option value={selectedItemData.conversionUnit}>{selectedItemData.conversionUnit}</option>}</>) : <option value="">-</option>}
-                </select>
-              </div>
-              
-              <div className="w-full md:w-28">
-                <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Qty</label>
-                <input ref={qtyInputRef} type="number" min="1" value={qty} placeholder="0" onChange={(e) => setQty(e.target.value === '' ? '' : parseInt(e.target.value))} onKeyDown={(e) => e.key === 'Enter' && addToCart()} className={`w-full p-3 bg-white dark:bg-slate-800 border rounded-2xl text-sm font-black text-center outline-none transition-all ${isStockInsufficient ? 'border-rose-400 ring-rose-500/10' : 'border-slate-200/50 dark:border-slate-700/50 focus:ring-4 focus:ring-primary/10'}`} />
+                <label className="block text-xs font-semibold text-muted mb-1">Qty</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  value={qty} 
+                  onChange={(e) => setQty(e.target.value === '' ? '' : parseInt(e.target.value))}
+                  className={`w-full p-3 border rounded-xl ${isStockInsufficient ? 'border-rose-300 text-rose-600' : 'border-border'}`}
+                />
               </div>
 
-              <button onClick={addToCart} disabled={!selectedItemId || qty === '' || qty <= 0} className="w-full md:w-auto px-8 py-3 bg-primary text-white font-black rounded-2xl hover:bg-blue-600 disabled:opacity-30 transition-all shadow-lg shadow-primary/30 active:scale-95 text-xs tracking-widest">ADD</button>
+              <button 
+                onClick={addToCart}
+                disabled={!selectedItemId || isStockInsufficient || qty === ''}
+                className="w-full md:w-auto mt-6 px-6 py-3 bg-primary text-white font-medium rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus size={18} /> Add
+              </button>
             </div>
-            {isStockInsufficient && <div className="flex items-center gap-2 text-rose-500 bg-rose-50/50 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-100/50 dark:border-rose-800/50 text-[10px] font-black uppercase"><AlertCircle size={14} /> Insufficient stock: Max {Math.floor(selectedItemData.stock / conversionRatio)} {selectedUOM}</div>}
+
+            {/* Error Message for Stock */}
+            {isStockInsufficient && (
+                <div className="flex items-center gap-2 p-3 bg-rose-50 text-rose-600 rounded-xl text-sm font-medium animate-pulse">
+                    <AlertCircle size={18} />
+                    Insufficient Stock. You need {actualQtyToDeduct} {selectedItemData?.unit} but only have {selectedItemData?.stock} available.
+                </div>
+            )}
+
+            {/* Additional Actions Line */}
+            <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-2">
+                 {/* Document Upload for Inbound */}
+                {type === 'inbound' ? (
+                <div className="flex-1">
+                    <label className="block text-xs font-semibold text-muted mb-1">Upload Document (Image)</label>
+                    <div className="flex gap-2 items-center">
+                        <div className="relative overflow-hidden">
+                             <button className="flex items-center gap-2 text-sm text-primary hover:bg-blue-50 px-3 py-2 rounded-lg border border-primary border-dashed">
+                                 <Upload size={16} /> {documentImage ? 'Change Photo' : 'Upload Proof'}
+                             </button>
+                             <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        </div>
+                        {documentImage && <span className="text-xs text-emerald-500 font-medium">Image Attached</span>}
+                    </div>
+                </div>
+                ) : <div className="flex-1"></div>}
+
+                {/* Bulk Import for Cart */}
+                <div className="flex gap-3">
+                     <button onClick={downloadTemplate} className="text-muted hover:text-primary transition-colors p-2" title="Download Template">
+                         <Download size={20} />
+                     </button>
+                     <div className="relative">
+                        <button className="flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-100 px-3 py-2 rounded-lg transition-colors">
+                            <FileSpreadsheet size={16} /> Bulk Import
+                        </button>
+                        <input 
+                            type="file" 
+                            accept=".xlsx, .csv" 
+                            onChange={handleBulkImport}
+                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                            title="Import CSV with columns: SKU, Qty, (Optional: Name, Price, Unit, Category)"
+                        />
+                     </div>
+                </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="glass-card rounded-3xl shadow-glass flex flex-col h-[calc(100vh-140px)] sticky top-24 overflow-hidden border border-white/20">
-        <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 bg-white/20 dark:bg-slate-900/20 flex justify-between items-center">
-          <h3 className="font-black text-slate-800 dark:text-white flex items-center gap-2 text-sm tracking-tight"><ShoppingCart size={18} className="text-primary" /> BATCH QUEUE</h3>
-          <span className="bg-primary text-white text-[10px] px-2.5 py-1 rounded-full font-black shadow-md">{cart.length}</span>
+      {/* Right: Cart Summary */}
+      <div className="bg-white rounded-2xl shadow-soft border border-slate-100 flex flex-col h-[calc(100vh-140px)] sticky top-24 overflow-hidden">
+        <div className="p-4 border-b border-border bg-slate-50">
+          <h3 className="font-bold text-dark flex items-center gap-2">
+            <ShoppingCart size={20} /> Current Batch
+          </h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-30 px-6 text-center animate-pulse">
-                <Package size={56} strokeWidth={1} className="mb-4" />
-                <p className="text-[10px] font-black tracking-widest uppercase">Cart is Empty</p>
-            </div>
-          ) : cart.map((item, idx) => (
-            <div key={idx} className="flex justify-between items-center p-4 bg-white/50 dark:bg-slate-800/50 rounded-2xl border border-slate-100/50 dark:border-slate-700/50 hover:shadow-md transition-all group animate-slide-in-right">
-              <div><p className="font-black text-xs text-slate-800 dark:text-slate-100 tracking-tight">{item.name}</p><p className="text-[10px] font-bold text-slate-400 uppercase">{item.qty} {item.uom} • Rp {item.total.toLocaleString('id-ID')}</p></div>
-              <button onClick={() => removeFromCart(idx)} className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl transition-all"><Trash size={16} /></button>
-            </div>
-          ))}
+        
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-border text-xs font-semibold text-muted uppercase">
+              <tr>
+                <th className="p-3 bg-slate-50 pl-4">Item</th>
+                <th className="p-3 bg-slate-50 text-center">Qty</th>
+                <th className="p-3 bg-slate-50 text-right">Subtotal</th>
+                <th className="p-3 bg-slate-50 w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {cart.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center text-muted py-10">Cart is empty</td>
+                </tr>
+              ) : (
+                cart.map((item, idx) => {
+                    const dbItem = items.find(i => i.id === item.itemId);
+                    let displayQty = item.qty;
+                    if (dbItem?.conversionUnit === item.uom && dbItem.conversionRatio) {
+                        displayQty = item.qty / dbItem.conversionRatio;
+                    }
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="p-3 pl-4">
+                          <div className="font-medium text-sm text-dark">{item.name}</div>
+                          <div className="text-xs text-muted">{item.sku}</div>
+                        </td>
+                        <td className="p-3 text-center text-sm">
+                            {displayQty} {item.uom}
+                            {item.uom !== dbItem?.unit && <div className="text-[10px] text-muted">({item.qty} {dbItem?.unit})</div>}
+                        </td>
+                        <td className="p-3 text-right text-sm font-medium">Rp {item.total.toLocaleString()}</td>
+                        <td className="p-3 text-right">
+                          <button onClick={() => removeFromCart(idx)} className="text-rose-400 hover:text-rose-600 transition-colors">
+                            <Trash size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-        <div className="p-6 border-t border-slate-200/50 dark:border-slate-800/50 bg-white/20 dark:bg-slate-900/20">
-          <div className="flex justify-between items-center mb-6 px-1">
-              <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Total Value</span>
-              <span className="font-black text-primary text-lg tracking-tight">Rp {cart.reduce((acc, curr) => acc + curr.total, 0).toLocaleString('id-ID')}</span>
+
+        <div className="p-4 border-t border-border bg-slate-50">
+          <div className="flex justify-between mb-4">
+            <span className="text-muted font-medium">Total Value</span>
+            <span className="text-xl font-bold text-dark">
+              Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString('id-ID')}
+            </span>
           </div>
-          <button onClick={handleSubmit} disabled={cart.length === 0 || isProcessing} className={`w-full py-4 font-black rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm tracking-widest uppercase ${type === 'inbound' ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/30' : 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-indigo-500/30'} disabled:opacity-30`}>
-            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : `PROCESS ${type}`}
+          <button 
+            onClick={handleSubmit}
+            disabled={cart.length === 0}
+            className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:transform-none"
+          >
+            Process Transaction
           </button>
         </div>
       </div>

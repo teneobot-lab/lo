@@ -50,25 +50,47 @@ export interface Transaction {
   notes?: string;
 }
 
-export interface RejectItem {
-  itemId: string;
-  sku: string;
-  name: string;
-  qty: number;
-  unit: string;
-  reason: string;
-}
-
-export interface RejectTransaction {
-  id: string;
-  date: string;
-  items: RejectItem[];
-  userId: string;
-}
-
 export interface DashboardStats {
   totalValue: number;
   totalUnits: number;
   lowStockCount: number;
   skuCount: number;
+}
+
+// --- Reject Module Types ---
+
+export interface RejectItem {
+  id: string;
+  sku: string;
+  name: string;
+  baseUnit: string;
+  unit2?: string;
+  ratio2?: number;
+  unit3?: string;
+  ratio3?: number;
+  lastUpdated: string;
+}
+
+export interface RejectItemDetail {
+  itemId: string;
+  itemName: string;
+  sku: string;
+  baseUnit: string;
+  quantity: number;
+  unit: string;
+  ratio: number;
+  totalBaseQuantity: number;
+  reason: string;
+  unit2?: string;
+  ratio2?: number;
+  unit3?: string;
+  ratio3?: number;
+}
+
+export interface RejectLog {
+  id: string;
+  date: string;
+  items: RejectItemDetail[];
+  notes: string;
+  timestamp: string;
 }

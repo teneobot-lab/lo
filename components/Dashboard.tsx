@@ -15,6 +15,7 @@ const COLORS = ['#4F8CFF', '#6A5CFF', '#3DDCFF', '#FF8042', '#FFBB28'];
 
 export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats }) => {
   
+  // Prepare Chart Data
   const categoryData = useMemo(() => {
     const counts: {[key: string]: number} = {};
     items.forEach(i => {
@@ -24,6 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
   }, [items]);
 
   const topOutbound = useMemo(() => {
+    // Simplified logic: Count outbound qty per SKU
     const counts: {[sku: string]: {name: string, qty: number}} = {};
     transactions
       .filter(t => t.type === 'outbound')
@@ -39,91 +41,77 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
   }, [transactions]);
 
   const StatCard = ({ title, value, sub, icon: Icon, color }: any) => (
-    <div className="glass-card p-6 rounded-2xl shadow-glass flex items-start justify-between group hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+    <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100 flex items-start justify-between group hover:shadow-md transition-shadow">
       <div>
-        <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">{title}</p>
-        <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{value}</h3>
-        {sub && <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-2 italic">{sub}</p>}
+        <p className="text-muted text-sm font-medium mb-1">{title}</p>
+        <h3 className="text-2xl font-bold text-dark">{value}</h3>
+        {sub && <p className="text-xs text-muted mt-2">{sub}</p>}
       </div>
-      <div className={`p-3 rounded-2xl ${color} text-white shadow-lg shadow-${color.split('-')[1]}-500/20 group-hover:scale-110 transition-transform`}>
-        <Icon size={24} strokeWidth={2.5} />
+      <div className={`p-3 rounded-xl ${color} text-white bg-opacity-90 shadow-sm group-hover:scale-110 transition-transform`}>
+        <Icon size={24} />
       </div>
     </div>
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title="Inventory Value" 
+          title="Total Inventory Value" 
           value={`Rp ${stats.totalValue.toLocaleString('id-ID')}`} 
-          sub="Estimated total asset value"
+          sub="Based on average cost"
           icon={TrendingUp} 
           color="bg-emerald-500" 
         />
         <StatCard 
           title="Total Units" 
           value={stats.totalUnits.toLocaleString()} 
-          sub={`${stats.skuCount} Unique stock identifiers`}
+          sub={`${stats.skuCount} Unique SKUs`}
           icon={Layers} 
           color="bg-primary" 
         />
         <StatCard 
-          title="Low Stock Alert" 
+          title="Low Stock Items" 
           value={stats.lowStockCount} 
-          sub="Items needing immediate restock"
+          sub="Requires attention"
           icon={AlertTriangle} 
           color="bg-rose-500" 
         />
         <StatCard 
           title="Categories" 
           value={categoryData.length} 
-          sub="Diversified product groups"
+          sub="Active product lines"
           icon={Package} 
           color="bg-indigo-500" 
         />
       </div>
 
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass-card p-6 rounded-2xl shadow-glass">
-          <h3 className="text-lg font-black text-slate-800 dark:text-white mb-6 tracking-tight flex items-center gap-2">
-            <span className="w-1.5 h-6 bg-primary rounded-full"></span>
-            Top Moving Items
-          </h3>
+        
+        {/* Top Outbound */}
+        <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100">
+          <h3 className="text-lg font-semibold text-dark mb-4">Top Moving Items (Outbound)</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topOutbound} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.2} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5EAF1" />
+                <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  cursor={{fill: 'rgba(79, 140, 255, 0.05)'}}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-                    background: 'rgba(255,255,255,0.9)',
-                    backdropFilter: 'blur(8px)'
-                  }}
+                  cursor={{fill: '#F4F7FB'}}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.1)' }}
                 />
-                <Bar dataKey="qty" fill="url(#colorBar)" radius={[10, 10, 0, 0]} barSize={40}>
-                    <defs>
-                        <linearGradient id="colorBar" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#4F8CFF" stopOpacity={1}/>
-                            <stop offset="95%" stopColor="#6A5CFF" stopOpacity={0.8}/>
-                        </linearGradient>
-                    </defs>
-                </Bar>
+                <Bar dataKey="qty" fill="#4F8CFF" radius={[6, 6, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="glass-card p-6 rounded-2xl shadow-glass">
-          <h3 className="text-lg font-black text-slate-800 dark:text-white mb-6 tracking-tight flex items-center gap-2">
-            <span className="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
-            Category Mix
-          </h3>
+        {/* Category Distribution */}
+        <div className="bg-white p-6 rounded-2xl shadow-soft border border-slate-100">
+          <h3 className="text-lg font-semibold text-dark mb-4">Inventory by Category</h3>
           <div className="h-72 w-full flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -133,29 +121,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
                   cy="50%"
                   innerRadius={60}
                   outerRadius={90}
-                  paddingAngle={8}
+                  paddingAngle={5}
                   dataKey="value"
-                  stroke="none"
                 >
                   {categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
-                    background: 'rgba(255,255,255,0.9)',
-                    backdropFilter: 'blur(8px)'
-                  }} 
-                />
-                <Legend 
-                    verticalAlign="bottom" 
-                    height={36} 
-                    iconType="circle" 
-                    formatter={(val) => <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{val}</span>}
-                />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.1)' }} />
+                <Legend verticalAlign="bottom" height={36} iconType="circle" />
               </PieChart>
             </ResponsiveContainer>
           </div>

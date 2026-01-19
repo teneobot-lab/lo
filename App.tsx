@@ -1,55 +1,31 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
 import { Transactions } from './components/Transactions';
-import { Reject } from './components/Reject';
 import { History } from './components/History';
 import { AIAssistant } from './components/AIAssistant';
 import { Admin } from './components/Admin';
 import { Login } from './components/Login';
-import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
+import { RejectManager } from './components/RejectManager';
 import { storageService } from './services/storageService';
-import { User, InventoryItem, Transaction, DashboardStats } from './types';
+import { User, InventoryItem, Transaction, DashboardStats, RejectItem, RejectLog } from './types';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [activePage, setActivePage] = useState('dashboard');
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('nexus_theme');
-    return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-  
   const [stats, setStats] = useState<DashboardStats>({
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
 
-  // Theme effect
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('nexus_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('nexus_theme', 'light');
-    }
-  }, [darkMode]);
+  // Reject Module State
+  const [rejectMaster, setRejectMaster] = useState<RejectItem[]>([]);
+  const [rejectLogs, setRejectLogs] = useState<RejectLog[]>([]);
 
-  const toggleTheme = () => setDarkMode(!darkMode);
-
-  const notify = useCallback((message: string, type: ToastType = 'success') => {
-    const id = crypto.randomUUID();
-    setToasts(prev => [...prev, { id, message, type }]);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
+  // Load Data on Mount
   useEffect(() => {
     refreshData();
   }, []);
@@ -58,22 +34,43 @@ function App() {
     setItems(storageService.getItems());
     setTransactions(storageService.getTransactions());
     setStats(storageService.getStats());
+    setRejectMaster(storageService.getRejectMaster());
+    setRejectLogs(storageService.getRejectLogs());
   };
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
     refreshData();
-    notify(`Welcome back, ${loggedInUser.name}!`, 'success');
   };
 
   const handleLogout = () => {
     setUser(null);
     setActivePage('dashboard');
-    notify('Logged out successfully', 'info');
+  };
+
+  // Reject Module Handlers
+  const handleUpdateRejectMaster = (newItems: RejectItem[]) => {
+      storageService.saveRejectMaster(newItems);
+      setRejectMaster(newItems);
+  };
+
+  const handleAddRejectLog = (log: RejectLog) => {
+      storageService.saveRejectLog(log);
+      setRejectLogs(storageService.getRejectLogs());
+  };
+
+  const handleUpdateRejectLog = (log: RejectLog) => {
+      storageService.updateRejectLog(log);
+      setRejectLogs(storageService.getRejectLogs());
+  };
+
+  const handleDeleteRejectLog = (id: string) => {
+      storageService.deleteRejectLog(id);
+      setRejectLogs(storageService.getRejectLogs());
   };
 
   if (!user) {
-    return <Login onLogin={handleLogin} notify={notify} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   const renderContent = () => {
@@ -81,20 +78,28 @@ function App() {
       case 'dashboard':
         return <Dashboard items={items} transactions={transactions} stats={stats} />;
       case 'inventory':
-        return <Inventory items={items} role={user.role} onRefresh={refreshData} notify={notify} />;
+        return <Inventory items={items} role={user.role} onRefresh={refreshData} />;
       case 'transactions':
         if (user.role === 'viewer') return <div className="text-center p-10 text-muted">Viewer access restricted.</div>;
-        return <Transactions items={items} user={user} onSuccess={refreshData} notify={notify} />;
+        return <Transactions items={items} user={user} onSuccess={refreshData} />;
       case 'reject':
-        if (user.role === 'viewer') return <div className="text-center p-10 text-muted">Viewer access restricted.</div>;
-        return <Reject items={items} user={user} notify={notify} />;
+        return (
+          <RejectManager 
+            rejectMasterData={rejectMaster}
+            rejectLogs={rejectLogs}
+            onAddLog={handleAddRejectLog}
+            onUpdateLog={handleUpdateRejectLog}
+            onDeleteLog={handleDeleteRejectLog}
+            onUpdateMaster={handleUpdateRejectMaster}
+          />
+        );
       case 'history':
-        return <History transactions={transactions} onRefresh={refreshData} notify={notify} />;
+        return <History transactions={transactions} onRefresh={refreshData} />;
       case 'ai':
         return <AIAssistant inventory={items} transactions={transactions} />;
       case 'admin':
         if (user.role !== 'admin') return <div className="text-center p-10 text-muted">Admin access restricted.</div>;
-        return <Admin notify={notify} />;
+        return <Admin />;
       default:
         return <Dashboard items={items} transactions={transactions} stats={stats} />;
     }
@@ -106,11 +111,8 @@ function App() {
       activePage={activePage} 
       onNavigate={setActivePage} 
       onLogout={handleLogout}
-      darkMode={darkMode}
-      onToggleTheme={toggleTheme}
     >
       {renderContent()}
-      <ToastContainer toasts={toasts} onClose={removeToast} />
     </Layout>
   );
 }

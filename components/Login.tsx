@@ -1,30 +1,27 @@
-
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
 import { Lock, User as UserIcon, ArrowRight } from 'lucide-react';
-import { ToastType } from './Toast';
 
 interface LoginProps {
   onLogin: (user: User) => void;
-  notify: (msg: string, type: ToastType) => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
+export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    // In real app, hash on server. Here we stick to prompt requirement.
     const hash = storageService.hashPassword(password);
     const user = storageService.login(username, hash);
     
     if (user) {
       onLogin(user);
     } else {
-      setError('Invalid credentials');
-      notify('Invalid credentials. Try admin / 12345', 'error');
+      setError('Invalid credentials. Try admin / 12345');
     }
   };
 
@@ -76,7 +73,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
         </form>
 
         <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-            <p className="text-xs text-muted">Protected by SHA-256 Encryption. <br/> Demo Accounts: admin/12345, staff/12345</p>
+            <p className="text-xs text-muted">Protected by MD5 Encryption. <br/> Demo Accounts: admin/12345, staff/12345</p>
         </div>
       </div>
     </div>

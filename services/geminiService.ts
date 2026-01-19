@@ -1,6 +1,9 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
+
+// In a real app, this comes from process.env.API_KEY.
+// The strict prompt rules require assuming process.env.API_KEY is available.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 export const geminiService = {
   askAssistant: async (
@@ -37,8 +40,6 @@ export const geminiService = {
     `;
 
     try {
-      // Always initialize with process.env.API_KEY directly
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
@@ -46,18 +47,10 @@ export const geminiService = {
           systemInstruction: systemInstruction,
         }
       });
-      
-      // Access the .text property directly
-      if (!response.text) {
-        throw new Error("Empty response from Gemini API");
-      }
-      
-      return response.text;
-    } catch (error: any) {
-      console.error("Gemini Assistant Error:", error);
-      if (error.message?.includes('401')) return "Error: Unauthorized API access. Check your API Key.";
-      if (error.message?.includes('429')) return "Error: AI Rate limit reached. Please wait a moment.";
-      return "Sorry, I am having trouble connecting to the AI brain. Please check your internet connection.";
+      return response.text || "I couldn't generate a response.";
+    } catch (error) {
+      console.error("Gemini Error:", error);
+      return "Sorry, I am currently offline or check your API Key configuration.";
     }
   },
 
@@ -74,17 +67,13 @@ export const geminiService = {
     `;
 
     try {
-      // Always initialize with process.env.API_KEY directly
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt
       });
-      // Access the .text property directly
-      return response.text || "No insights could be generated for this data.";
+      return response.text || "No insights available.";
     } catch (error) {
-      console.error("Gemini Insights Error:", error);
-      return "Unable to generate insights at this moment due to a technical error.";
+      return "Unable to generate insights at this moment.";
     }
   }
 };
