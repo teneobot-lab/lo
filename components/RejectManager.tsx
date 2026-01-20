@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface RejectManagerProps {
   rejectMasterData: RejectItem[];
@@ -48,6 +49,62 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
       }
   };
 
+  // --- Bulk Import Master Data ---
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+          try {
+              const bstr = evt.target?.result;
+              const wb = XLSX.read(bstr, { type: 'binary' });
+              const wsname = wb.SheetNames[0];
+              const ws = wb.Sheets[wsname];
+              const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+              const newItems: RejectItem[] = [];
+              const updatedMaster = [...rejectMasterData];
+
+              data.forEach(row => {
+                  const sku = String(row.SKU || '').trim();
+                  if (!sku) return;
+
+                  // Check existing
+                  const existingIdx = updatedMaster.findIndex(m => m.sku === sku);
+                  
+                  const item: RejectItem = {
+                      id: existingIdx >= 0 ? updatedMaster[existingIdx].id : crypto.randomUUID(),
+                      sku: sku,
+                      name: String(row.Name || row.Nama || 'Unnamed'),
+                      baseUnit: String(row.Unit || row.Satuan || 'Pcs'),
+                      unit2: row.Unit2,
+                      ratio2: row.Ratio2 ? Number(row.Ratio2) : undefined,
+                      op2: row.Op2 === 'divide' ? 'divide' : 'multiply',
+                      unit3: row.Unit3,
+                      ratio3: row.Ratio3 ? Number(row.Ratio3) : undefined,
+                      op3: row.Op3 === 'divide' ? 'divide' : 'multiply',
+                      lastUpdated: new Date().toISOString()
+                  };
+
+                  if (existingIdx >= 0) {
+                      updatedMaster[existingIdx] = item;
+                  } else {
+                      updatedMaster.push(item);
+                  }
+              });
+
+              onUpdateMaster(updatedMaster);
+              alert(`Successfully processed ${data.length} items from Excel.`);
+          } catch (error) {
+              console.error(error);
+              alert("Failed to import Excel. Please ensure correct format.");
+          }
+      };
+      reader.readAsBinaryString(file);
+      e.target.value = ''; // Reset input
+  };
+
   // --- Log Handlers ---
   const handleSaveLog = (log: RejectLog) => {
       if (editingLog) {
@@ -88,6 +145,22 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                        className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white"
                    />
                </div>
+               
+               {activeTab === 'master' && (
+                  <div className="relative">
+                      <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm whitespace-nowrap">
+                          <FileSpreadsheet size={18} /> Import XLSX
+                      </button>
+                      <input 
+                          type="file" 
+                          accept=".xlsx, .xls" 
+                          onChange={handleBulkImport} 
+                          className="absolute inset-0 opacity-0 cursor-pointer" 
+                          title="Import columns: SKU, Name, Unit, Unit2, Ratio2, etc."
+                      />
+                  </div>
+               )}
+
                <button 
                    onClick={() => {
                        if (activeTab === 'logs') {
@@ -311,27 +384,59 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
 
     // Item Entry State
     const [selectedItemId, setSelectedItemId] = useState('');
+    const [itemSearch, setItemSearch] = useState(''); // for Autocomplete
+    const [showDropdown, setShowDropdown] = useState(false);
+    
     const [selectedUnit, setSelectedUnit] = useState('');
     const [quantityInput, setQuantityInput] = useState<number | ''>('');
     const [reason, setReason] = useState('');
     const [conversionRatio, setConversionRatio] = useState(1);
     const [conversionOp, setConversionOp] = useState<'multiply'|'divide'>('multiply');
 
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const qtyInputRef = useRef<HTMLInputElement>(null);
+
+    // Filter master data for autocomplete
+    const filteredMaster = useMemo(() => {
+        if (!itemSearch) return [];
+        return masterData.filter(m => m.name.toLowerCase().includes(itemSearch.toLowerCase()) || m.sku.toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10);
+    }, [itemSearch, masterData]);
+
     const selectedItem = useMemo(() => masterData.find(i => i.id === selectedItemId) || null, [selectedItemId, masterData]);
 
-    const handleUnitChange = (unitName: string) => {
-        setSelectedUnit(unitName);
-        if (!selectedItem) return;
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setShowDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
-        if (selectedItem.baseUnit === unitName) {
+    const handleSelectItem = (item: RejectItem) => {
+        setSelectedItemId(item.id);
+        setItemSearch(item.name); // Set input to name
+        setShowDropdown(false);
+        handleUnitChange(item.baseUnit, item); // Default to base unit
+        setSelectedUnit(item.baseUnit);
+        setTimeout(() => qtyInputRef.current?.focus(), 100);
+    };
+
+    const handleUnitChange = (unitName: string, itemOverride?: RejectItem) => {
+        const item = itemOverride || selectedItem;
+        setSelectedUnit(unitName);
+        if (!item) return;
+
+        if (item.baseUnit === unitName) {
             setConversionRatio(1);
             setConversionOp('divide');
-        } else if (selectedItem.unit2 === unitName) {
-            setConversionRatio(selectedItem.ratio2 || 1);
-            setConversionOp(selectedItem.op2 || 'divide');
-        } else if (selectedItem.unit3 === unitName) {
-            setConversionRatio(selectedItem.ratio3 || 1);
-            setConversionOp(selectedItem.op3 || 'divide');
+        } else if (item.unit2 === unitName) {
+            setConversionRatio(item.ratio2 || 1);
+            setConversionOp(item.op2 || 'divide');
+        } else if (item.unit3 === unitName) {
+            setConversionRatio(item.ratio3 || 1);
+            setConversionOp(item.op3 || 'divide');
         }
     };
 
@@ -340,7 +445,6 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
         let result = 0;
         if (op === 'multiply') result = qty * ratio;
         else result = qty / ratio;
-        // Fix: Round to 1 decimal place (e.g. 0.1, 0.3)
         return parseFloat(result.toFixed(1));
     };
 
@@ -372,6 +476,9 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
         // Reset entry
         setQuantityInput('');
         setReason('');
+        setItemSearch('');
+        setSelectedItemId('');
+        setSelectedUnit('');
     };
 
     const handleRemoveItem = (idx: number) => {
@@ -386,6 +493,26 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
             notes,
             timestamp: new Date().toISOString()
         });
+    };
+
+    const handleCopyToClipboard = () => {
+        try {
+            const d = new Date(date);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = String(d.getFullYear()).slice(-2); // YY format
+            const dateStr = `${day}${month}${year}`; // ddmmyy
+            
+            let text = `Data Reject KKL ${dateStr}\n`;
+            items.forEach(item => {
+                text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'No Reason'})\n`;
+            });
+            
+            navigator.clipboard.writeText(text);
+            alert("Copied to clipboard!");
+        } catch (e) {
+            alert("Failed to copy");
+        }
     };
 
     return (
@@ -410,29 +537,42 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
                     </div>
 
                     {/* Entry Form */}
-                    <div className="bg-slate-50 dark:bg-gray-800 p-5 rounded-2xl border border-ice-100 dark:border-gray-700 space-y-4">
+                    <div className="bg-slate-50 dark:bg-gray-800 p-5 rounded-2xl border border-ice-100 dark:border-gray-700 space-y-4 relative">
                         <div className="flex flex-col md:flex-row gap-4">
-                            <div className="flex-1">
-                                <label className="text-xs font-bold text-slate-400 uppercase">Select Item</label>
-                                <select 
-                                    value={selectedItemId} 
-                                    onChange={(e) => {
-                                        const id = e.target.value;
-                                        setSelectedItemId(id);
-                                        const item = masterData.find(i => i.id === id);
-                                        if (item) {
-                                            handleUnitChange(item.baseUnit); // Default to base unit
-                                            setSelectedUnit(item.baseUnit);
-                                        }
-                                    }}
-                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                >
-                                    <option value="">-- Choose Item --</option>
-                                    {masterData.map(m => (
-                                        <option key={m.id} value={m.id}>{m.sku} - {m.name}</option>
-                                    ))}
-                                </select>
+                            {/* Autocomplete Item Selection */}
+                            <div className="flex-1 relative" ref={dropdownRef}>
+                                <label className="text-xs font-bold text-slate-400 uppercase">Select Item (Autocomplete)</label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input 
+                                        type="text"
+                                        className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-ice-300"
+                                        placeholder="Type Name or SKU..."
+                                        value={itemSearch}
+                                        onChange={(e) => {
+                                            setItemSearch(e.target.value);
+                                            setShowDropdown(true);
+                                            setSelectedItemId(''); // clear selection if typing
+                                        }}
+                                        onFocus={() => setShowDropdown(true)}
+                                    />
+                                </div>
+                                {showDropdown && itemSearch && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-700 border border-ice-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                                        {filteredMaster.length > 0 ? filteredMaster.map(m => (
+                                            <div 
+                                                key={m.id} 
+                                                onClick={() => handleSelectItem(m)}
+                                                className="p-3 hover:bg-ice-50 dark:hover:bg-gray-600 cursor-pointer border-b border-ice-50 dark:border-gray-600 last:border-0"
+                                            >
+                                                <div className="font-bold text-sm text-slate-800 dark:text-white">{m.name}</div>
+                                                <div className="text-xs text-slate-500 dark:text-gray-300">{m.sku}</div>
+                                            </div>
+                                        )) : <div className="p-3 text-xs text-slate-400">No items found</div>}
+                                    </div>
+                                )}
                             </div>
+                            
                             <div className="w-full md:w-32">
                                 <label className="text-xs font-bold text-slate-400 uppercase">Unit</label>
                                 <select 
@@ -452,13 +592,27 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
                             </div>
                             <div className="w-full md:w-32">
                                 <label className="text-xs font-bold text-slate-400 uppercase">Qty</label>
-                                <input type="number" value={quantityInput} onChange={e => setQuantityInput(Number(e.target.value))} className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="0" />
+                                <input 
+                                    ref={qtyInputRef}
+                                    type="number" 
+                                    value={quantityInput} 
+                                    onChange={e => setQuantityInput(Number(e.target.value))} 
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    placeholder="0" 
+                                    onKeyDown={e => e.key === 'Enter' && handleAddItem()}
+                                />
                             </div>
                         </div>
                         <div className="flex gap-4">
                             <div className="flex-1">
                                 <label className="text-xs font-bold text-slate-400 uppercase">Reason</label>
-                                <input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Expired, Damaged..." />
+                                <input 
+                                    value={reason} 
+                                    onChange={e => setReason(e.target.value)} 
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    placeholder="e.g. Expired, Damaged..." 
+                                    onKeyDown={e => e.key === 'Enter' && handleAddItem()}
+                                />
                             </div>
                             <button 
                                 onClick={handleAddItem}
@@ -471,7 +625,17 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
                     </div>
 
                     {/* Items List */}
-                    <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden">
+                    <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden relative">
+                        <div className="flex justify-between items-center bg-slate-50 dark:bg-gray-800 px-4 py-2 border-b border-ice-100 dark:border-gray-700">
+                             <h4 className="text-xs font-bold text-slate-500 uppercase">Reject List</h4>
+                             <button 
+                                onClick={handleCopyToClipboard}
+                                disabled={items.length === 0}
+                                className="text-xs flex items-center gap-1 text-slate-600 dark:text-gray-300 hover:text-indigo-600 bg-white dark:bg-gray-700 border border-ice-200 dark:border-gray-600 px-3 py-1.5 rounded-lg shadow-sm"
+                             >
+                                 <Copy size={12} /> Copy Format
+                             </button>
+                        </div>
                         <table className="w-full text-left">
                             <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase">
                                 <tr>
