@@ -21,6 +21,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [selectedItemId, setSelectedItemId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
 
   const [qty, setQty] = useState<number | ''>('');
   const [selectedUOM, setSelectedUOM] = useState(''); 
@@ -74,6 +76,27 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setItemSearch(item.name);
       setSelectedUOM(item.unit);
       setShowDropdown(false);
+      // UX: Focus to Qty input after selection
+      setTimeout(() => qtyInputRef.current?.focus(), 100);
+  };
+
+  // Keyboard Navigation: Search Input
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        // If items are filtered and user hits enter, select the first one
+        if (filteredItems.length > 0) {
+            handleSelectItem(filteredItems[0]);
+        }
+    }
+  };
+
+  // Keyboard Navigation: Qty Input
+  const handleQtyKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          addToCart();
+      }
   };
 
   const addToCart = () => {
@@ -113,6 +136,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setItemSearch('');
       setSelectedUOM('');
       notify('Item added to batch', 'info');
+      
+      // UX: Return focus to search for rapid entry
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+
     } catch (e) {
       notify("Failed to add item", 'error');
     }
@@ -313,6 +340,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input 
+                        ref={searchInputRef}
                         type="text"
                         className={`w-full pl-11 pr-4 py-3.5 border rounded-xl bg-white dark:bg-gray-900 text-dark dark:text-white outline-none focus:ring-2 transition-all ${isStockInsufficient ? 'border-rose-300 ring-rose-100' : 'border-ice-200 dark:border-gray-600 focus:ring-ice-300'}`}
                         value={itemSearch}
@@ -322,18 +350,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                             setSelectedItemId(''); 
                         }}
                         onFocus={() => setShowDropdown(true)}
+                        onKeyDown={handleSearchKeyDown}
                         placeholder="Type item name or SKU..."
                     />
                 </div>
                 
                 {showDropdown && itemSearch && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-ice-100 dark:border-gray-700 max-h-60 overflow-y-auto z-50 p-2">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-indigo-50 dark:bg-slate-800 rounded-2xl shadow-2xl border-2 border-indigo-200 dark:border-indigo-900/50 max-h-60 overflow-y-auto z-50 p-2 animate-in fade-in slide-in-from-top-2">
                         {filteredItems.length > 0 ? (
                             filteredItems.map(item => (
                                 <div 
                                     key={item.id}
                                     onClick={() => handleSelectItem(item)}
-                                    className="p-3 hover:bg-ice-50 dark:hover:bg-gray-700 cursor-pointer rounded-xl flex justify-between items-center transition-colors mb-1 last:mb-0"
+                                    className="p-3 hover:bg-white dark:hover:bg-gray-700 cursor-pointer rounded-xl flex justify-between items-center transition-all mb-1 last:mb-0 hover:shadow-sm hover:scale-[1.01]"
                                 >
                                     <div>
                                         <p className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</p>
@@ -385,10 +414,12 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               <div className="w-full md:w-32">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Qty</label>
                 <input 
+                  ref={qtyInputRef}
                   type="number" 
                   min="0" 
                   value={qty} 
                   onChange={(e) => setQty(e.target.value === '' ? '' : parseInt(e.target.value))}
+                  onKeyDown={handleQtyKeyDown}
                   className={`w-full p-3.5 border rounded-xl bg-white dark:bg-gray-900 text-dark dark:text-white outline-none focus:ring-2 focus:ring-ice-300 ${isStockInsufficient ? 'border-rose-300 text-rose-600' : 'border-ice-200 dark:border-gray-600'}`}
                 />
               </div>

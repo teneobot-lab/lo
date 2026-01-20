@@ -469,9 +469,9 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                     />
                                 </div>
                                 {isAutocompleteOpen && filteredRejectMaster.length > 0 && searchQuery && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto">
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto p-2">
                                         {filteredRejectMaster.map(item => (
-                                            <button key={item.id} onClick={() => handleSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800">
+                                            <button key={item.id} onClick={() => handleSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all mb-1">
                                                 <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.name}</div>
                                                 <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">SKU: {item.sku} | Base: {item.baseUnit}</div>
                                             </button>
@@ -815,9 +815,9 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                       className="w-full px-3 py-2 border border-blue-200 dark:border-blue-900/50 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 bg-blue-50/30 dark:bg-blue-900/10 text-zinc-900 dark:text-zinc-100" 
                                   />
                                   {isEditAutocompleteOpen && filteredEditRejectMaster.length > 0 && editSearchQuery && (
-                                      <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto">
+                                      <div className="absolute top-full left-0 right-0 mt-1 bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto p-2">
                                           {filteredEditRejectMaster.map(item => (
-                                              <button key={item.id} onClick={() => handleEditSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800">
+                                              <button key={item.id} onClick={() => handleEditSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all mb-1">
                                                   <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.name}</div>
                                               </button>
                                           ))}

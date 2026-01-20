@@ -372,17 +372,19 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                             />
                         </div>
                         {isAutocompleteOpen && scSearchItem && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-ice-100 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto p-2">
                                 {filteredItems.length > 0 ? filteredItems.map(item => (
                                     <div 
                                         key={item.id} 
                                         onClick={() => { setScSelectedItem(item); setScSearchItem(item.name); setIsAutocompleteOpen(false); }}
-                                        className="p-3 hover:bg-ice-50 dark:hover:bg-gray-800 cursor-pointer border-b border-slate-50 dark:border-gray-800 last:border-0"
+                                        className="p-3 hover:bg-white dark:hover:bg-gray-700 cursor-pointer rounded-xl flex justify-between items-center transition-all mb-1 last:mb-0 hover:shadow-sm hover:scale-[1.01]"
                                     >
-                                        <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
-                                        <div className="text-xs text-slate-500 dark:text-gray-400 flex justify-between">
-                                            <span>{item.sku}</span>
-                                            <span className="font-medium">Stok Kini: {item.stock} {item.unit}</span>
+                                        <div>
+                                            <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
+                                            <div className="text-xs text-slate-500 dark:text-gray-400">{item.sku}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="font-medium text-xs text-slate-600 dark:text-gray-300">Stok: {item.stock} {item.unit}</span>
                                         </div>
                                     </div>
                                 )) : <div className="p-4 text-center text-xs text-slate-400">Tidak ada barang ditemukan</div>}
