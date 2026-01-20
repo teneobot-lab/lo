@@ -209,7 +209,11 @@ export const storageService = {
   },
 
   deleteTransaction: async (id: string) => {
-      if (isApiMode()) { alert("Delete not implemented in API mode"); return; }
+      if (isApiMode()) {
+          // Send DELETE request to API
+          return apiCall(`transactions/${id}`, 'DELETE');
+      }
+      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const tx = transactions.find((t: Transaction) => t.id === id);
       if (!tx) return;

@@ -226,6 +226,46 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+app.delete('/api/transactions/:id', async (req, res) => {
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Get Transaction Info to know type
+    const [txRows] = await conn.query('SELECT type FROM transactions WHERE id = ?', [id]);
+    if (txRows.length === 0) {
+        throw new Error('Transaction not found');
+    }
+    const type = txRows[0].type;
+
+    // 2. Get Items to revert stock
+    const [items] = await conn.query('SELECT item_id, qty FROM transaction_items WHERE transaction_id = ?', [id]);
+
+    // 3. Revert Stock
+    for (const item of items) {
+        if (type === 'inbound') {
+            // Was inbound (added stock), so now subtract
+            await conn.query('UPDATE items SET stock = stock - ? WHERE id = ?', [item.qty, item.item_id]);
+        } else {
+            // Was outbound (removed stock), so now add back
+            await conn.query('UPDATE items SET stock = stock + ? WHERE id = ?', [item.qty, item.item_id]);
+        }
+    }
+
+    // 4. Delete Transaction (Cascade will delete items)
+    await conn.query('DELETE FROM transactions WHERE id = ?', [id]);
+
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // --- REJECT MODULE ROUTES ---
 
 // 1. Reject Master Data
