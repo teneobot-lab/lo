@@ -2,9 +2,15 @@ import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
+const DEFAULT_API_URL = 'http://178.128.106.33:5000/api';
+
 const getApiUrl = () => {
-    // In Admin panel, user sets "https://my-backend.railway.app" or "/api" (if using proxy)
-    return localStorage.getItem('nexus_api_url') || '';
+    const stored = localStorage.getItem('nexus_api_url');
+    // Allow strict local mode if user saves "local" in Admin panel
+    if (stored === 'local') return '';
+    
+    // Default to the VPS IP if no setting is found
+    return stored || DEFAULT_API_URL;
 };
 
 const isApiMode = () => {
@@ -13,9 +19,11 @@ const isApiMode = () => {
 
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
+    // Helper to ensure we don't double slash if baseUrl has trailing slash
     const url = baseUrl.endsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
     
-    // Fix for leading slash duplication if user enters "/api"
+    // Safety fix: If the constructed URL has double //api/api issues
+    // (This handles cases where users might type /api manually or defaults overlap)
     const finalUrl = url.replace('//api', '/api');
 
     try {

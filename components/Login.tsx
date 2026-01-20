@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
-import { Lock, User as UserIcon, ArrowRight, Loader2, CheckCircle, Shield, Users, Database } from 'lucide-react';
+import { Lock, User as UserIcon, ArrowRight, Loader2, CheckCircle, Shield, Users, RefreshCw } from 'lucide-react';
 import { ToastType } from './Toast';
 
 interface LoginProps {
@@ -33,8 +33,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
       }, 800);
     } else {
       setIsLoading(false);
-      setError('Invalid credentials');
-      notify('Login failed. Please check credentials.', 'error');
+      setError('Invalid credentials or Server Unreachable');
+      notify('Login failed. Check server connection.', 'error');
     }
   };
 
@@ -52,7 +52,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
 
   const handleResetMode = () => {
     localStorage.removeItem('nexus_api_url');
-    notify('Switched to Local Mode. Please login again.', 'success');
+    notify('Reverted to Default VPS. Please login again.', 'success');
     window.location.reload();
   };
 
@@ -131,7 +131,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
 
             {/* Quick Login Section */}
             <div className="mt-8 pt-6 border-t border-slate-100 dark:border-gray-700">
-                <p className="text-xs text-center text-muted dark:text-gray-500 mb-4 font-bold uppercase tracking-wider">Quick Access (Demo)</p>
+                <p className="text-xs text-center text-muted dark:text-gray-500 mb-4 font-bold uppercase tracking-wider">Quick Access (VPS)</p>
                 <div className="grid grid-cols-2 gap-3">
                     <button 
                         onClick={() => quickLogin('admin', '12345')}
@@ -153,8 +153,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
             </div>
             
             <div className="mt-4 text-center">
-               <button onClick={handleResetMode} className="text-[10px] text-slate-400 hover:text-rose-500 flex items-center justify-center gap-1 mx-auto transition-colors">
-                  <Database size={10} /> Reset Connection Mode
+               <button onClick={handleResetMode} className="text-[10px] text-slate-400 hover:text-emerald-600 flex items-center justify-center gap-1 mx-auto transition-colors">
+                  <RefreshCw size={10} /> Reset to Default Connection
                </button>
             </div>
           </div>

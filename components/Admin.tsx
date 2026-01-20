@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database } from 'lucide-react';
+import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database, Wifi, WifiOff } from 'lucide-react';
 
 export const Admin: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -10,10 +9,14 @@ export const Admin: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
+    // Default VPS URL
+    const DEFAULT_VPS = 'http://178.128.106.33:5000/api';
+
     useEffect(() => {
         refreshUsers();
-        // Load API config
-        setApiUrl(localStorage.getItem('nexus_api_url') || '');
+        // Load API config or default
+        const stored = localStorage.getItem('nexus_api_url');
+        setApiUrl(stored || DEFAULT_VPS);
     }, []);
 
     const refreshUsers = async () => {
@@ -21,8 +24,16 @@ export const Admin: React.FC = () => {
     };
 
     const handleSaveConfig = () => {
-        localStorage.setItem('nexus_api_url', apiUrl);
-        alert("Configuration saved. Please reload the application.");
+        // If user clears the field, we assume they want the default VPS
+        // If they type 'local', we set local mode
+        // If they type a URL, we use that
+        if (!apiUrl || apiUrl === DEFAULT_VPS) {
+            localStorage.removeItem('nexus_api_url');
+            alert("Reverted to Default VPS Configuration.");
+        } else {
+            localStorage.setItem('nexus_api_url', apiUrl);
+            alert("Custom Configuration saved.");
+        }
         window.location.reload();
     };
 
@@ -36,6 +47,8 @@ export const Admin: React.FC = () => {
             refreshUsers();
         }
     };
+
+    const isLocalMode = apiUrl === 'local';
 
     return (
         <div className="space-y-6 max-w-5xl mx-auto">
@@ -95,25 +108,24 @@ export const Admin: React.FC = () => {
                                  <input 
                                     value={apiUrl} 
                                     onChange={(e) => setApiUrl(e.target.value)}
-                                    placeholder="Leave empty for LocalStorage or use '/api'"
+                                    placeholder="e.g. http://178.128.106.33:5000/api"
                                     className="flex-1 p-3 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none" 
                                  />
                                  <button onClick={handleSaveConfig} className="bg-primary text-white p-3 rounded-lg hover:bg-blue-600"><Save size={18}/></button>
                              </div>
                              <p className="text-[10px] text-muted dark:text-gray-500 mt-2">
-                                * Use <strong>/api</strong> if you configured <code>vercel.json</code> proxy.<br/>
-                                * Use full URL (e.g. <code>https://my-api.railway.app</code>) for external hosting.<br/>
-                                * Clear this field to use Browser Local Storage.
+                                * Default VPS: <code>{DEFAULT_VPS}</code><br/>
+                                * To work offline with Browser Storage, type <code>local</code> and save.
                              </p>
                          </div>
-                         <div className={`flex items-center justify-between p-3 rounded-xl border ${apiUrl ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/20'}`}>
+                         <div className={`flex items-center justify-between p-3 rounded-xl border ${!isLocalMode ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/20'}`}>
                              <div className="flex items-center gap-2">
-                                 <Database size={16} className={apiUrl ? 'text-emerald-600' : 'text-amber-600'} />
-                                 <span className={`text-sm font-medium ${apiUrl ? 'text-emerald-800 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-400'}`}>
-                                     {apiUrl ? 'MySQL Database Mode' : 'Local Storage Mode'}
+                                 {!isLocalMode ? <Wifi size={16} className="text-emerald-600" /> : <WifiOff size={16} className="text-amber-600" />}
+                                 <span className={`text-sm font-medium ${!isLocalMode ? 'text-emerald-800 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-400'}`}>
+                                     {!isLocalMode ? 'Connected to VPS Database' : 'Offline Mode (Local Storage)'}
                                  </span>
                              </div>
-                             <span className={`text-xs px-2 py-1 rounded-full font-bold ${apiUrl ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>
+                             <span className={`text-xs px-2 py-1 rounded-full font-bold ${!isLocalMode ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>
                                  Active
                              </span>
                          </div>
