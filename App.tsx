@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -21,6 +22,19 @@ function App() {
   const [stats, setStats] = useState<DashboardStats>({
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
+
+  // Persistent Media Player State
+  const [mediaUrl, setMediaUrl] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nexus_media_url') || 'https://www.youtube.com/embed/jfKfPfyJRdk?si=relaxing-music';
+    }
+    return 'https://www.youtube.com/embed/jfKfPfyJRdk?si=relaxing-music';
+  });
+
+  const handleUpdateMedia = (url: string) => {
+    setMediaUrl(url);
+    localStorage.setItem('nexus_media_url', url);
+  };
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -174,7 +188,7 @@ function App() {
         return <AIAssistant inventory={items} transactions={transactions} />;
       case 'admin':
         if (user.role !== 'admin') return <div className="text-center p-10 text-muted dark:text-gray-400">Admin access restricted.</div>;
-        return <Admin />;
+        return <Admin currentMediaUrl={mediaUrl} onUpdateMedia={handleUpdateMedia} />;
       default:
         return <Dashboard items={items} transactions={transactions} stats={stats} />;
     }
@@ -190,6 +204,7 @@ function App() {
         onLogout={handleLogout}
         isDarkMode={isDarkMode}
         toggleTheme={toggleTheme}
+        mediaUrl={mediaUrl}
       >
         {renderContent()}
       </Layout>

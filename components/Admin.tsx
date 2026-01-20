@@ -1,13 +1,22 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database, Wifi, WifiOff } from 'lucide-react';
+import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database, Wifi, WifiOff, Play, Link } from 'lucide-react';
 
-export const Admin: React.FC = () => {
+interface AdminProps {
+    currentMediaUrl?: string;
+    onUpdateMedia?: (url: string) => void;
+}
+
+export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [apiUrl, setApiUrl] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+
+    // Media Input State
+    const [inputMediaUrl, setInputMediaUrl] = useState(currentMediaUrl || '');
 
     // Default VPS URL
     const DEFAULT_VPS = 'http://178.128.106.33:5000/api';
@@ -46,6 +55,28 @@ export const Admin: React.FC = () => {
             await storageService.deleteUser(id);
             refreshUsers();
         }
+    };
+
+    const handleUpdateMedia = () => {
+        if (!onUpdateMedia) return;
+        
+        let url = inputMediaUrl;
+        
+        // Basic Auto-Convert Logic for YouTube
+        // Case 1: Standard Watch Link -> https://www.youtube.com/watch?v=VIDEO_ID
+        // Case 2: Short Link -> https://youtu.be/VIDEO_ID
+        // Target: https://www.youtube.com/embed/VIDEO_ID
+        
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const match = url.match(regExp);
+
+        if (match && match[2].length === 11) {
+            const videoId = match[2];
+            url = `https://www.youtube.com/embed/${videoId}?si=nexus-player`;
+        }
+        
+        onUpdateMedia(url);
+        alert("Media Player Updated! The music should play across all tabs now.");
     };
 
     const isLocalMode = apiUrl === 'local';
@@ -132,27 +163,41 @@ export const Admin: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Media Center */}
+                {/* Media Center Control */}
                 <div className="md:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700">
                     <h3 className="flex items-center gap-2 font-bold text-lg mb-4 text-dark dark:text-white">
-                        <Music size={20} className="text-rose-500" /> Admin Media Center
+                        <Music size={20} className="text-rose-500" /> Admin Media Controller
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="aspect-video rounded-xl overflow-hidden bg-black">
-                            <iframe 
-                                width="100%" 
-                                height="100%" 
-                                src="https://www.youtube.com/embed/jfKfPfyJRdk?si=relaxing-music" 
-                                title="YouTube video player" 
-                                frameBorder="0" 
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                                allowFullScreen
-                            ></iframe>
-                        </div>
-                         <div className="flex flex-col justify-center bg-slate-50 dark:bg-gray-700/30 p-6 rounded-xl text-center space-y-2">
-                             <p className="text-muted dark:text-gray-400 text-sm">Play some Lo-Fi beats while managing the warehouse.</p>
-                             <div className="h-1 w-20 bg-slate-200 dark:bg-gray-600 mx-auto rounded-full"></div>
-                             <p className="text-xs text-slate-400 dark:text-gray-500">Integrated Widget</p>
+                    <div className="flex flex-col md:flex-row gap-6 items-start">
+                         <div className="flex-1 space-y-4 w-full">
+                             <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                                 <label className="block text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase mb-2">Global YouTube Link</label>
+                                 <div className="flex gap-2">
+                                     <div className="relative flex-1">
+                                         <Link className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400" size={16} />
+                                         <input 
+                                            value={inputMediaUrl}
+                                            onChange={(e) => setInputMediaUrl(e.target.value)}
+                                            placeholder="Paste YouTube Link here (e.g. https://www.youtube.com/watch?v=...)"
+                                            className="w-full pl-10 pr-4 py-3 border border-indigo-200 dark:border-indigo-700 rounded-xl text-sm text-slate-700 dark:text-white bg-white dark:bg-gray-900 focus:ring-2 focus:ring-indigo-400 outline-none" 
+                                         />
+                                     </div>
+                                     <button 
+                                        onClick={handleUpdateMedia} 
+                                        className="bg-indigo-600 text-white px-6 py-2 rounded-xl hover:bg-indigo-700 font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
+                                     >
+                                         <Play size={18} fill="currentColor" /> Set & Play
+                                     </button>
+                                 </div>
+                                 <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-2">
+                                     * Entering a URL here will update the persistent music player for <strong>all tabs</strong>.
+                                 </p>
+                             </div>
+                         </div>
+                         <div className="flex flex-col justify-center bg-slate-50 dark:bg-gray-700/30 p-6 rounded-xl text-center space-y-2 w-full md:w-64 border border-slate-100 dark:border-gray-700">
+                             <Music size={32} className="text-rose-400 mx-auto opacity-80" />
+                             <p className="text-muted dark:text-gray-400 text-sm font-medium">Background Ambience</p>
+                             <p className="text-xs text-slate-400 dark:text-gray-500">The video runs in the layout background. Use the Music icon in the top header to show/hide the mini-player.</p>
                          </div>
                     </div>
                 </div>

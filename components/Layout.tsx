@@ -15,7 +15,10 @@ import {
   Hexagon,
   Activity,
   Moon,
-  Sun
+  Sun,
+  Music,
+  X,
+  Minimize2
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -27,13 +30,14 @@ interface LayoutProps {
   onLogout: () => void;
   isDarkMode: boolean;
   toggleTheme: () => void;
+  mediaUrl?: string;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout, isDarkMode, toggleTheme }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout, isDarkMode, toggleTheme, mediaUrl }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState(true);
   const [latency, setLatency] = useState(24);
+  const [isPlayerOpen, setIsPlayerOpen] = useState(true);
 
   // Responsive check
   useEffect(() => {
@@ -49,8 +53,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
 
   // Simulate Latency Fluctuation (Visual only, keep connection stable)
   useEffect(() => {
-    // We removed the random "Cloud Offline" interval so it stays Stable Online
-    
     // Latency Fluctuation (Simulate Ping for visual activity)
     const latencyInterval = setInterval(() => {
       const baseLatency = Math.floor(Math.random() * (45 - 20) + 20); // More stable latency
@@ -166,6 +168,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             </div>
 
             <div className="flex items-center gap-3">
+                {/* Media Toggle */}
+                {mediaUrl && (
+                    <button 
+                        onClick={() => setIsPlayerOpen(!isPlayerOpen)}
+                        className={`p-2 rounded-full transition-all ${isPlayerOpen ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : 'hover:bg-ice-50 dark:hover:bg-gray-700 text-slate-400'}`}
+                        title="Toggle Music Player"
+                    >
+                        <Music size={18} />
+                    </button>
+                )}
+
                 {/* Theme Toggle */}
                 <button 
                   onClick={toggleTheme}
@@ -190,9 +203,31 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
         </header>
 
         {/* Page Content - Updated Gradient to Soft Grey/Blue instead of White */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-gradient-to-br from-[#EBF3FA] via-[#F5F7FA] to-[#F9FAFB] dark:from-gray-900 dark:to-gray-900">
+        <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-gradient-to-br from-[#EBF3FA] via-[#F5F7FA] to-[#F9FAFB] dark:from-gray-900 dark:to-gray-900 relative">
             {children}
         </div>
+
+        {/* Global Persistent Media Player */}
+        {mediaUrl && (
+             <div 
+                className={`fixed bottom-4 right-4 z-50 transition-all duration-500 ease-in-out bg-black rounded-2xl shadow-2xl overflow-hidden border border-slate-700 ${isPlayerOpen ? 'w-80 h-48 opacity-100 translate-y-0' : 'w-80 h-48 opacity-0 translate-y-[150%] pointer-events-none'}`}
+             >
+                 {/* Header for Drag (Simplified) */}
+                 <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-end p-2 opacity-0 hover:opacity-100 transition-opacity">
+                     <button onClick={() => setIsPlayerOpen(false)} className="text-white/80 hover:text-white bg-black/50 rounded-full p-1"><Minimize2 size={14}/></button>
+                 </div>
+                 <iframe 
+                    width="100%" 
+                    height="100%" 
+                    src={`${mediaUrl}&autoplay=1`}
+                    title="Nexus Media Player" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen
+                    className="w-full h-full"
+                ></iframe>
+             </div>
+        )}
       </main>
     </div>
   );
