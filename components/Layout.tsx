@@ -47,22 +47,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Simulate Cloud Sync Check & Latency Fluctuation
+  // Simulate Latency Fluctuation (Visual only, keep connection stable)
   useEffect(() => {
-    // Cloud Status
-    const cloudInterval = setInterval(() => {
-      setCloudStatus(prev => Math.random() > 0.05 ? true : prev); 
-    }, 5000);
-
-    // Latency Fluctuation (Simulate Ping)
+    // We removed the random "Cloud Offline" interval so it stays Stable Online
+    
+    // Latency Fluctuation (Simulate Ping for visual activity)
     const latencyInterval = setInterval(() => {
-      const baseLatency = Math.floor(Math.random() * (80 - 15) + 15);
-      const spike = Math.random() > 0.9 ? 150 : 0; 
-      setLatency(baseLatency + spike);
-    }, 2000);
+      const baseLatency = Math.floor(Math.random() * (45 - 20) + 20); // More stable latency
+      setLatency(baseLatency);
+    }, 3000);
 
     return () => {
-      clearInterval(cloudInterval);
       clearInterval(latencyInterval);
     };
   }, []);
@@ -183,13 +178,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 {/* Server Latency Indicator */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-500 ${getLatencyColor(latency)}`}>
                     <Activity size={14} className={latency > 200 ? 'animate-pulse' : ''} />
-                    <span className="hidden sm:inline">Server: {latency} ms</span>
+                    <span className="hidden sm:inline">VPS: {latency} ms</span>
                 </div>
 
-                {/* Cloud Status */}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${cloudStatus ? 'bg-ice-100 text-ice-600 border-ice-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400'}`}>
-                    {cloudStatus ? <Cloud size={14} /> : <CloudOff size={14} />}
-                    <span className="hidden sm:inline">{cloudStatus ? 'Cloud Active' : 'Offline'}</span>
+                {/* Cloud Status - FIXED to Online */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors bg-ice-100 text-ice-600 border-ice-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400`}>
+                    <Cloud size={14} />
+                    <span className="hidden sm:inline">System Online</span>
                 </div>
             </div>
         </header>
