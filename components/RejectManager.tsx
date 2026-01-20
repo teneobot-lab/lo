@@ -1,12 +1,7 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Trash2, Search, X, AlertCircle, Layers, Scale, Edit3, Save, Keyboard, ClipboardCheck, History, Copy, Edit2, Database, Download, FileSpreadsheet, ArrowRightLeft } from 'lucide-react';
-import useDebounce from '../hooks/useDebounce';
-import * as XLSX from 'xlsx';
-
-// Helper for ID generation locally within component if needed, or use Math.random
-const generateId = () => Math.random().toString(36).substr(2, 9);
+import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle } from 'lucide-react';
 
 interface RejectManagerProps {
   rejectMasterData: RejectItem[];
@@ -17,475 +12,433 @@ interface RejectManagerProps {
   onUpdateMaster: (items: RejectItem[]) => void;
 }
 
-export const RejectManager: React.FC<RejectManagerProps> = ({ 
-  rejectMasterData, 
-  rejectLogs, 
-  onAddLog, 
-  onUpdateLog, 
-  onDeleteLog, 
-  onUpdateMaster 
+export const RejectManager: React.FC<RejectManagerProps> = ({
+  rejectMasterData,
+  rejectLogs,
+  onAddLog,
+  onUpdateLog,
+  onDeleteLog,
+  onUpdateMaster
 }) => {
-  const [activeTab, setActiveTab] = useState<'new' | 'history' | 'master'>('new');
-  
-  // New Reject Form State
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [cartItems, setCartItems] = useState<RejectItemDetail[]>([]);
-  const [rejectReason, setRejectReason] = useState('Damaged');
-
-  // Edit Log State
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'logs' | 'master'>('logs');
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<RejectLog | null>(null);
-  const [editDate, setEditDate] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-  const [editCartItems, setEditCartItems] = useState<RejectItemDetail[]>([]);
-
-  // Master Data Tab State
-  const [masterSearch, setMasterSearch] = useState('');
+  
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [editingMasterItem, setEditingMasterItem] = useState<RejectItem | null>(null);
-  const [newMasterItem, setNewMasterItem] = useState<Partial<RejectItem>>({
-    sku: '', name: '', baseUnit: 'Pcs', 
-    unit2: '', ratio2: undefined, op2: 'divide',
-    unit3: '', ratio3: undefined, op3: 'divide'
-  });
-
-  // Item Selection State (Input Log)
-  const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [selectedItem, setSelectedItem] = useState<RejectItem | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState<string>('');
-  const [conversionRatio, setConversionRatio] = useState<number>(1);
-  const [conversionOp, setConversionOp] = useState<'multiply'|'divide'>('divide');
-  const [quantityInput, setQuantityInput] = useState<number | undefined>(undefined);
-  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   
-  // Item Selection State (Edit Modal)
-  const [editSearchQuery, setEditSearchQuery] = useState('');
-  const debouncedEditSearchQuery = useDebounce(editSearchQuery, 300);
-  const [editSelectedItem, setEditSelectedItem] = useState<RejectItem | null>(null);
-  const [editSelectedUnit, setEditSelectedUnit] = useState<string>('');
-  const [editConversionRatio, setEditConversionRatio] = useState<number>(1);
-  const [editConversionOp, setEditConversionOp] = useState<'multiply'|'divide'>('divide');
-  const [editQuantityInput, setEditQuantityInput] = useState<number | undefined>(undefined);
-  const [editRejectReason, setEditRejectReason] = useState('Damaged');
-  const [isEditAutocompleteOpen, setIsEditAutocompleteOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const searchRef = useRef<HTMLDivElement>(null);
-  const editSearchRef = useRef<HTMLDivElement>(null);
-  const masterImportRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) setIsAutocompleteOpen(false);
-      if (editSearchRef.current && !editSearchRef.current.contains(event.target as Node)) setIsEditAutocompleteOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Filter Master Data for Main Form
-  const filteredRejectMaster = useMemo(() => {
-    if (!debouncedSearchQuery) return [];
-    return rejectMasterData.filter(item => 
-      item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) || 
-      item.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-    ).slice(0, 8); 
-  }, [debouncedSearchQuery, rejectMasterData]);
-
-   // Filter Master Data for Edit Modal
-   const filteredEditRejectMaster = useMemo(() => {
-    if (!debouncedEditSearchQuery) return [];
-    return rejectMasterData.filter(item => 
-      item.name.toLowerCase().includes(debouncedEditSearchQuery.toLowerCase()) || 
-      item.sku.toLowerCase().includes(debouncedEditSearchQuery.toLowerCase())
-    ).slice(0, 8); 
-  }, [debouncedEditSearchQuery, rejectMasterData]);
-
-  // Handlers for Main Form
-  const handleSelectItem = (item: RejectItem) => {
-    setSelectedItem(item);
-    setSearchQuery(item.name);
-    setSelectedUnit(item.baseUnit);
-    setConversionRatio(1);
-    setConversionOp('divide'); // Default for base
-    setIsAutocompleteOpen(false);
-  };
-
-  const handleUnitChange = (unitName: string) => {
-    setSelectedUnit(unitName);
-    if (selectedItem?.baseUnit === unitName) {
-        setConversionRatio(1);
-        setConversionOp('divide');
-    } else if (selectedItem?.unit2 === unitName) {
-        setConversionRatio(selectedItem.ratio2 || 1);
-        setConversionOp(selectedItem.op2 || 'divide');
-    } else if (selectedItem?.unit3 === unitName) {
-        setConversionRatio(selectedItem.ratio3 || 1);
-        setConversionOp(selectedItem.op3 || 'divide');
-    }
-  };
-
-  const calculateBaseQuantity = (qty: number, ratio: number, op: 'multiply' | 'divide') => {
-      if (!ratio || ratio === 0) return 0;
-      if (op === 'multiply') return qty * ratio;
-      return qty / ratio;
-  };
-
-  const handleAddToCart = () => {
-    if (!selectedItem || !quantityInput) return;
-    
-    // Calculate using selected operation
-    const requestedBase = calculateBaseQuantity(quantityInput, conversionRatio, conversionOp);
-
-    const newItem: RejectItemDetail = {
-      itemId: selectedItem.id, 
-      itemName: selectedItem.name, 
-      sku: selectedItem.sku, 
-      baseUnit: selectedItem.baseUnit,
-      quantity: quantityInput, 
-      unit: selectedUnit, 
-      ratio: conversionRatio, 
-      operation: conversionOp,
-      totalBaseQuantity: requestedBase,
-      reason: rejectReason,
-      unit2: selectedItem.unit2,
-      ratio2: selectedItem.ratio2,
-      op2: selectedItem.op2,
-      unit3: selectedItem.unit3,
-      ratio3: selectedItem.ratio3,
-      op3: selectedItem.op3
-    };
-
-    setCartItems([...cartItems, newItem]);
-    setSelectedItem(null); 
-    setSearchQuery(''); 
-    setQuantityInput(undefined); 
-  };
-
-  const handleSubmitReject = () => {
-    if (cartItems.length === 0) return;
-    onAddLog({
-      id: generateId(), 
-      date, 
-      items: cartItems, 
-      notes, 
-      timestamp: new Date().toISOString()
-    });
-    setCartItems([]); 
-    setNotes('');
-  };
-
-  // Handlers for Edit Modal
-  const openEditModal = (log: RejectLog) => {
-    setEditingLog(log);
-    setEditDate(log.date);
-    setEditNotes(log.notes);
-    setEditCartItems([...log.items]);
-    setIsEditModalOpen(true);
-    // Reset add item inputs in modal
-    setEditSearchQuery('');
-    setEditSelectedItem(null);
-    setEditQuantityInput(undefined);
-  };
-
-  const handleEditSelectItem = (item: RejectItem) => {
-    setEditSelectedItem(item);
-    setEditSearchQuery(item.name);
-    setEditSelectedUnit(item.baseUnit);
-    setEditConversionRatio(1);
-    setEditConversionOp('divide');
-    setIsEditAutocompleteOpen(false);
-  };
-
-  const handleEditUnitChange = (unitName: string) => {
-    setEditSelectedUnit(unitName);
-    if (editSelectedItem?.baseUnit === unitName) {
-        setEditConversionRatio(1);
-        setEditConversionOp('divide');
-    } else if (editSelectedItem?.unit2 === unitName) {
-        setEditConversionRatio(editSelectedItem.ratio2 || 1);
-        setEditConversionOp(editSelectedItem.op2 || 'divide');
-    } else if (editSelectedItem?.unit3 === unitName) {
-        setEditConversionRatio(editSelectedItem.ratio3 || 1);
-        setEditConversionOp(editSelectedItem.op3 || 'divide');
-    }
-  };
-
-  const handleAddToEditCart = () => {
-    if (!editSelectedItem || !editQuantityInput) return;
-    const requestedBase = calculateBaseQuantity(editQuantityInput, editConversionRatio, editConversionOp);
-    
-    const newItem: RejectItemDetail = {
-      itemId: editSelectedItem.id, 
-      itemName: editSelectedItem.name, 
-      sku: editSelectedItem.sku, 
-      baseUnit: editSelectedItem.baseUnit, 
-      quantity: editQuantityInput, 
-      unit: editSelectedUnit, 
-      ratio: editConversionRatio, 
-      operation: editConversionOp,
-      totalBaseQuantity: requestedBase, 
-      reason: editRejectReason,
-      unit2: editSelectedItem.unit2, ratio2: editSelectedItem.ratio2, op2: editSelectedItem.op2,
-      unit3: editSelectedItem.unit3, ratio3: editSelectedItem.ratio3, op3: editSelectedItem.op3
-    };
-    setEditCartItems([...editCartItems, newItem]);
-    setEditSelectedItem(null);
-    setEditSearchQuery('');
-    setEditQuantityInput(undefined);
-  };
-
-  const handleSaveEdit = () => {
-    if (!editingLog) return;
-    const updatedLog: RejectLog = {
-      ...editingLog,
-      date: editDate,
-      notes: editNotes,
-      items: editCartItems,
-    };
-    onUpdateLog(updatedLog);
-    setIsEditModalOpen(false);
-  };
-
-  const handleDeleteLogClick = (id: string) => {
-      if (confirm("Hapus log reject ini secara permanen?")) {
-          onDeleteLog(id);
-      }
-  };
-
-  // --- CRUD MASTER HANDLERS ---
-  
-  const handleOpenMasterModal = (item?: RejectItem) => {
-    if (item) {
-        setEditingMasterItem(item);
-        setNewMasterItem({
-            sku: item.sku,
-            name: item.name,
-            baseUnit: item.baseUnit,
-            unit2: item.unit2 || '',
-            ratio2: item.ratio2,
-            op2: item.op2 || 'divide',
-            unit3: item.unit3 || '',
-            ratio3: item.ratio3,
-            op3: item.op3 || 'divide'
-        });
+  // --- Master Data Handlers ---
+  const handleSaveMasterItem = (item: RejectItem) => {
+    let newItems = [...rejectMasterData];
+    const idx = newItems.findIndex(i => i.id === item.id);
+    if (idx >= 0) {
+        newItems[idx] = item;
     } else {
-        setEditingMasterItem(null);
-        setNewMasterItem({ 
-            sku: '', name: '', baseUnit: 'Pcs', 
-            unit2: '', ratio2: undefined, op2: 'divide',
-            unit3: '', ratio3: undefined, op3: 'divide'
-        });
+        newItems.push(item);
     }
-    setIsMasterModalOpen(true);
-  };
-
-  const handleSaveMasterItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMasterItem.sku || !newMasterItem.name) return;
-    
-    const itemPayload: Partial<RejectItem> = {
-        sku: newMasterItem.sku!,
-        name: newMasterItem.name!,
-        baseUnit: newMasterItem.baseUnit || 'Pcs',
-        unit2: newMasterItem.unit2 || undefined,
-        ratio2: newMasterItem.unit2 ? newMasterItem.ratio2 : undefined,
-        op2: newMasterItem.unit2 ? newMasterItem.op2 : undefined,
-        unit3: newMasterItem.unit3 ? String(newMasterItem.unit3) : undefined,
-        ratio3: newMasterItem.unit3 ? newMasterItem.ratio3 : undefined,
-        op3: newMasterItem.unit3 ? newMasterItem.op3 : undefined,
-        lastUpdated: new Date().toISOString()
-    };
-
-    if (editingMasterItem) {
-        const updatedList = rejectMasterData.map(item => 
-            item.id === editingMasterItem.id 
-            ? { ...item, ...itemPayload } 
-            : item
-        );
-        onUpdateMaster(updatedList);
-    } else {
-        const newItem: RejectItem = {
-            id: generateId(),
-            ...itemPayload
-        } as RejectItem;
-        onUpdateMaster([...rejectMasterData, newItem]);
-    }
-
+    onUpdateMaster(newItems);
     setIsMasterModalOpen(false);
-    setNewMasterItem({ sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: undefined, op2: 'divide', unit3: '', ratio3: undefined, op3: 'divide' });
-    setEditingMasterItem(null);
   };
 
   const handleDeleteMasterItem = (id: string) => {
-      if (confirm("Hapus item master ini? Log reject yang sudah ada akan kehilangan rincian unit jika data ini dihapus.")) {
+      if (window.confirm("Delete this item from Master Data?")) {
           onUpdateMaster(rejectMasterData.filter(i => i.id !== id));
       }
   };
 
-  const handleDownloadTemplate = () => {
-    const data = [
-      ['ID BARANG', 'NAMA BARANG', 'BASE UNIT', 'UNIT2', 'CONVERSION UNIT2', 'UNIT3', 'CONVERSION UNIT3'],
-      ['BRW-000566', 'ABON AYAM', 'KG', 'GR', 1000, '', ''],
-      ['BRW-000833', 'AIR GULA', 'KG', 'GR', 1000, '', ''],
-      ['BRW-000842', 'BAKSO AYAM', 'PRS', 'PCS', 3, '', '']
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'RejectMasterData');
-    XLSX.writeFile(wb, 'SmartStock_Reject_Master_Template.xlsx');
-  };
-
-  const handleImportMaster = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const sheetData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as any[];
-        
-        const newRejectMaster: RejectItem[] = sheetData.map(row => ({
-            id: generateId(),
-            sku: String(row['ID BARANG'] || row['SKU'] || ''),
-            name: String(row['NAMA BARANG'] || row['Item Name'] || ''),
-            baseUnit: String(row['BASE UNIT'] || row['Base Unit'] || 'Pcs'),
-            unit2: row['UNIT2'] ? String(row['UNIT2']) : undefined,
-            ratio2: row['CONVERSION UNIT2'] ? Number(row['CONVERSION UNIT2']) : undefined,
-            op2: 'divide', // Default import to divide (safe bet for Grams/Kg)
-            unit3: row['UNIT3'] ? String(row['UNIT3']) : undefined,
-            ratio3: row['CONVERSION UNIT3'] ? Number(row['CONVERSION UNIT3']) : undefined,
-            op3: 'divide',
-            lastUpdated: new Date().toISOString()
-        }));
-        
-        onUpdateMaster([...rejectMasterData, ...newRejectMaster]);
-      } catch (err) {
-        alert("Gagal mengimpor master data reject. Pastikan format kolom sesuai.");
+  // --- Log Handlers ---
+  const handleSaveLog = (log: RejectLog) => {
+      if (editingLog) {
+          onUpdateLog(log);
+      } else {
+          onAddLog(log);
       }
-      if (masterImportRef.current) masterImportRef.current.value = '';
-    };
-    reader.readAsBinaryString(file);
+      setIsLogModalOpen(false);
   };
-
-  const handleCopyToClipboard = (log: RejectLog) => {
-    // ... same code ...
-    let ddmmyy = '';
-    try {
-        const parts = log.date.split('-');
-        if (parts.length === 3) {
-            const y = parts[0].slice(-2);
-            const m = parts[1];
-            const d = parts[2];
-            ddmmyy = `${d}${m}${y}`;
-        } else {
-            const now = new Date();
-            const d = String(now.getDate()).padStart(2, '0');
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const y = String(now.getFullYear()).slice(-2);
-            ddmmyy = `${d}${m}${y}`;
-        }
-    } catch (e) {
-        ddmmyy = 'INVALID_DATE';
-    }
-
-    const header = `##Data Reject KKL (${ddmmyy})##`;
-    const itemsText = log.items.map(it => `• ${it.itemName} - ${it.quantity} ${it.unit} (${it.reason})`).join('\n');
-    const finalContent = `${header}\n${itemsText}`;
-    
-    navigator.clipboard.writeText(finalContent).then(() => {
-        alert("Log detail berhasil disalin ke clipboard!");
-    }).catch(err => {
-        console.error('Gagal menyalin:', err);
-    });
-  };
-
-  const sortedLogs = useMemo(() => {
-    return [...rejectLogs].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
-  }, [rejectLogs]);
-
-  const reasonSuggestions = ['Damaged', 'Expired', 'Factory Error', 'Return From Customer', 'Scrap', 'Lost', 'QC Failed', 'Salah Kirim'];
 
   return (
-    <div className="space-y-6 flex flex-col h-full overflow-hidden">
-      {/* Navigation Tabs */}
-      <div className="flex justify-between items-end border-b border-slate-200 dark:border-zinc-800">
-        <div className="flex space-x-6">
-          <button onClick={() => setActiveTab('new')} className={`pb-3 px-2 text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'new' ? 'border-b-2 border-rose-600 text-rose-600' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}>
-            <ClipboardCheck className="w-4 h-4" /> Entry Reject Log
-          </button>
-          <button onClick={() => setActiveTab('history')} className={`pb-3 px-2 text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'history' ? 'border-b-2 border-rose-600 text-rose-600' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}>
-            <History className="w-4 h-4" /> Riwayat Log
-          </button>
-          <button onClick={() => setActiveTab('master')} className={`pb-3 px-2 text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'master' ? 'border-b-2 border-rose-600 text-rose-600' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}>
-            <Database className="w-4 h-4" /> Reject Master Data
-          </button>
+    <div className="space-y-6">
+       {/* Tab Navigation */}
+       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
+           <div className="flex items-center gap-2 p-1 bg-ice-50 dark:bg-gray-900 rounded-xl">
+               <button 
+                  onClick={() => setActiveTab('logs')}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'logs' ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-gray-400'}`}
+               >
+                   Reject Logs
+               </button>
+               <button 
+                  onClick={() => setActiveTab('master')}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'master' ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-gray-400'}`}
+               >
+                   Master Data
+               </button>
+           </div>
+           
+           <div className="flex gap-3 w-full md:w-auto">
+               <div className="relative flex-1 md:w-64">
+                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                   <input 
+                       type="text" 
+                       placeholder="Search..." 
+                       value={searchTerm}
+                       onChange={e => setSearchTerm(e.target.value)}
+                       className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white"
+                   />
+               </div>
+               <button 
+                   onClick={() => {
+                       if (activeTab === 'logs') {
+                           setEditingLog(null);
+                           setIsLogModalOpen(true);
+                       } else {
+                           setEditingMasterItem(null);
+                           setIsMasterModalOpen(true);
+                       }
+                   }}
+                   className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg whitespace-nowrap"
+               >
+                   <Plus size={18} /> {activeTab === 'logs' ? 'New Reject Log' : 'Add Master Item'}
+               </button>
+           </div>
+       </div>
+
+       {/* Content */}
+       {activeTab === 'master' && (
+           <MasterDataList 
+                items={rejectMasterData.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase()))} 
+                onEdit={(i) => { setEditingMasterItem(i); setIsMasterModalOpen(true); }}
+                onDelete={handleDeleteMasterItem}
+           />
+       )}
+
+       {activeTab === 'logs' && (
+           <RejectLogsList 
+                logs={rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase())))}
+                onEdit={(l) => { setEditingLog(l); setIsLogModalOpen(true); }}
+                onDelete={onDeleteLog}
+           />
+       )}
+
+       {/* Modals */}
+       {isMasterModalOpen && (
+           <MasterItemModal 
+               item={editingMasterItem} 
+               onClose={() => setIsMasterModalOpen(false)} 
+               onSave={handleSaveMasterItem} 
+           />
+       )}
+
+       {isLogModalOpen && (
+           <RejectLogModal 
+               log={editingLog} 
+               masterData={rejectMasterData}
+               onClose={() => setIsLogModalOpen(false)} 
+               onSave={handleSaveLog} 
+           />
+       )}
+    </div>
+  );
+};
+
+// --- Sub Components ---
+
+const MasterDataList: React.FC<{ items: RejectItem[], onEdit: (i: RejectItem) => void, onDelete: (id: string) => void }> = ({ items, onEdit, onDelete }) => (
+    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden">
+        <table className="w-full text-left">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <tr>
+                    <th className="p-4">SKU / Name</th>
+                    <th className="p-4">Base Unit</th>
+                    <th className="p-4">Conversions</th>
+                    <th className="p-4 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
+                {items.length > 0 ? items.map(item => (
+                    <tr key={item.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td className="p-4">
+                            <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
+                            <div className="text-xs text-slate-400">{item.sku}</div>
+                        </td>
+                        <td className="p-4 text-sm text-slate-600 dark:text-gray-300">{item.baseUnit}</td>
+                        <td className="p-4 text-xs text-slate-500 dark:text-gray-400">
+                            {item.unit2 && <div className="mb-0.5"><span className="font-bold">{item.unit2}:</span> {item.op2 === 'divide' ? '/' : 'x'} {item.ratio2}</div>}
+                            {item.unit3 && <div><span className="font-bold">{item.unit3}:</span> {item.op3 === 'divide' ? '/' : 'x'} {item.ratio3}</div>}
+                        </td>
+                        <td className="p-4 text-right">
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => onEdit(item)} className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit2 size={16}/></button>
+                                <button onClick={() => onDelete(item.id)} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg"><Trash2 size={16}/></button>
+                            </div>
+                        </td>
+                    </tr>
+                )) : (
+                    <tr><td colSpan={4} className="p-8 text-center text-slate-400">No Master Items Found</td></tr>
+                )}
+            </tbody>
+        </table>
+    </div>
+);
+
+const RejectLogsList: React.FC<{ logs: RejectLog[], onEdit: (l: RejectLog) => void, onDelete: (id: string) => void }> = ({ logs, onEdit, onDelete }) => (
+    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden">
+        <table className="w-full text-left">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <tr>
+                    <th className="p-4">Log ID</th>
+                    <th className="p-4">Date</th>
+                    <th className="p-4">Items</th>
+                    <th className="p-4">Notes</th>
+                    <th className="p-4 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
+                {logs.length > 0 ? logs.map(log => (
+                    <tr key={log.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td className="p-4 font-bold text-sm text-slate-800 dark:text-white">{log.id}</td>
+                        <td className="p-4 text-sm text-slate-600 dark:text-gray-300">{new Date(log.date).toLocaleDateString()}</td>
+                        <td className="p-4 text-sm">
+                            <div className="flex flex-col gap-1">
+                                {log.items.slice(0, 2).map((item, idx) => (
+                                    <span key={idx} className="text-slate-600 dark:text-gray-400 flex items-center gap-1">
+                                        <Package size={12}/> {item.itemName} ({item.quantity} {item.unit})
+                                    </span>
+                                ))}
+                                {log.items.length > 2 && <span className="text-xs text-slate-400">+{log.items.length - 2} more...</span>}
+                            </div>
+                        </td>
+                        <td className="p-4 text-sm text-slate-500 italic truncate max-w-xs">{log.notes || '-'}</td>
+                        <td className="p-4 text-right">
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => onEdit(log)} className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Settings size={16}/></button>
+                                <button onClick={() => onDelete(log.id)} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg"><Trash2 size={16}/></button>
+                            </div>
+                        </td>
+                    </tr>
+                )) : (
+                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">No Reject Logs Found</td></tr>
+                )}
+            </tbody>
+        </table>
+    </div>
+);
+
+// --- Modals ---
+
+const MasterItemModal: React.FC<{ item: RejectItem | null, onClose: () => void, onSave: (i: RejectItem) => void }> = ({ item, onClose, onSave }) => {
+    const [formData, setFormData] = useState<Partial<RejectItem>>(item || {
+        sku: '', name: '', baseUnit: 'Pcs', op2: 'multiply', op3: 'multiply'
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({
+            id: item?.id || crypto.randomUUID(),
+            lastUpdated: new Date().toISOString(),
+            sku: formData.sku!,
+            name: formData.name!,
+            baseUnit: formData.baseUnit!,
+            unit2: formData.unit2,
+            ratio2: formData.ratio2 ? Number(formData.ratio2) : undefined,
+            op2: formData.op2,
+            unit3: formData.unit3,
+            ratio3: formData.ratio3 ? Number(formData.ratio3) : undefined,
+            op3: formData.op3
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex justify-between items-center">
+                    <h3 className="font-bold text-xl text-slate-800 dark:text-white">{item ? 'Edit Master Item' : 'New Master Item'}</h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-800" /></button>
+                </div>
+                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">SKU</label>
+                            <input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
+                            <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase">Base Unit</label>
+                        <input required value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                    </div>
+                    
+                    <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-xl space-y-4 border border-ice-100 dark:border-gray-700">
+                        <h4 className="font-bold text-sm text-slate-700 dark:text-gray-300">Conversions (Optional)</h4>
+                        {/* Unit 2 */}
+                        <div className="flex gap-2">
+                            <input placeholder="Unit 2 (e.g. Box)" value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} className="flex-1 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                            <select value={formData.op2} onChange={(e: any) => setFormData({...formData, op2: e.target.value})} className="p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="multiply">Multiply by</option>
+                                <option value="divide">Divide by</option>
+                            </select>
+                            <input type="number" placeholder="Ratio" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} className="w-24 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        </div>
+                         {/* Unit 3 */}
+                         <div className="flex gap-2">
+                            <input placeholder="Unit 3 (e.g. Ctn)" value={formData.unit3 || ''} onChange={e => setFormData({...formData, unit3: e.target.value})} className="flex-1 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                            <select value={formData.op3} onChange={(e: any) => setFormData({...formData, op3: e.target.value})} className="p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                <option value="multiply">Multiply by</option>
+                                <option value="divide">Divide by</option>
+                            </select>
+                            <input type="number" placeholder="Ratio" value={formData.ratio3 || ''} onChange={e => setFormData({...formData, ratio3: Number(e.target.value)})} className="w-24 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                        <button type="submit" className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900">Save Item</button>
+                    </div>
+                </form>
+            </div>
         </div>
-      </div>
+    );
+};
 
-      {activeTab === 'new' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-y-auto pb-4 custom-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* ... Left Side Form ... */}
-            <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 border-l-4 border-l-rose-500">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-rose-100 dark:bg-rose-900/30 p-2 rounded-lg"><AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" /></div>
-                            <h2 className="font-bold text-slate-800 dark:text-white">Database Entry (Reject Module)</h2>
+const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[], onClose: () => void, onSave: (l: RejectLog) => void }> = ({ log, masterData, onClose, onSave }) => {
+    const [date, setDate] = useState(log?.date || new Date().toISOString().slice(0, 10));
+    const [notes, setNotes] = useState(log?.notes || '');
+    const [items, setItems] = useState<RejectItemDetail[]>(log?.items || []);
+
+    // Item Entry State
+    const [selectedItemId, setSelectedItemId] = useState('');
+    const [selectedUnit, setSelectedUnit] = useState('');
+    const [quantityInput, setQuantityInput] = useState<number | ''>('');
+    const [reason, setReason] = useState('');
+    const [conversionRatio, setConversionRatio] = useState(1);
+    const [conversionOp, setConversionOp] = useState<'multiply'|'divide'>('multiply');
+
+    const selectedItem = useMemo(() => masterData.find(i => i.id === selectedItemId) || null, [selectedItemId, masterData]);
+
+    const handleUnitChange = (unitName: string) => {
+        setSelectedUnit(unitName);
+        if (!selectedItem) return;
+
+        if (selectedItem.baseUnit === unitName) {
+            setConversionRatio(1);
+            setConversionOp('divide');
+        } else if (selectedItem.unit2 === unitName) {
+            setConversionRatio(selectedItem.ratio2 || 1);
+            setConversionOp(selectedItem.op2 || 'divide');
+        } else if (selectedItem.unit3 === unitName) {
+            setConversionRatio(selectedItem.ratio3 || 1);
+            setConversionOp(selectedItem.op3 || 'divide');
+        }
+    };
+
+    const calculateBaseQuantity = (qty: number, ratio: number, op: 'multiply' | 'divide') => {
+        if (!ratio || ratio === 0) return 0;
+        let result = 0;
+        if (op === 'multiply') result = qty * ratio;
+        else result = qty / ratio;
+        return parseFloat(result.toFixed(1));
+    };
+
+    const handleAddItem = () => {
+        if (!selectedItem || !quantityInput || quantityInput <= 0) return;
+
+        const baseQty = calculateBaseQuantity(Number(quantityInput), conversionRatio, conversionOp);
+        
+        const newItem: RejectItemDetail = {
+            itemId: selectedItem.id,
+            itemName: selectedItem.name,
+            sku: selectedItem.sku,
+            baseUnit: selectedItem.baseUnit,
+            quantity: Number(quantityInput),
+            unit: selectedUnit,
+            ratio: conversionRatio,
+            operation: conversionOp,
+            totalBaseQuantity: baseQty,
+            reason: reason,
+            unit2: selectedItem.unit2,
+            ratio2: selectedItem.ratio2,
+            op2: selectedItem.op2,
+            unit3: selectedItem.unit3,
+            ratio3: selectedItem.ratio3,
+            op3: selectedItem.op3
+        };
+
+        setItems([...items, newItem]);
+        // Reset entry
+        setQuantityInput('');
+        setReason('');
+    };
+
+    const handleRemoveItem = (idx: number) => {
+        setItems(items.filter((_, i) => i !== idx));
+    };
+
+    const handleSave = () => {
+        onSave({
+            id: log?.id || `RJ-${Date.now()}`,
+            date,
+            items,
+            notes,
+            timestamp: new Date().toISOString()
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex justify-between items-center">
+                    <h3 className="font-bold text-xl text-slate-800 dark:text-white">{log ? 'Edit Reject Log' : 'New Reject Log'}</h3>
+                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-800" /></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Header Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Date</label>
+                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
                         </div>
-                        <div className="text-[10px] font-bold px-2 py-1 bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 rounded uppercase">Independent Records - No Stock Impact</div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Notes</label>
+                            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" placeholder="Optional notes..." />
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1 uppercase">Tanggal Log</label>
-                            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2 border dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 mb-1 uppercase">Kategori / Alasan</label>
-                            <div className="relative group">
-                                <Keyboard className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-zinc-600 pointer-events-none" />
-                                <input list="reason-opts" value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Tulis alasan..." className="w-full px-3 py-2 border dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-rose-500" />
-                                <datalist id="reason-opts">{reasonSuggestions.map(r => <option key={r} value={r} />)}</datalist>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                            <div className="md:col-span-6 relative" ref={searchRef}>
-                                <label className="block text-[10px] font-bold text-slate-500 dark:text-zinc-400 mb-1 uppercase">Cari Barang (Reject Master)</label>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 dark:text-blue-400" />
-                                    <input 
-                                        type="text" 
-                                        value={searchQuery} 
-                                        onFocus={() => setIsAutocompleteOpen(true)} 
-                                        onChange={(e) => setSearchQuery(e.target.value)} 
-                                        placeholder="Cari SKU atau Nama di Reject Master..." 
-                                        className="w-full pl-9 pr-3 py-2 border border-blue-200 dark:border-blue-900/50 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 bg-blue-50/30 dark:bg-blue-900/10 text-zinc-900 dark:text-zinc-100" 
-                                    />
-                                </div>
-                                {isAutocompleteOpen && filteredRejectMaster.length > 0 && searchQuery && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto p-2">
-                                        {filteredRejectMaster.map(item => (
-                                            <button key={item.id} onClick={() => handleSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all mb-1">
-                                                <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.name}</div>
-                                                <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">SKU: {item.sku} | Base: {item.baseUnit}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-[10px] font-bold text-slate-500 dark:text-zinc-400 mb-1 uppercase">Unit</label>
+                    {/* Entry Form */}
+                    <div className="bg-slate-50 dark:bg-gray-800 p-5 rounded-2xl border border-ice-100 dark:border-gray-700 space-y-4">
+                        <div className="flex flex-col md:flex-row gap-4">
+                            <div className="flex-1">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Select Item</label>
                                 <select 
+                                    value={selectedItemId} 
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setSelectedItemId(id);
+                                        const item = masterData.find(i => i.id === id);
+                                        if (item) {
+                                            handleUnitChange(item.baseUnit); // Default to base unit
+                                            setSelectedUnit(item.baseUnit);
+                                        }
+                                    }}
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                >
+                                    <option value="">-- Choose Item --</option>
+                                    {masterData.map(m => (
+                                        <option key={m.id} value={m.id}>{m.sku} - {m.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="w-full md:w-32">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Unit</label>
+                                <select 
+                                    value={selectedUnit} 
+                                    onChange={(e) => handleUnitChange(e.target.value)}
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                     disabled={!selectedItem}
-                                    className="w-full px-2 py-2 border dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 disabled:bg-slate-100 dark:disabled:bg-zinc-800"
-                                    value={selectedUnit}
-                                    onChange={e => handleUnitChange(e.target.value)}
                                 >
                                     {selectedItem && (
                                         <>
@@ -496,400 +449,71 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                     )}
                                 </select>
                             </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-[10px] font-bold text-slate-500 dark:text-zinc-400 mb-1 uppercase">Qty</label>
-                                <input type="number" disabled={!selectedItem} value={quantityInput ?? ''} onChange={e => setQuantityInput(e.target.value === '' ? undefined : Number(e.target.value))} className="w-full px-3 py-2 border dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                            </div>
-                            <div className="md:col-span-2">
-                                <button onClick={handleAddToCart} disabled={!selectedItem || !quantityInput} className="w-full py-2 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 disabled:bg-slate-200 dark:disabled:bg-zinc-800 transition-all">Add Log</button>
+                            <div className="w-full md:w-32">
+                                <label className="text-xs font-bold text-slate-400 uppercase">Qty</label>
+                                <input type="number" value={quantityInput} onChange={e => setQuantityInput(Number(e.target.value))} className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="0" />
                             </div>
                         </div>
-                        
-                        {selectedItem && (
-                          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter bg-white dark:bg-zinc-900 p-2 rounded-lg border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-left-1 mt-2">
-                            <Layers className="w-3.5 h-3.5 text-rose-500" />
-                            Konversi: {conversionOp === 'multiply' ? `1 ${selectedUnit} = ${conversionRatio} ${selectedItem.baseUnit}` : `1 ${selectedItem.baseUnit} = ${conversionRatio} ${selectedUnit}`}
-                            {quantityInput !== undefined && (
-                              <span className="ml-auto text-rose-600">
-                                  Terinput ke Sistem: {calculateBaseQuantity(quantityInput, conversionRatio, conversionOp).toFixed(4)} {selectedItem.baseUnit}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="lg:col-span-1">
-                <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm flex flex-col h-full overflow-hidden">
-                    <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 border-b dark:border-zinc-800 flex items-center justify-between">
-                        <h3 className="font-bold text-sm text-slate-800 dark:text-zinc-100 uppercase tracking-tighter">Draft Reject Entries</h3>
-                        <span className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[10px] px-2 py-0.5 rounded-full font-bold">{cartItems.length} RECORD</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar min-h-[300px]">
-                        {cartItems.map((it, idx) => (
-                            <div key={idx} className="p-3 bg-white dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-lg shadow-sm flex justify-between items-center group">
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-bold text-slate-800 dark:text-zinc-100 uppercase truncate">{it.itemName}</div>
-                                    <div className="text-[10px] text-rose-500 font-bold uppercase">{it.quantity} {it.unit} ({(it.totalBaseQuantity).toFixed(4)} {it.baseUnit}) • {it.reason}</div>
-                                </div>
-                                <button onClick={() => setCartItems(cartItems.filter((_, i) => i !== idx))} className="p-1.5 text-slate-300 dark:text-zinc-600 hover:text-rose-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-4 border-t dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 space-y-3">
-                        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Tambahkan catatan database..." className="w-full p-3 border dark:border-zinc-700 rounded-lg text-xs resize-none h-20 outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                        <button onClick={handleSubmitReject} disabled={cartItems.length === 0} className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 disabled:bg-slate-200 dark:disabled:bg-zinc-800 shadow-lg shadow-rose-200 dark:shadow-rose-900/20 transition-all">COMMIT TO DATABASE</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* ... History Tab (Identical) ... */}
-      {activeTab === 'history' && (
-        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 flex-1 overflow-hidden flex flex-col">
-            <div className="overflow-auto flex-1 custom-scrollbar">
-                <table className="w-full text-left text-sm min-w-[600px]">
-                    <thead className="sticky top-0 bg-slate-50 dark:bg-zinc-800/80 border-b dark:border-zinc-800 z-10 shadow-sm backdrop-blur-sm">
-                        <tr className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
-                            <th className="px-6 py-4">Tanggal</th>
-                            <th className="px-6 py-4">Rincian</th>
-                            <th className="px-6 py-4">Catatan</th>
-                            <th className="px-6 py-4 text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                        {sortedLogs.length > 0 ? sortedLogs.map(log => (
-                            <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors">
-                                <td className="px-6 py-4 text-sm font-medium text-slate-600 dark:text-zinc-300 whitespace-nowrap">{log.date}</td>
-                                <td className="px-6 py-4">
-                                    <div className="text-xs font-bold text-slate-800 dark:text-zinc-200">{log.items.length} Barang</div>
-                                    <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate max-w-[250px]">{log.items.map(i => i.itemName).join(', ')}</div>
-                                </td>
-                                <td className="px-6 py-4 text-xs italic text-slate-400 dark:text-zinc-500 truncate max-w-[200px]">{log.notes || '-'}</td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => handleCopyToClipboard(log)} className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Copy to Clipboard">
-                                            <Copy className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => openEditModal(log)} className="p-1.5 text-slate-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Edit / Detail">
-                                            <Edit3 className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => handleDeleteLogClick(log.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors" title="Hapus"><Trash2 className="w-4 h-4" /></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        )) : (
-                            <tr><td colSpan={4} className="px-6 py-20 text-center text-slate-400 font-bold uppercase tracking-widest opacity-30">Database history is empty</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      )}
-
-      {activeTab === 'master' && (
-          <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row justify-between gap-4">
-                  <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 dark:text-blue-400" />
-                      <input type="text" value={masterSearch} onChange={e => setMasterSearch(e.target.value)} placeholder="Cari Master Data Reject..." className="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/50 rounded-lg pl-9 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 w-full sm:w-80 text-zinc-900 dark:text-zinc-100" />
-                  </div>
-                  <div className="flex gap-2">
-                      <input type="file" accept=".xlsx, .xls" className="hidden" ref={masterImportRef} onChange={handleImportMaster} />
-                      <button onClick={() => handleOpenMasterModal()} className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-all shadow-md"><Plus className="w-4 h-4" /> Tambah Barang Manual</button>
-                      <button onClick={handleDownloadTemplate} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"><Download className="w-3.5 h-3.5" /> Template Excel</button>
-                      <button onClick={() => masterImportRef.current?.click()} className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/50 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"><FileSpreadsheet className="w-3.5 h-3.5" /> Import Reject Master</button>
-                  </div>
-              </div>
-
-              <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 flex-1 overflow-hidden flex flex-col min-h-0">
-                  <div className="overflow-auto flex-1 custom-scrollbar">
-                      <table className="w-full text-left text-sm min-w-[800px]">
-                          <thead className="sticky top-0 bg-slate-50 dark:bg-zinc-800/80 border-b dark:border-zinc-800 z-10 shadow-sm backdrop-blur-sm">
-                              <tr className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
-                                  <th className="px-6 py-4">ID BARANG (SKU)</th>
-                                  <th className="px-6 py-4">NAMA BARANG</th>
-                                  <th className="px-6 py-4">UNIT DASAR</th>
-                                  <th className="px-6 py-4">MULTI-UNIT CONVERSION</th>
-                                  <th className="px-6 py-4 text-right">AKSI</th>
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                              {rejectMasterData.filter(i => i.name.toLowerCase().includes(masterSearch.toLowerCase()) || i.sku.toLowerCase().includes(masterSearch.toLowerCase())).length > 0 ? (
-                                  rejectMasterData.filter(i => i.name.toLowerCase().includes(masterSearch.toLowerCase()) || i.sku.toLowerCase().includes(masterSearch.toLowerCase())).map(item => (
-                                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors">
-                                          <td className="px-6 py-4 font-mono text-[10px] font-bold text-slate-500 dark:text-zinc-400">{item.sku}</td>
-                                          <td className="px-6 py-4 font-bold text-slate-800 dark:text-zinc-100 uppercase text-xs">{item.name}</td>
-                                          <td className="px-6 py-4 text-xs font-medium text-slate-500 dark:text-zinc-400 uppercase">{item.baseUnit}</td>
-                                          <td className="px-6 py-4">
-                                              <div className="flex flex-col gap-1">
-                                                  {item.unit2 && (
-                                                      <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">
-                                                          {item.op2 === 'multiply' ? `1 ${item.unit2} = ${item.ratio2} ${item.baseUnit}` : `1 ${item.baseUnit} = ${item.ratio2} ${item.unit2}`}
-                                                      </span>
-                                                  )}
-                                                  {item.unit3 && (
-                                                      <span className="text-[9px] text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded border dark:border-zinc-700">
-                                                           {item.op3 === 'multiply' ? `1 ${item.unit3} = ${item.ratio3} ${item.baseUnit}` : `1 ${item.baseUnit} = ${item.ratio3} ${item.unit3}`}
-                                                      </span>
-                                                  )}
-                                                  {!item.unit2 && !item.unit3 && <span className="text-[9px] text-slate-300 italic">No alternative units</span>}
-                                              </div>
-                                          </td>
-                                          <td className="px-6 py-4 text-right">
-                                              <div className="flex justify-end gap-1">
-                                                <button onClick={() => handleOpenMasterModal(item)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all" title="Edit Barang"><Edit2 className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDeleteMasterItem(item.id)} className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors" title="Hapus Barang"><Trash2 className="w-4 h-4" /></button>
-                                              </div>
-                                          </td>
-                                      </tr>
-                                  ))
-                              ) : (
-                                  <tr><td colSpan={5} className="px-6 py-20 text-center text-slate-300 dark:text-zinc-600 font-medium">Belum ada Master Data khusus Reject.</td></tr>
-                              )}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* MASTER DATA ADD/EDIT MODAL */}
-      {isMasterModalOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
-           <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="px-8 py-6 border-b dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <Database className="w-6 h-6 text-rose-600" />
-                    <h3 className="font-bold text-slate-800 dark:text-white">{editingMasterItem ? 'Edit Master Reject' : 'Tambah Master Reject Manual'}</h3>
-                  </div>
-                  <button onClick={() => setIsMasterModalOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
-              </div>
-              <form onSubmit={handleSaveMasterItem} className="p-8 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-                  <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-1">
-                          <label className="text-[10px] font-black text-slate-400 block uppercase mb-2">ID Barang / SKU</label>
-                          <input required value={newMasterItem.sku || ''} onChange={e => setNewMasterItem({...newMasterItem, sku: e.target.value})} className="w-full border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-slate-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="SKU-XXXX" />
-                      </div>
-                      <div className="col-span-1">
-                          <label className="text-[10px] font-black text-slate-400 block uppercase mb-2">Unit Dasar (Base)</label>
-                          <input required value={newMasterItem.baseUnit || ''} onChange={e => setNewMasterItem({...newMasterItem, baseUnit: e.target.value})} className="w-full border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-slate-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Pcs / Kg" />
-                      </div>
-                      <div className="col-span-2">
-                          <label className="text-[10px] font-black text-slate-400 block uppercase mb-2">Nama Barang</label>
-                          <input required value={newMasterItem.name || ''} onChange={e => setNewMasterItem({...newMasterItem, name: e.target.value})} className="w-full border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-slate-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: DAGING AYAM" />
-                      </div>
-                  </div>
-
-                  <div className="space-y-4 pt-4 border-t dark:border-zinc-800">
-                      <h4 className="text-xs font-black text-slate-400 uppercase flex items-center gap-2"><Layers className="w-4 h-4" /> Multi-Unit Conversion (Opsional)</h4>
-                      
-                      {/* Unit 2 Config */}
-                      <div className="bg-rose-50/50 dark:bg-rose-900/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30 space-y-3">
-                        <div className="flex gap-3">
+                        <div className="flex gap-4">
                             <div className="flex-1">
-                                <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Unit Level 2</label>
-                                <input value={newMasterItem.unit2 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit2: e.target.value})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: GR / BOX" />
+                                <label className="text-xs font-bold text-slate-400 uppercase">Reason</label>
+                                <input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Expired, Damaged..." />
                             </div>
-                            <div className="w-32">
-                                <label className="text-[10px] font-bold text-rose-600 dark:text-rose-400 block mb-1">Ratio (Angka)</label>
-                                <div className="relative">
-                                    <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-rose-300" />
-                                    <input type="number" value={newMasterItem.ratio2 ?? ''} onChange={e => setNewMasterItem({...newMasterItem, ratio2: e.target.value ? Number(e.target.value) : undefined})} className="w-full border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                                </div>
-                            </div>
+                            <button 
+                                onClick={handleAddItem}
+                                disabled={!selectedItem || !quantityInput}
+                                className="self-end px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
+                            >
+                                <Plus size={18} /> Add
+                            </button>
                         </div>
-                        <div className="flex items-center gap-2 text-xs">
-                             <span className="font-bold text-slate-500">Logika:</span>
-                             <div className="flex gap-2 bg-white dark:bg-zinc-950 p-1 rounded-lg border border-slate-200 dark:border-zinc-700">
-                                 <button 
-                                     type="button" 
-                                     onClick={() => setNewMasterItem({...newMasterItem, op2: 'divide'})} 
-                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op2 !== 'multiply' ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
-                                 >
-                                     Bagi (/)
-                                 </button>
-                                 <button 
-                                     type="button" 
-                                     onClick={() => setNewMasterItem({...newMasterItem, op2: 'multiply'})} 
-                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op2 === 'multiply' ? 'bg-rose-100 text-rose-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
-                                 >
-                                     Kali (X)
-                                 </button>
-                             </div>
-                             <span className="text-[10px] text-slate-400 italic flex-1 text-right">
-                                 {newMasterItem.op2 === 'multiply' 
-                                    ? `(1 ${newMasterItem.unit2 || 'Unit'} = ${newMasterItem.ratio2 || 'X'} ${newMasterItem.baseUnit || 'Base'})` 
-                                    : `(1 ${newMasterItem.baseUnit || 'Base'} = ${newMasterItem.ratio2 || 'X'} ${newMasterItem.unit2 || 'Unit'})`
-                                 }
-                             </span>
-                        </div>
-                      </div>
+                    </div>
 
-                      {/* Unit 3 Config */}
-                      <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 space-y-3">
-                        <div className="flex gap-3">
-                            <div className="flex-1">
-                                <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Unit Level 3</label>
-                                <input value={newMasterItem.unit3 || ''} onChange={e => setNewMasterItem({...newMasterItem, unit3: e.target.value})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" placeholder="Contoh: PCS" />
-                            </div>
-                            <div className="w-32">
-                                <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">Ratio (Angka)</label>
-                                <div className="relative">
-                                    <Scale className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-300" />
-                                    <input type="number" value={newMasterItem.ratio3 ?? ''} onChange={e => setNewMasterItem({...newMasterItem, ratio3: e.target.value ? Number(e.target.value) : undefined})} className="w-full border border-blue-200 dark:border-blue-900/50 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs">
-                             <span className="font-bold text-slate-500">Logika:</span>
-                             <div className="flex gap-2 bg-white dark:bg-zinc-950 p-1 rounded-lg border border-slate-200 dark:border-zinc-700">
-                                 <button 
-                                     type="button" 
-                                     onClick={() => setNewMasterItem({...newMasterItem, op3: 'divide'})} 
-                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op3 !== 'multiply' ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
-                                 >
-                                     Bagi (/)
-                                 </button>
-                                 <button 
-                                     type="button" 
-                                     onClick={() => setNewMasterItem({...newMasterItem, op3: 'multiply'})} 
-                                     className={`px-3 py-1 rounded-md transition-all ${newMasterItem.op3 === 'multiply' ? 'bg-blue-100 text-blue-700 font-bold' : 'text-slate-400 hover:bg-slate-50'}`}
-                                 >
-                                     Kali (X)
-                                 </button>
-                             </div>
-                             <span className="text-[10px] text-slate-400 italic flex-1 text-right">
-                                 {newMasterItem.op3 === 'multiply' 
-                                    ? `(1 ${newMasterItem.unit3 || 'Unit'} = ${newMasterItem.ratio3 || 'X'} ${newMasterItem.baseUnit || 'Base'})` 
-                                    : `(1 ${newMasterItem.baseUnit || 'Base'} = ${newMasterItem.ratio3 || 'X'} ${newMasterItem.unit3 || 'Unit'})`
-                                 }
-                             </span>
-                        </div>
-                      </div>
-                  </div>
-
-                  <div className="pt-6 border-t dark:border-zinc-800 flex justify-end gap-3">
-                      <button type="button" onClick={() => setIsMasterModalOpen(false)} className="px-6 py-3 text-slate-500 dark:text-zinc-400 font-bold hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-all">BATAL</button>
-                      <button type="submit" className="px-10 py-3 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-200 dark:shadow-rose-900/30 hover:bg-rose-700 active:scale-95 transition-all flex items-center gap-2">
-                        <Save className="w-4 h-4" /> {editingMasterItem ? 'UPDATE DATA' : 'SIMPAN MASTER'}
-                      </button>
-                  </div>
-              </form>
-           </div>
-        </div>
-      )}
-
-      {/* EDIT LOG MODAL */}
-      {isEditModalOpen && editingLog && (
-         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="px-6 py-4 border-b bg-slate-50 dark:bg-zinc-800/50 dark:border-zinc-800 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-800 dark:text-white">Edit Reject Log</h3>
-                    <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
+                    {/* Items List */}
+                    <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase">
+                                <tr>
+                                    <th className="p-3">Item</th>
+                                    <th className="p-3 text-center">Qty Input</th>
+                                    <th className="p-3 text-center">Base Qty</th>
+                                    <th className="p-3">Reason</th>
+                                    <th className="p-3 w-10"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
+                                {items.length > 0 ? items.map((item, idx) => (
+                                    <tr key={idx}>
+                                        <td className="p-3">
+                                            <div className="font-bold text-sm text-slate-800 dark:text-white">{item.itemName}</div>
+                                            <div className="text-xs text-slate-400">{item.sku}</div>
+                                        </td>
+                                        <td className="p-3 text-center text-sm dark:text-gray-300">
+                                            {item.quantity} {item.unit}
+                                        </td>
+                                        <td className="p-3 text-center text-sm font-bold text-slate-700 dark:text-gray-200">
+                                            {item.totalBaseQuantity} {item.baseUnit}
+                                        </td>
+                                        <td className="p-3 text-sm text-rose-500 italic">
+                                            {item.reason}
+                                        </td>
+                                        <td className="p-3">
+                                            <button onClick={() => handleRemoveItem(idx)} className="text-slate-400 hover:text-rose-500"><X size={16}/></button>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colSpan={5} className="p-4 text-center text-xs text-slate-400">No items added to this log yet.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 block uppercase mb-1">Tanggal</label>
-                            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full border border-slate-200 dark:border-zinc-700 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 block uppercase mb-1">Catatan</label>
-                            <input value={editNotes} onChange={e => setEditNotes(e.target.value)} className="w-full border border-slate-200 dark:border-zinc-700 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                        </div>
-                     </div>
 
-                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
-                         <h4 className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase mb-3">Tambah Barang ke Log Ini</h4>
-                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                              <div className="md:col-span-5 relative" ref={editSearchRef}>
-                                  <input 
-                                      type="text" 
-                                      value={editSearchQuery} 
-                                      onFocus={() => setIsEditAutocompleteOpen(true)} 
-                                      onChange={(e) => setEditSearchQuery(e.target.value)} 
-                                      placeholder="Cari Barang..." 
-                                      className="w-full px-3 py-2 border border-blue-200 dark:border-blue-900/50 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 bg-blue-50/30 dark:bg-blue-900/10 text-zinc-900 dark:text-zinc-100" 
-                                  />
-                                  {isEditAutocompleteOpen && filteredEditRejectMaster.length > 0 && editSearchQuery && (
-                                      <div className="absolute top-full left-0 right-0 mt-1 bg-indigo-50 dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-lg shadow-xl z-[60] max-h-48 overflow-auto p-2">
-                                          {filteredEditRejectMaster.map(item => (
-                                              <button key={item.id} onClick={() => handleEditSelectItem(item)} className="w-full text-left px-4 py-3 border-b dark:border-zinc-800 last:border-0 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all mb-1">
-                                                  <div className="text-sm font-bold text-slate-800 dark:text-zinc-100">{item.name}</div>
-                                              </button>
-                                          ))}
-                                      </div>
-                                  )}
-                              </div>
-                              <div className="md:col-span-2">
-                                   <select 
-                                      disabled={!editSelectedItem}
-                                      className="w-full px-2 py-2 border dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 disabled:bg-slate-100 dark:disabled:bg-zinc-800"
-                                      value={editSelectedUnit}
-                                      onChange={e => handleEditUnitChange(e.target.value)}
-                                   >
-                                       {editSelectedItem && (
-                                          <>
-                                              <option value={editSelectedItem.baseUnit}>{editSelectedItem.baseUnit}</option>
-                                              {editSelectedItem.unit2 && <option value={editSelectedItem.unit2}>{editSelectedItem.unit2}</option>}
-                                              {editSelectedItem.unit3 && <option value={editSelectedItem.unit3}>{editSelectedItem.unit3}</option>}
-                                          </>
-                                       )}
-                                   </select>
-                              </div>
-                              <div className="md:col-span-2">
-                                   <input type="number" disabled={!editSelectedItem} value={editQuantityInput ?? ''} onChange={e => setEditQuantityInput(e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Qty" className="w-full px-3 py-2 border dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-rose-500 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100" />
-                              </div>
-                              <div className="md:col-span-2">
-                                  <input list="edit-reason-opts" value={editRejectReason} onChange={e => setEditRejectReason(e.target.value)} placeholder="Alasan" className="w-full px-3 py-2 border dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-rose-500" />
-                                  <datalist id="edit-reason-opts">{reasonSuggestions.map(r => <option key={r} value={r} />)}</datalist>
-                              </div>
-                              <div className="md:col-span-1">
-                                  <button onClick={handleAddToEditCart} disabled={!editSelectedItem || !editQuantityInput} className="w-full py-2 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 disabled:bg-slate-200 dark:disabled:bg-zinc-800 transition-all"><Plus className="w-4 h-4 mx-auto" /></button>
-                              </div>
-                         </div>
-                      </div>
-
-                     <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 block uppercase">Daftar Barang</label>
-                        {editCartItems.map((it, idx) => (
-                             <div key={idx} className="flex justify-between items-center text-xs bg-white dark:bg-zinc-950 p-3 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm">
-                                <div className="min-w-0 flex-1">
-                                    <div className="font-bold text-slate-800 dark:text-zinc-100 uppercase truncate">{it.itemName}</div>
-                                    <div className="text-[9px] text-slate-400 mt-0.5">Reason: {it.reason} | Base: {(it.totalBaseQuantity).toFixed(4)} {it.baseUnit}</div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="number" 
-                                        className="w-16 border border-rose-200 dark:border-rose-900 rounded-lg text-center py-1.5 font-bold bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 outline-none focus:ring-2 focus:ring-rose-500" 
-                                        value={it.quantity} 
-                                        onChange={e => {
-                                            const val = Number(e.target.value);
-                                            const updated = [...editCartItems];
-                                            const ratio = it.ratio || 1;
-                                            const op = it.operation || 'divide'; // Use stored op
-                                            const baseQty = calculateBaseQuantity(val, ratio, op);
-                                            updated[idx] = { ...updated[idx], quantity: val, totalBaseQuantity: baseQty };
-                                            setEditCartItems(updated);
-                                        }} 
-                                    />
-                                    <span className="font-bold text-slate-500 dark:text-zinc-500">{it.unit}</span>
-                                    <button onClick={() => setEditCartItems(editCartItems.filter((_, i) => i !== idx))} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-200 ml-2"><Trash2 className="w-3 h-3" /></button>
-                                </div>
-                             </div>
-                        ))}
-                     </div>
-                </div>
-                <div className="p-4 border-t bg-slate-50 dark:bg-zinc-800/50 dark:border-zinc-800 flex justify-end gap-3">
-                    <button onClick={() => setIsEditModalOpen(false)} className="px-5 py-2.5 text-slate-600 dark:text-zinc-400 font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-xl transition-all">Tutup</button>
-                    <button onClick={handleSaveEdit} className="px-5 py-2.5 bg-rose-600 text-white font-bold hover:bg-rose-700 rounded-xl transition-all shadow-lg shadow-rose-200 dark:shadow-rose-900/20 flex items-center gap-2"><Save className="w-4 h-4" /> Simpan Perubahan</button>
+                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Cancel</button>
+                    <button onClick={handleSave} disabled={items.length === 0} className="px-8 py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-lg disabled:opacity-50">Save Log</button>
                 </div>
             </div>
-         </div>
-      )}
-    </div>
-  );
+        </div>
+    );
 };
