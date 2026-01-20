@@ -340,6 +340,7 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
         let result = 0;
         if (op === 'multiply') result = qty * ratio;
         else result = qty / ratio;
+        // Fix: Round to 1 decimal place (e.g. 0.1, 0.3)
         return parseFloat(result.toFixed(1));
     };
 
