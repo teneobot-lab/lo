@@ -11,6 +11,12 @@ export const geminiService = {
     recentTransactions: Transaction[]
   ): Promise<string> => {
     
+    // VALIDATION: Check for empty key from env injection
+    const key = process.env.API_KEY;
+    if (!key || key.trim() === '') {
+        return "⚠️ API Key Missing.\n\nPlease configure the 'API_KEY' in your Vercel Project Settings (Environment Variables) or use a local .env file.";
+    }
+
     // OPTIMIZATION: Compact the data to save tokens and speed up processing.
     // We only send essential fields.
     const inventorySummary = inventory.map(i => 
@@ -60,6 +66,12 @@ export const geminiService = {
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
+    // VALIDATION Check
+    const key = process.env.API_KEY;
+    if (!key || key.trim() === '') {
+        return "⚠️ API Key Missing. Check Vercel Env Vars.";
+    }
+
     // Optimized prompt for speed
     const dataContext = JSON.stringify(inventory.map(i => ({ n: i.name, s: i.stock, m: i.minLevel, p: i.price })));
     

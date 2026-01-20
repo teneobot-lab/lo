@@ -8,13 +8,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Shim process.env for browser compatibility
+      // Browser Shim Configuration
+      // Note: API_KEY is now handled via Environment Variables (Vercel / .env)
       window.process = {
         env: {
-          NODE_ENV: 'development',
-          // Use a placeholder to prevent SDK constructor from throwing "API Key required" error on startup.
-          // The actual key will be needed only when making calls.
-          API_KEY: 'AIzaSyD3S-VEOrdEguVOu1hiAyinswP_eOkNdoY' 
+          NODE_ENV: 'development'
         }
       };
 
