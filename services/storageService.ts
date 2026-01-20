@@ -2,14 +2,23 @@ import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
-const DEFAULT_API_URL = 'http://178.128.106.33:5000/api';
+// Use relative path '/api' so requests go through Vercel/Vite Proxy.
+// This solves Mixed Content (HTTPS -> HTTP) issues.
+const DEFAULT_API_URL = '/api';
 
 const getApiUrl = () => {
     const stored = localStorage.getItem('nexus_api_url');
+    
+    // Auto-fix: If user has stored the problematic HTTP IP, clear it to force the new Proxy URL
+    if (stored && stored.includes('178.128.106.33')) {
+        localStorage.removeItem('nexus_api_url');
+        return DEFAULT_API_URL;
+    }
+
     // Allow strict local mode if user saves "local" in Admin panel
     if (stored === 'local') return '';
     
-    // Default to the VPS IP if no setting is found
+    // Default to relative proxy path
     return stored || DEFAULT_API_URL;
 };
 
@@ -20,15 +29,14 @@ const isApiMode = () => {
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
     // Helper to ensure we don't double slash if baseUrl has trailing slash
-    const url = baseUrl.endsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
+    let url = baseUrl.endsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
     
-    // Safety fix: If the constructed URL has double //api/api issues
-    // (This handles cases where users might type /api manually or defaults overlap)
-    const finalUrl = url.replace('//api', '/api');
+    // Safety cleanup for double prefixes if they occur
+    url = url.replace('//api', '/api');
 
     try {
         const headers: any = { 'Content-Type': 'application/json' };
-        const res = await fetch(finalUrl, {
+        const res = await fetch(url, {
             method,
             headers,
             body: body ? JSON.stringify(body) : undefined
