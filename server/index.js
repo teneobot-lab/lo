@@ -243,5 +243,5 @@ app.delete('/api/reject_logs/:id', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 NEXUS API IS LIVE: http://89.21.85.28:${PORT}`);
+    console.log(`🚀 NEXUS API IS LIVE: http://165.245.187.238:${PORT}`);
 });

@@ -92,7 +92,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                  <button onClick={handleSaveConfig} className="bg-primary text-white p-3 rounded-lg hover:bg-blue-600 transition-all shadow-md"><Save size={18}/></button>
                              </div>
                              <p className="text-[10px] text-muted dark:text-gray-500 mt-2">
-                                💡 Gunakan <code>/api</code> agar Vercel meneruskan data ke VPS <code>89.21.85.28</code> secara aman.
+                                💡 Gunakan <code>/api</code> agar Vercel meneruskan data ke VPS <code>165.245.187.238</code> secara aman.
                              </p>
                          </div>
                          
