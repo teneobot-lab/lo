@@ -1,5 +1,4 @@
 
-import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
@@ -8,62 +7,76 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function setupDatabase() {
-  console.log('\n' + '='.repeat(50));
-  console.log('🔥 NEXUS WMS - TOTAL DATABASE RESET & SETUP');
-  console.log('='.repeat(50));
+// Load .env manual to ensure variables are available
+const loadEnv = () => {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf8');
+    content.split('\n').forEach(line => {
+      const [key, ...val] = line.split('=');
+      if (key && val.length > 0) process.env[key.trim()] = val.join('=').trim();
+    });
+  }
+};
+loadEnv();
 
-  const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
+async function init() {
+  console.log('\n' + '═'.repeat(60));
+  console.log(' 💎 NEXUS WMS - TOTAL SYSTEM RESET');
+  console.log('═'.repeat(60));
+
+  const config = {
+    host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     multipleStatements: true
   };
-
   const dbName = process.env.DB_NAME || 'nexus_wms';
-  let connection;
 
+  let conn;
   try {
-    console.log(`📡 Menghubungkan ke MySQL (${dbConfig.host})...`);
-    connection = await mysql.createConnection(dbConfig);
-    console.log('✅ Terhubung.');
+    console.log(`📡 Menghubungkan ke MySQL (${config.host}) sebagai [${config.user}]...`);
+    conn = await mysql.createConnection(config);
+    console.log('✅ Koneksi Server Terbuka.');
 
-    console.log(`⚠️  MENGHAPUS DATABASE LAMA "${dbName}" (Wiping all data)...`);
-    await connection.query(`DROP DATABASE IF EXISTS ${dbName};`);
-    console.log('✅ Database lama berhasil dihapus.');
-
-    console.log(`🛠️  Membuat Database baru "${dbName}"...`);
-    await connection.query(`CREATE DATABASE ${dbName};`);
-    await connection.query(`USE ${dbName};`);
-    console.log('✅ Database baru siap.');
+    console.log(`🗑️  Menghapus Database "${dbName}"...`);
+    await conn.query(`DROP DATABASE IF EXISTS ${dbName};`);
+    
+    console.log(`🏗️  Membangun Database Baru "${dbName}"...`);
+    await conn.query(`CREATE DATABASE ${dbName};`);
+    await conn.query(`USE ${dbName};`);
+    console.log('✅ Database Berhasil Dibuat.');
 
     const schemaPath = path.join(__dirname, 'schema.sql');
-    if (!fs.existsSync(schemaPath)) {
-        throw new Error(`File schema.sql tidak ditemukan!`);
+    if (fs.existsSync(schemaPath)) {
+      console.log('⚡ Mengimpor Skema Tabel (schema.sql)...');
+      const sql = fs.readFileSync(schemaPath, 'utf8');
+      await conn.query(sql);
+      console.log('✅ Semua Tabel & Data Awal Berhasil Diimpor.');
+    } else {
+      console.warn('⚠️  Peringatan: File schema.sql tidak ditemukan!');
     }
-    
-    console.log('⚡ Menjalankan skema tabel (schema.sql)...');
-    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-    await connection.query(schemaSql);
-    
-    console.log('✅ Tabel Items, Transactions, Users, & Reject Logs dibuat.');
-    console.log('✅ User default (admin & staff) ditambahkan (Password: 12345).');
-    
-    console.log('\n✨ RESET & SETUP SELESAI!');
-    console.log('==========================================');
-    console.log(`🚀 Jalankan server: pm2 restart index`);
-    console.log('='.repeat(50) + '\n');
+
+    console.log('\n✨ RESET SELESAI! SISTEM SEKARANG BERSIH.');
+    console.log('═'.repeat(60));
+    console.log('👉 Perintah selanjutnya: pm2 restart all');
+    console.log('═'.repeat(60) + '\n');
 
   } catch (err) {
-    console.error('\n❌ RESET GAGAL!');
-    console.error(`Error: ${err.message}`);
-  } finally {
-    if (connection) {
-        await connection.end();
-        console.log('🔌 Koneksi ditutup.');
+    console.error('\n❌ GAGAL TOTAL!');
+    console.error(`Pesan Error: ${err.message}`);
+    
+    if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+      console.log('\n💡 SOLUSI ERROR 1410 / ACCESS DENIED:');
+      console.log('1. Jalankan: sudo mysql');
+      console.log(`2. Ketik: GRANT ALL PRIVILEGES ON *.* TO '${config.user}'@'${config.host}' WITH GRANT OPTION;`);
+      console.log('3. Ketik: FLUSH PRIVILEGES;');
+      console.log('4. Lalu jalankan script ini lagi.\n');
     }
+  } finally {
+    if (conn) await conn.end();
     process.exit(0);
   }
 }
 
-setupDatabase();
+init();
