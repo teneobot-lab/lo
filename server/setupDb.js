@@ -9,42 +9,60 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function setupDatabase() {
-  console.log('\n--- 🚀 Nexus WMS Database Setup (ESM) ---');
+  console.log('\n==========================================');
+  console.log('🚀 NEXUS WMS - DATABASE AUTO SETUP');
+  console.log('==========================================');
 
   const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    multipleStatements: true
+    multipleStatements: true // Penting untuk menjalankan banyak SQL sekaligus
   };
 
   let connection;
 
   try {
-    console.log(`📡 Connecting to MySQL at ${dbConfig.host}...`);
+    console.log(`📡 Mencoba koneksi ke MySQL di: ${dbConfig.host}...`);
     connection = await mysql.createConnection(dbConfig);
-    console.log('✅ Connection established.');
+    console.log('✅ Koneksi MySQL Berhasil.');
 
     const dbName = process.env.DB_NAME || 'nexus_wms';
-    console.log(`🛠️ Ensuring database "${dbName}" exists...`);
+    console.log(`🛠️  Memastikan Database "${dbName}" tersedia...`);
     await connection.query(`CREATE DATABASE IF NOT EXISTS ${dbName};`);
     await connection.query(`USE ${dbName};`);
+    console.log(`✅ Database "${dbName}" siap digunakan.`);
 
     const schemaPath = path.join(__dirname, 'schema.sql');
     if (!fs.existsSync(schemaPath)) {
-        throw new Error(`schema.sql not found at ${schemaPath}`);
+        throw new Error(`File schema.sql tidak ditemukan di: ${schemaPath}`);
     }
+    
+    console.log('⚡ Membaca dan menjalankan schema.sql...');
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
     
-    console.log('⚡ Running schema.sql...');
+    // Menjalankan seluruh script schema.sql
     await connection.query(schemaSql);
     
-    console.log('\n✨ DATABASE SETUP SUCCESSFUL!');
+    console.log('✅ Semua tabel (users, items, transactions, reject) berhasil dibuat.');
+    console.log('✅ Data awal Admin & Staff berhasil dimasukkan.');
+    
+    console.log('\n✨ SETUP DATABASE SELESAI DENGAN SUKSES!');
+    console.log('💡 Silakan jalankan "pm2 restart index" untuk mulai menggunakan.');
+    console.log('==========================================\n');
+
   } catch (err) {
-    console.error('\n❌ Setup Failed!');
-    console.error(`Error: ${err.message}`);
+    console.error('\n❌ SETUP GAGAL!');
+    console.error(`Pesan Error: ${err.message}`);
+    
+    if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+        console.error('💡 Tip: Periksa password MySQL di file .env server!');
+    }
   } finally {
-    if (connection) await connection.end();
+    if (connection) {
+        await connection.end();
+        console.log('🔌 Koneksi ditutup.');
+    }
     process.exit(0);
   }
 }
