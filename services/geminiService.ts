@@ -1,9 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
 
-// In a real app, this comes from process.env.API_KEY.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const geminiService = {
   askAssistant: async (
     prompt: string, 
@@ -16,6 +13,9 @@ export const geminiService = {
     if (!key || key.trim() === '') {
         return "⚠️ API Key Missing.\n\nPlease configure the 'API_KEY' in your Vercel Project Settings (Environment Variables) or use a local .env file.";
     }
+
+    // Create a new instance right before making an API call to ensure current key is used
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     // OPTIMIZATION: Compact the data to save tokens and speed up processing.
     // We only send essential fields.
@@ -47,9 +47,9 @@ export const geminiService = {
     `;
 
     try {
-      // Use gemini-2.5-flash-latest for maximum speed on general tasks
+      // Using 'gemini-3-pro-preview' for complex text and reasoning tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-latest', 
+        model: 'gemini-3-pro-preview', 
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
@@ -58,6 +58,7 @@ export const geminiService = {
           temperature: 0.7, // Balance between creativity and accuracy
         }
       });
+      // ACCESS the .text property directly (not a method)
       return response.text || "I couldn't generate a response.";
     } catch (error) {
       console.error("Gemini Error:", error);
@@ -72,6 +73,9 @@ export const geminiService = {
         return "⚠️ API Key Missing. Check Vercel Env Vars.";
     }
 
+    // Create a new instance right before making an API call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     // Optimized prompt for speed
     const dataContext = JSON.stringify(inventory.map(i => ({ n: i.name, s: i.stock, m: i.minLevel, p: i.price })));
     
@@ -85,13 +89,15 @@ export const geminiService = {
     `;
 
     try {
+      // Using 'gemini-3-flash-preview' for basic summarization tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-latest',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
             thinkingConfig: { thinkingBudget: 0 }
         }
       });
+      // ACCESS the .text property directly
       return response.text || "No insights available.";
     } catch (error) {
       return "Unable to generate insights.";

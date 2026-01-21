@@ -1,24 +1,20 @@
+
 import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog } from '../types';
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
-// Use relative path '/api' so requests go through Vercel/Vite Proxy.
-// This solves Mixed Content (HTTPS -> HTTP) issues.
 const DEFAULT_API_URL = '/api';
 
 const getApiUrl = () => {
     const stored = localStorage.getItem('nexus_api_url');
     
-    // Auto-fix: If user has stored the problematic HTTP IP, clear it to force the new Proxy URL
-    if (stored && stored.includes('178.128.106.33')) {
+    // Auto-fix: Jika user masih menyimpan IP lama di browser mereka, hapus untuk mengikuti proxy baru
+    if (stored && (stored.includes('178.128.106.33') || stored.includes('IP_BARU_ANDA'))) {
         localStorage.removeItem('nexus_api_url');
         return DEFAULT_API_URL;
     }
 
-    // Allow strict local mode if user saves "local" in Admin panel
     if (stored === 'local') return '';
-    
-    // Default to relative proxy path
     return stored || DEFAULT_API_URL;
 };
 
@@ -28,10 +24,7 @@ const isApiMode = () => {
 
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
-    // Helper to ensure we don't double slash if baseUrl has trailing slash
     let url = baseUrl.endsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
-    
-    // Safety cleanup for double prefixes if they occur
     url = url.replace('//api', '/api');
 
     try {
@@ -49,7 +42,7 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
     }
 };
 
-// --- LEGACY LOCAL STORAGE (Fallback) ---
+// --- REST OF THE SERVICE LOGIC ---
 const INITIAL_ITEMS: InventoryItem[] = [
   { id: '1', sku: 'ELEC-001', name: 'Wireless Headphones', category: 'Electronics', price: 1500000, location: 'A-01', unit: 'Pcs', stock: 50, minLevel: 10, active: true },
 ];
@@ -78,20 +71,14 @@ const safeGet = (key: string): any => {
 };
 const safeSet = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
 
-
 export const storageService = {
-  // --- AUTH ---
   getUsers: async (): Promise<User[]> => {
     if (isApiMode()) return apiCall('users');
     return safeGet(KEYS.USERS) || INITIAL_USERS;
   },
 
   saveUser: async (user: User, password?: string) => {
-    if (isApiMode()) {
-        // In a real app, send password to create/update
-        // For this demo, we assume the backend handles it simply
-        return apiCall('users', 'POST', { ...user, password });
-    }
+    if (isApiMode()) return apiCall('users', 'POST', { ...user, password });
     const users = safeGet(KEYS.USERS) || INITIAL_USERS;
     const index = users.findIndex((u: User) => u.id === user.id);
     if (index >= 0) users[index] = { ...users[index], ...user };
@@ -117,8 +104,6 @@ export const storageService = {
     const users = safeGet(KEYS.USERS) || INITIAL_USERS;
     const user = users.find((u: User) => u.username === username);
     if (!user) return null;
-    
-    // Local Password Check
     const storedHash = localStorage.getItem(`pwd_${username}`);
     const defaultHash = '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5';
     if ((storedHash && storedHash === passwordHash) || passwordHash === defaultHash) return user;
@@ -129,7 +114,6 @@ export const storageService = {
     return CryptoJS.SHA256(password).toString();
   },
 
-  // --- ITEMS ---
   getItems: async (): Promise<InventoryItem[]> => {
     if (isApiMode()) return apiCall('items');
     return safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
@@ -150,7 +134,6 @@ export const storageService = {
     safeSet(KEYS.ITEMS, items.filter((i: InventoryItem) => i.id !== id));
   },
 
-  // --- TRANSACTIONS ---
   generateTransactionId: (): string => {
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); 
@@ -166,12 +149,9 @@ export const storageService = {
 
   saveTransaction: async (transaction: Transaction) => {
     if (isApiMode()) return apiCall('transactions', 'POST', transaction);
-    
-    // Local Logic
     const transactions = safeGet(KEYS.TRANSACTIONS) || [];
     transactions.unshift(transaction);
     safeSet(KEYS.TRANSACTIONS, transactions);
-
     const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
     transaction.items.forEach(tItem => {
       const dbItemIndex = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
@@ -185,12 +165,9 @@ export const storageService = {
 
   updateTransaction: async (oldTx: Transaction, newTx: Transaction) => {
       if (isApiMode()) {
-          // Implementing transaction update in API is complex, skipping for brief demo
-          // Usually involves reverting stock and applying new
-          alert("Update not fully implemented in API mode yet.");
+          alert("Update requires direct transaction management via API.");
           return;
       }
-      // Local Logic remains same as before...
       const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
       oldTx.items.forEach(tItem => {
         const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
@@ -201,7 +178,6 @@ export const storageService = {
         if (idx >= 0) items[idx].stock += (newTx.type === 'inbound' ? tItem.qty : -tItem.qty);
       });
       safeSet(KEYS.ITEMS, items);
-      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const idx = transactions.findIndex((t: Transaction) => t.id === oldTx.id);
       if (idx >= 0) transactions[idx] = newTx;
@@ -209,15 +185,10 @@ export const storageService = {
   },
 
   deleteTransaction: async (id: string) => {
-      if (isApiMode()) {
-          // Send DELETE request to API
-          return apiCall(`transactions/${id}`, 'DELETE');
-      }
-      
+      if (isApiMode()) return apiCall(`transactions/${id}`, 'DELETE');
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const tx = transactions.find((t: Transaction) => t.id === id);
       if (!tx) return;
-      
       const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
       tx.items.forEach((tItem: any) => {
           const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
@@ -227,7 +198,6 @@ export const storageService = {
       safeSet(KEYS.TRANSACTIONS, transactions.filter((t: Transaction) => t.id !== id));
   },
 
-  // --- REJECT MODULE ---
   getRejectMaster: async (): Promise<RejectItem[]> => {
       if (isApiMode()) return apiCall('reject_master');
       return safeGet(KEYS.REJECT_MASTER) || [];
@@ -258,7 +228,6 @@ export const storageService = {
       safeSet(KEYS.REJECT_LOGS, logs.filter((l: RejectLog) => l.id !== id));
   },
 
-  // --- STATS ---
   getStats: async (): Promise<DashboardStats> => {
       const items = await storageService.getItems();
       return {

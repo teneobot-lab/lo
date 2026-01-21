@@ -10,11 +10,17 @@ interface State {
   error: Error | null;
 }
 
+// Extend from Component directly to ensure generic parameters are correctly mapped and props are available.
 export class ErrorBoundary extends Component<Props, State> {
+  // Define initial state for the error boundary.
   public state: State = {
     hasError: false,
     error: null,
   };
+
+  constructor(props: Props) {
+    super(props);
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -25,6 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
+    // Check for errors in state.
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
@@ -51,6 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
+    // Return the children props when no error is caught.
     return this.props.children;
   }
 }
