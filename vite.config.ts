@@ -10,8 +10,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          // GANTI 'IP_BARU_ANDA' dengan IP VPS baru Anda
-          target: 'http://IP_BARU_ANDA:5000',
+          target: 'http://89.21.85.28:5000',
           changeOrigin: true,
           secure: false,
         }

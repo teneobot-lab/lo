@@ -17,8 +17,8 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     const [inputMediaUrl, setInputMediaUrl] = useState(currentMediaUrl || '');
 
-    // GANTI 'IP_BARU_ANDA' dengan IP VPS baru Anda
-    const DEFAULT_VPS = 'http://IP_BARU_ANDA:5000/api';
+    // Updated with the new VPS IP
+    const DEFAULT_VPS = 'http://89.21.85.28:5000/api';
 
     useEffect(() => {
         refreshUsers();
@@ -100,7 +100,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                          <div>
                              <label className="block text-xs font-bold text-muted dark:text-gray-400 uppercase mb-1">Backend API URL</label>
                              <div className="flex gap-2">
-                                 <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="e.g. http://IP_BARU_ANDA:5000/api" className="flex-1 p-3 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none" />
+                                 <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="e.g. http://89.21.85.28:5000/api" className="flex-1 p-3 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none" />
                                  <button onClick={handleSaveConfig} className="bg-primary text-white p-3 rounded-lg hover:bg-blue-600"><Save size={18}/></button>
                              </div>
                              <p className="text-[10px] text-muted dark:text-gray-500 mt-2">* Default VPS: <code>{DEFAULT_VPS}</code></p>

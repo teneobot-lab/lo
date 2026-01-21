@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://IP_BARU_ANDA:5000/api/:path*"
+      "destination": "http://89.21.85.28:5000/api/:path*"
     }
   ]
 }

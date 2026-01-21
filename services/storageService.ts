@@ -8,7 +8,7 @@ const DEFAULT_API_URL = '/api';
 const getApiUrl = () => {
     const stored = localStorage.getItem('nexus_api_url');
     
-    // Auto-fix: Jika user masih menyimpan IP lama di browser mereka, hapus untuk mengikuti proxy baru
+    // Auto-fix: Clear old IPs or placeholders to ensure the new default takes effect
     if (stored && (stored.includes('178.128.106.33') || stored.includes('IP_BARU_ANDA'))) {
         localStorage.removeItem('nexus_api_url');
         return DEFAULT_API_URL;
