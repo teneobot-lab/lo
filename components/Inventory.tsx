@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2, CheckSquare, Square } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
@@ -20,9 +20,13 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
-  // State untuk Progress Import
+  // State untuk Progress Import & Delete
   const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [actionProgress, setActionProgress] = useState({ current: 0, total: 0 });
+
+  // State untuk Multi-Select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const categories = useMemo(() => {
     const cats = new Set(items.map(i => i.category));
@@ -46,6 +50,22 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     });
   }, [items, searchTerm, categoryFilter, statusFilter]);
 
+  // Handlers for selection
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map(i => i.id)));
+    }
+  };
+
+  const toggleSelectItem = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
   const handleDelete = async (id: string) => {
     try {
       if (window.confirm('Hapus item ini dari inventaris?')) {
@@ -55,6 +75,32 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       }
     } catch (e) {
       notify("Gagal menghapus item", 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Hapus massal ${selectedIds.size} item terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+
+    setIsDeleting(true);
+    const idsArray = Array.from(selectedIds);
+    setActionProgress({ current: 0, total: idsArray.length });
+
+    try {
+      const chunkSize = 5;
+      for (let i = 0; i < idsArray.length; i += chunkSize) {
+        const chunk = idsArray.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(id => storageService.deleteItem(id)));
+        setActionProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, idsArray.length) }));
+      }
+      
+      setSelectedIds(new Set());
+      notify(`${idsArray.length} item berhasil dihapus secara massal.`, 'success');
+      onRefresh();
+    } catch (e) {
+      notify("Terjadi kesalahan saat penghapusan massal.", 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -90,7 +136,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        // Membaca seluruh baris tanpa batas
         const data = XLSX.utils.sheet_to_json(ws) as any[];
         const validRows = data.filter(row => row.SKU || row.sku);
         
@@ -100,9 +145,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         }
 
         setIsImporting(true);
-        setImportProgress({ current: 0, total: validRows.length });
+        setActionProgress({ current: 0, total: validRows.length });
 
-        // Helper untuk parse angka yang bandel
         const parseNum = (val: any, fallback: number = 0) => {
             if (val === undefined || val === null || val === '') return fallback;
             const str = String(val).trim();
@@ -111,7 +155,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             return isNaN(n) ? fallback : n;
         };
 
-        // Chunking Strategy: Proses 5 item sekaligus (Parallel)
         const chunkSize = 5;
         for (let i = 0; i < validRows.length; i += chunkSize) {
             const chunk = validRows.slice(i, i + chunkSize);
@@ -142,7 +185,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                 return storageService.saveItem(newItem);
             }));
 
-            setImportProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
+            setActionProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
         }
 
         notify(`${validRows.length} item berhasil di-import/update.`, 'success');
@@ -166,28 +209,28 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   return (
     <div className="space-y-6">
-      {/* Overlay Loading Import */}
-      {isImporting && (
+      {/* Overlay Loading Action (Import / Delete) */}
+      {(isImporting || isDeleting) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md">
               <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20">
                   <div className="relative">
-                      <Loader2 size={48} className="animate-spin text-indigo-600" />
+                      <Loader2 size={48} className={`animate-spin ${isDeleting ? 'text-rose-500' : 'text-indigo-600'}`} />
                       <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-indigo-600">
-                              {Math.round((importProgress.current / importProgress.total) * 100)}%
+                          <span className={`text-[10px] font-bold ${isDeleting ? 'text-rose-500' : 'text-indigo-600'}`}>
+                              {Math.round((actionProgress.current / actionProgress.total) * 100)}%
                           </span>
                       </div>
                   </div>
                   <div className="text-center space-y-2">
-                      <h4 className="font-bold text-slate-800 dark:text-white">Sedang Import Data...</h4>
+                      <h4 className="font-bold text-slate-800 dark:text-white">{isDeleting ? 'Menghapus Data...' : 'Sedang Import Data...'}</h4>
                       <p className="text-xs text-slate-500 dark:text-gray-400">
-                          Memproses {importProgress.current} dari {importProgress.total} item. <br/> Mohon tidak menutup halaman ini.
+                          Memproses {actionProgress.current} dari {actionProgress.total} item. <br/> Mohon tidak menutup halaman ini.
                       </p>
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
                       <div 
-                        className="bg-indigo-600 h-full transition-all duration-300" 
-                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                        className={`h-full transition-all duration-300 ${isDeleting ? 'bg-rose-500' : 'bg-indigo-600'}`} 
+                        style={{ width: `${(actionProgress.current / actionProgress.total) * 100}%` }}
                       ></div>
                   </div>
               </div>
@@ -221,15 +264,26 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
         {role !== 'viewer' && (
           <div className="flex items-center gap-3 w-full xl:w-auto">
-             <button onClick={downloadTemplate} className="text-slate-400 hover:text-ice-600 transition-colors p-2" title="Download Template">
-                 <Download size={20} />
-             </button>
-             <div className="relative">
-                <input type="file" accept=".csv, .xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
-                <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-300 border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold transition-colors text-sm whitespace-nowrap">
-                    <FileSpreadsheet size={18} /> Bulk Import
+            {selectedIds.size > 0 ? (
+               <button 
+                 onClick={handleBulkDelete}
+                 className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-800 px-4 py-2.5 rounded-xl font-bold transition-all text-sm animate-in zoom-in"
+               >
+                 <Trash2 size={18} /> Hapus ({selectedIds.size})
+               </button>
+            ) : (
+              <>
+                <button onClick={downloadTemplate} className="text-slate-400 hover:text-ice-600 transition-colors p-2" title="Download Template">
+                    <Download size={20} />
                 </button>
-             </div>
+                <div className="relative">
+                    <input type="file" accept=".csv, .xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
+                    <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-300 border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold transition-colors text-sm whitespace-nowrap">
+                        <FileSpreadsheet size={18} /> Bulk Import
+                    </button>
+                </div>
+              </>
+            )}
             <button 
               onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
               className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg transition-colors text-sm whitespace-nowrap"
@@ -246,6 +300,13 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
           <table className="w-full text-left relative border-collapse">
             <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 dark:text-gray-400 uppercase sticky top-0 z-10">
               <tr>
+                {role !== 'viewer' && (
+                  <th className="p-5 w-10">
+                    <button onClick={toggleSelectAll} className="text-slate-400 hover:text-ice-600 transition-colors">
+                      {selectedIds.size === filteredItems.length && filteredItems.length > 0 ? <CheckSquare size={20} className="text-indigo-600" /> : <Square size={20} />}
+                    </button>
+                  </th>
+                )}
                 <th className="p-5">SKU / Nama</th>
                 <th className="p-5">Lokasi</th>
                 <th className="p-5">Harga</th>
@@ -256,7 +317,14 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             </thead>
             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
               {filteredItems.map(item => (
-                <tr key={item.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors">
+                <tr key={item.id} className={`hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.has(item.id) ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
+                  {role !== 'viewer' && (
+                    <td className="p-5">
+                      <button onClick={() => toggleSelectItem(item.id)} className="text-slate-400 hover:text-ice-600 transition-colors">
+                        {selectedIds.has(item.id) ? <CheckSquare size={20} className="text-indigo-600" /> : <Square size={20} />}
+                      </button>
+                    </td>
+                  )}
                   <td className="p-5">
                     <div className="flex flex-col">
                       <span className="font-bold text-slate-800 dark:text-white">{item.name}</span>
@@ -308,6 +376,11 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                   )}
                 </tr>
               ))}
+              {filteredItems.length === 0 && (
+                <tr>
+                  <td colSpan={role !== 'viewer' ? 7 : 5} className="p-10 text-center text-slate-400">Barang tidak ditemukan.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
