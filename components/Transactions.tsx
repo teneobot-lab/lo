@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
 import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon } from 'lucide-react';
@@ -55,8 +55,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     )
   );
 
+  // Helper untuk mendapatkan rasio konversi berdasarkan UOM yang dipilih
   const getConversionFactor = (item: InventoryItem, uom: string) => {
-      if (uom === item.unit) return 1;
+      if (!item || uom === item.unit) return 1;
       if (item.unit2 && uom === item.unit2 && item.ratio2) {
           return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;
       }
@@ -85,16 +86,18 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       return;
     }
     
-    const unitPricePerUOM = selectedItemData.price * conversionRatio;
+    // Simpan Base Price agar perhitungan total tetap konsisten di DB
+    const basePrice = selectedItemData.price;
+    const totalRow = parseFloat((actualQtyToDeduct * basePrice).toFixed(2));
     
     setCart([...cart, {
       itemId: selectedItemData.id,
       sku: selectedItemData.sku,
       name: selectedItemData.name,
-      qty: isNaN(actualQtyToDeduct) ? 0 : actualQtyToDeduct,
+      qty: actualQtyToDeduct, // Disimpan dalam Base Unit (Pcs/Btl) agar stok otomatis
       uom: selectedUOM,
-      unitPrice: isNaN(unitPricePerUOM) ? 0 : unitPricePerUOM,
-      total: isNaN(qty * unitPricePerUOM) ? 0 : (qty * unitPricePerUOM)
+      unitPrice: basePrice,
+      total: totalRow
     }]);
 
     setQty('');
@@ -110,11 +113,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   };
 
   const downloadTransactionTemplate = () => {
-      // Header yang sinkron dengan sistem import
       const header = ["SKU", "Nama Barang", "QTY", "Unit"];
       const data = [
-          ["BRW-001", "Contoh Barang A", 10, "Pcs"],
-          ["BRW-002", "Contoh Barang B", 5, "Box"]
+          ["BRW-001", "Contoh Barang A", 1, "DUS"],
+          ["BRW-002", "Contoh Barang B", 10, "Pcs"]
       ];
       const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
@@ -138,119 +140,62 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const ws = wb.Sheets[wsname];
         
         const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-
-        if (rawRows.length === 0) {
-            notify("File Excel kosong!", "warning");
-            return;
-        }
+        if (rawRows.length === 0) return;
 
         setIsImporting(true);
-
         const keywords = {
-            sku: ['sku', 'kode', 'part', 'pn', 'kd', 'no'],
-            name: ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan'],
-            qty: ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'pcs', 'jml'],
-            unit: ['unit', 'satuan', 'uom', 'sat', 'pack']
+            sku: ['sku', 'kode', 'kd'],
+            name: ['nama', 'name', 'item'],
+            qty: ['qty', 'jumlah', 'quantity'],
+            unit: ['unit', 'satuan', 'uom']
         };
 
-        let headerIdx = -1;
+        let headerIdx = 0;
         let mapping = { sku: 0, name: 1, qty: 2, unit: 3 }; 
 
-        // Scan header lebih agresif
-        for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
-            const row = rawRows[i].map(c => String(c).toLowerCase().trim());
-            const hasSku = row.some(c => keywords.sku.some(k => c.includes(k)));
-            const hasQty = row.some(c => keywords.qty.some(k => c.includes(k)));
-            
-            if (hasSku || hasQty) {
+        for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+            const row = rawRows[i].map(c => String(c).toLowerCase());
+            if (row.some(c => keywords.sku.some(k => c.includes(k))) || row.some(c => keywords.qty.some(k => c.includes(k)))) {
                 headerIdx = i;
-                const skuCol = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
-                const nameCol = row.findIndex(c => keywords.name.some(k => c.includes(k)));
-                const qtyCol = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
-                const unitCol = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
-                
-                if (skuCol !== -1) mapping.sku = skuCol;
-                if (nameCol !== -1) mapping.name = nameCol;
-                if (qtyCol !== -1) mapping.qty = qtyCol;
-                if (unitCol !== -1) mapping.unit = unitCol;
+                mapping.sku = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
+                mapping.name = row.findIndex(c => keywords.name.some(k => c.includes(k)));
+                mapping.qty = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
+                mapping.unit = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
                 break;
             }
         }
 
-        const dataStartIdx = headerIdx + 1;
         const newItemsInCart: TransactionItem[] = [];
-        let createdCount = 0;
-        
         const currentItems = await storageService.getItems();
-        const sessionItems: InventoryItem[] = [...currentItems];
 
-        for (let i = dataStartIdx; i < rawRows.length; i++) {
+        for (let i = headerIdx + 1; i < rawRows.length; i++) {
             const row = rawRows[i];
-            if (!row || row.length === 0) continue;
-
             const sku = String(row[mapping.sku] || '').trim().toUpperCase();
-            if (!sku || sku === "SKU") continue; // Lewati header yang mungkin terbaca lagi
+            if (!sku) continue;
 
-            let rawQtyVal = row[mapping.qty];
-            // Bersihkan format angka jika ada (misal: "1.000" jadi 1000)
-            if (typeof rawQtyVal === 'string') {
-                rawQtyVal = rawQtyVal.replace(/[^0-9.-]+/g, "");
-            }
-            const qty = Number(rawQtyVal);
-            
-            const name = String(row[mapping.name] || sku).trim();
-            const unit = String(row[mapping.unit] || 'Pcs').trim();
+            const qtyVal = Number(String(row[mapping.qty] || '0').replace(/[^0-9.-]+/g, ""));
+            const unit = String(row[mapping.unit] || '').trim();
 
-            if (isNaN(qty)) continue;
-
-            let inventoryItem = sessionItems.find(item => item.sku.toUpperCase() === sku);
-
-            if (!inventoryItem) {
-                const newId = crypto.randomUUID();
-                const newItem: InventoryItem = {
-                    id: newId,
-                    sku: sku,
-                    name: name || sku,
-                    category: 'Imported',
-                    price: 0,
-                    location: 'UNSET',
-                    unit: unit || 'Pcs',
-                    stock: 0, 
-                    minLevel: 0,
-                    active: true
-                };
-
-                try {
-                    await storageService.saveItem(newItem);
-                    inventoryItem = newItem;
-                    sessionItems.push(newItem);
-                    createdCount++;
-                } catch (err) {
-                    continue; 
-                }
-            }
-
+            const inventoryItem = currentItems.find(item => item.sku.toUpperCase() === sku);
             if (inventoryItem) {
+                const ratio = getConversionFactor(inventoryItem, unit || inventoryItem.unit);
+                const baseQty = qtyVal * ratio;
+                
                 newItemsInCart.push({
                     itemId: inventoryItem.id,
                     sku: inventoryItem.sku,
                     name: inventoryItem.name,
-                    qty: qty,
+                    qty: baseQty,
                     uom: unit || inventoryItem.unit,
-                    unitPrice: inventoryItem.price || 0,
-                    total: qty * (inventoryItem.price || 0)
+                    unitPrice: inventoryItem.price,
+                    total: baseQty * inventoryItem.price
                 });
             }
         }
 
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
-            onSuccess();
-            let msg = `${newItemsInCart.length} item masuk batch.`;
-            if (createdCount > 0) msg += ` (${createdCount} barang baru terdaftar)`;
-            notify(msg, 'success');
-        } else {
-            notify("Data tidak ditemukan! Gunakan format: SKU, Nama, Qty, Unit.", "error");
+            notify(`${newItemsInCart.length} item masuk batch.`, 'success');
         }
       } catch (err) {
         notify("Gagal membaca Excel!", "error");
@@ -259,33 +204,24 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       }
     };
     reader.readAsArrayBuffer(file as any);
-    e.currentTarget.value = '';
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files) return;
-
       Array.from(files).forEach(file => {
           const reader = new FileReader();
-          reader.onload = (evt) => {
-              const base64 = evt.target?.result as string;
-              setDocumentImages(prev => [...prev, base64]);
-          };
+          reader.onload = (evt) => setDocumentImages(prev => [...prev, evt.target?.result as string]);
           reader.readAsDataURL(file);
       });
   };
 
-  const removePhoto = (index: number) => {
-      setDocumentImages(prev => prev.filter((_, i) => i !== index));
-  };
+  const removePhoto = (index: number) => setDocumentImages(prev => prev.filter((_, i) => i !== index));
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
-    
     const now = new Date();
-    const timePart = now.toTimeString().split(' ')[0];
-    const mysqlDate = `${customDate} ${timePart}`;
+    const mysqlDate = `${customDate} ${now.toTimeString().split(' ')[0]}`;
 
     const transaction: Transaction = {
       id: storageService.generateTransactionId(),
@@ -294,10 +230,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       items: cart,
       totalValue: cart.reduce((acc, curr) => acc + curr.total, 0),
       userId: user.id || 'admin',
-      supplier: supplier || '', 
-      poNumber: poNumber || '', 
-      deliveryNote: deliveryNote || '',
-      notes: notes || '',
+      supplier, poNumber, deliveryNote, notes,
       documents: documentImages
     };
 
@@ -305,19 +238,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         await storageService.saveTransaction(transaction);
         onSuccess();
         setCart([]);
-        setSupplier(''); setPoNumber(''); setDeliveryNote(''); setNotes('');
-        setDocumentImages([]);
+        setSupplier(''); setPoNumber(''); setDeliveryNote(''); setNotes(''); setDocumentImages([]);
         notify(`Transaksi ${transaction.id} berhasil`, 'success');
-    } catch (e) { 
-        notify("Gagal menyimpan transaksi", 'error'); 
-    }
+    } catch (e) { notify("Gagal menyimpan transaksi", 'error'); }
+  };
+
+  // Helper untuk menampilkan Qty yang sesuai dengan UOM di Cart UI
+  const getDisplayQty = (tItem: TransactionItem) => {
+      const master = items.find(i => i.id === tItem.itemId);
+      if (!master) return tItem.qty;
+      const ratio = getConversionFactor(master, tItem.uom);
+      return parseFloat((tItem.qty / ratio).toFixed(2));
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
-          
           <div className="grid grid-cols-2 gap-6 mb-8">
             <button onClick={() => { setType('inbound'); setCart([]); }} className={`rounded-2xl p-6 flex flex-col items-center gap-3 transition-all border ${type === 'inbound' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>
                 <ArrowDownCircle size={32} />
@@ -355,52 +292,30 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       )}
                   </div>
                 </div>
-
                 <div className="w-full">
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Satuan</label>
-                  <select 
-                      className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 appearance-none"
-                      value={selectedUOM}
-                      onChange={(e) => setSelectedUOM(e.target.value)}
-                      disabled={!selectedItemId}
-                  >
+                  <select className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white appearance-none" value={selectedUOM} onChange={(e) => setSelectedUOM(e.target.value)} disabled={!selectedItemData}>
                       {selectedItemData && (
                           <>
-                              <option value={selectedItemData.unit}>{selectedItemData.unit} (Base)</option>
+                              <option value={selectedItemData.unit}>{selectedItemData.unit}</option>
                               {selectedItemData.unit2 && <option value={selectedItemData.unit2}>{selectedItemData.unit2}</option>}
                               {selectedItemData.unit3 && <option value={selectedItemData.unit3}>{selectedItemData.unit3}</option>}
                           </>
                       )}
                   </select>
                 </div>
-
                 <div className="w-full">
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Jumlah</label>
-                  <input 
-                    ref={qtyInputRef}
-                    type="number" 
-                    value={qty} 
-                    onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-gray-900 dark:text-white"
-                    placeholder="0"
-                  />
+                  <input ref={qtyInputRef} type="number" value={qty} onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))} className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-gray-900 dark:text-white" placeholder="0" />
                 </div>
             </div>
-
             <div className="flex flex-col md:flex-row gap-3">
-                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="flex-1 py-4 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
-                    <Plus size={18} /> Tambah ke Batch
-                </button>
-                
+                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="flex-1 py-4 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"><Plus size={18} /> Tambah ke Batch</button>
                 <div className="flex gap-2 flex-1">
-                    <button onClick={downloadTransactionTemplate} className="p-4 bg-white dark:bg-gray-800 border border-ice-200 dark:border-gray-700 text-slate-400 hover:text-indigo-600 rounded-2xl shadow-sm transition-all" title="Download Template Excel">
-                        <Download size={20} />
-                    </button>
+                    <button onClick={downloadTransactionTemplate} className="p-4 bg-white dark:bg-gray-800 border border-ice-200 dark:border-gray-700 text-slate-400 hover:text-indigo-600 rounded-2xl shadow-sm transition-all"><Download size={20} /></button>
                     <div className="relative flex-1">
                         <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                        <button disabled={isImporting} className="w-full h-full bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
-                            {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel
-                        </button>
+                        <button disabled={isImporting} className="w-full h-full bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2 shadow-sm">{isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel</button>
                     </div>
                 </div>
             </div>
@@ -408,59 +323,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 space-y-8">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <FileText size={16} className="text-indigo-500"/> Informasi Detail
-            </h4>
-            
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2"><FileText size={16} className="text-indigo-500"/> Informasi Detail</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-5">
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Supplier / Client</label>
-                        <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Nama perusahaan..." />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Nomor PO / Surat Jalan</label>
-                        <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="PO-XXXXX" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Keterangan / Catatan</label>
-                        <textarea 
-                            value={notes} 
-                            onChange={e => setNotes(e.target.value)} 
-                            className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 h-24 resize-none" 
-                            placeholder="Catatan tambahan untuk transaksi ini..."
-                        ></textarea>
-                    </div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Supplier / Client</label><input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white" placeholder="Nama perusahaan..." /></div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Nomor PO / Surat Jalan</label><input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white" placeholder="PO-XXXXX" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Keterangan / Catatan</label><textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white h-24 resize-none" placeholder="Catatan..."></textarea></div>
                 </div>
-
                 <div className="space-y-5">
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Tanggal Transaksi</label>
-                        <div className="relative">
-                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-10 pr-3 py-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" />
-                        </div>
-                    </div>
-                    
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Tanggal Transaksi</label><div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-10 pr-3 py-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white" /></div></div>
                     {type === 'inbound' && (
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Dokumentasi (Multi-Photo)</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {documentImages.map((img, idx) => (
-                                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border-2 border-indigo-100 group">
-                                        <img src={img} className="w-full h-full object-cover" alt="Doc" />
-                                        <button onClick={() => removePhoto(idx)} className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <X size={12} />
-                                        </button>
-                                    </div>
-                                ))}
-                                <label className="aspect-square rounded-xl border-2 border-dashed border-ice-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-ice-50 dark:hover:bg-gray-700 transition-all text-slate-400">
-                                    <Camera size={20} />
-                                    <span className="text-[8px] font-bold uppercase">Upload</span>
-                                    <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                                </label>
-                            </div>
-                        </div>
+                        <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Dokumentasi</label><div className="grid grid-cols-3 gap-2">{documentImages.map((img, idx) => (<div key={idx} className="relative aspect-square rounded-xl overflow-hidden border-2 border-indigo-100 group"><img src={img} className="w-full h-full object-cover" alt="Doc" /><button onClick={() => removePhoto(idx)} className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100"><X size={12} /></button></div>))}<label className="aspect-square rounded-xl border-2 border-dashed border-ice-200 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-ice-50 transition-all text-slate-400"><Camera size={20} /><span className="text-[8px] font-bold uppercase">Upload</span><input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" /></label></div></div>
                     )}
                 </div>
             </div>
@@ -468,20 +341,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 flex flex-col h-[calc(100vh-140px)]">
-        <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-                <ShoppingCart size={20} className="text-indigo-600" />
-                <h3 className="font-bold dark:text-white text-lg">Batch Cart</h3>
-            </div>
-            <span className="text-[10px] font-bold bg-ice-100 dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full">{cart.length} Items</span>
-        </div>
-        
+        <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex items-center justify-between"><div className="flex items-center gap-2"><ShoppingCart size={20} className="text-indigo-600" /><h3 className="font-bold dark:text-white text-lg">Batch Cart</h3></div><span className="text-[10px] font-bold bg-ice-100 dark:bg-gray-700 text-indigo-600 px-2 py-1 rounded-full">{cart.length} Items</span></div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
             {cart.map((item, idx) => (
                 <div key={idx} className="p-4 border-b border-ice-50 dark:border-gray-700 flex justify-between items-center hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors group">
                     <div>
                         <p className="font-bold text-sm dark:text-white">{item.name}</p>
-                        <p className="text-[10px] text-slate-400 font-medium">{item.sku} | <span className="text-indigo-500">{item.qty} {item.uom}</span></p>
+                        <p className="text-[10px] text-slate-400 font-medium">{item.sku} | <span className="text-indigo-500">{getDisplayQty(item)} {item.uom}</span></p>
                     </div>
                     <div className="flex items-center gap-4">
                         <span className="font-bold text-sm text-slate-700 dark:text-gray-200">Rp {item.total.toLocaleString()}</span>
@@ -489,26 +355,12 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     </div>
                 </div>
             ))}
-            {cart.length === 0 && (
-                <div className="p-10 text-center space-y-4 opacity-40 h-full flex flex-col items-center justify-center">
-                    <div className="p-5 bg-slate-50 dark:bg-gray-900 rounded-full">
-                        <ShoppingCart size={48} className="text-slate-300" />
-                    </div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Keranjang Kosong</p>
-                </div>
-            )}
         </div>
-
         <div className="p-6 bg-slate-50 dark:bg-gray-900/50 border-t border-ice-100 dark:border-gray-700 rounded-b-3xl">
-            <div className="flex justify-between items-end mb-6">
-                <span className="text-xs font-bold text-slate-400 uppercase">Estimasi Total</span>
-                <span className="font-black text-2xl dark:text-white tracking-tight">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
-            </div>
-            <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2">
-                <ImageIcon size={18} /> Proses Transaksi
-            </button>
+            <div className="flex justify-between items-end mb-6"><span className="text-xs font-bold text-slate-400 uppercase">Estimasi Total</span><span className="font-black text-2xl dark:text-white tracking-tight">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span></div>
+            <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"><ImageIcon size={18} /> Proses Transaksi</button>
         </div>
       </div>
     </div>
   );
-};  
+};

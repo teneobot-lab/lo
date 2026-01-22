@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Transaction, InventoryItem } from '../types';
+import { Transaction, InventoryItem, TransactionItem } from '../types';
 import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
@@ -16,12 +17,10 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // States for Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // States for Stock Card
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [scStartDate, setScStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [scEndDate, setScEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -40,6 +39,25 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Helper untuk mendapatkan rasio konversi berdasarkan UOM
+  const getConversionFactor = (item: InventoryItem, uom: string) => {
+      if (!item || uom === item.unit) return 1;
+      if (item.unit2 && uom === item.unit2 && item.ratio2) {
+          return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;
+      }
+      if (item.unit3 && uom === item.unit3 && item.ratio3) {
+           return item.op3 === 'divide' ? (1 / item.ratio3) : item.ratio3;
+      }
+      return 1;
+  };
+
+  const getDisplayQty = (tItem: TransactionItem) => {
+      const master = items.find(i => i.id === tItem.itemId);
+      if (!master) return tItem.qty;
+      const ratio = getConversionFactor(master, tItem.uom);
+      return parseFloat((tItem.qty / ratio).toFixed(2));
+  };
+
   const filtered = transactions.filter(t => {
       const matchType = filterType === 'all' || t.type === filterType;
       const tDate = new Date(t.date).getTime();
@@ -47,13 +65,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       const eDate = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
       const matchDate = tDate >= sDate && tDate <= eDate;
       const query = searchQuery.toLowerCase();
-      
-      const matchItems = t.items.some(i => i.name.toLowerCase().includes(query) || i.sku.toLowerCase().includes(query));
-      const matchHeader = (t.id || "").toLowerCase().includes(query) || 
-                          (t.supplier || "").toLowerCase().includes(query) || 
-                          (t.notes || "").toLowerCase().includes(query) || 
-                          (t.poNumber || "").toLowerCase().includes(query);
-      return matchType && matchDate && (matchHeader || matchItems);
+      return matchType && matchDate && ((t.id || "").toLowerCase().includes(query) || (t.supplier || "").toLowerCase().includes(query) || (t.notes || "").toLowerCase().includes(query));
   });
 
   const filteredItemsForSC = useMemo(() => {
@@ -61,44 +73,30 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 5);
   }, [scSearchItem, items]);
 
-  // --- LOGIKA KARTU STOK ---
   const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string) => {
       const start = new Date(startStr); start.setHours(0,0,0,0);
       const end = new Date(endStr); end.setHours(23,59,59,999);
-
-      // Hitung Opening Stock mundur dari stok sekarang
       let openingStock = item.stock;
       const allItemTrans = transactions
         .filter(t => t.items.some(i => i.itemId === item.id))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
-
       allItemTrans.forEach(t => {
           const tDate = new Date(t.date);
-          if (tDate >= start) { // Jika transaksi terjadi SETELAH startDate, kita balikkan efeknya
-              const itemInTrans = t.items.find(i => i.itemId === item.id);
-              if (itemInTrans) {
-                  if (t.type === 'inbound') openingStock -= itemInTrans.qty;
-                  else openingStock += itemInTrans.qty;
-              }
+          if (tDate >= start) {
+              const it = t.items.find(i => i.itemId === item.id);
+              if (it) { if (t.type === 'inbound') openingStock -= it.qty; else openingStock += it.qty; }
           }
       });
-
-      const periodTrans = allItemTrans.filter(t => {
-          const d = new Date(t.date);
-          return d >= start && d <= end;
-      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
-
+      const periodTrans = allItemTrans.filter(t => { const d = new Date(t.date); return d >= start && d <= end; }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
       let runningBalance = openingStock;
-      let totalIn = 0;
-      let totalOut = 0;
-
+      let totalIn = 0; let totalOut = 0;
       const rows = periodTrans.map(t => {
-          const itemInTrans = t.items.find(i => i.itemId === item.id);
-          const qty = itemInTrans ? itemInTrans.qty : 0;
+          const it = t.items.find(i => i.itemId === item.id);
+          const qty = it ? it.qty : 0;
           let inQty = 0; let outQty = 0;
           if (t.type === 'inbound') { inQty = qty; totalIn += qty; runningBalance += qty; }
           else { outQty = qty; totalOut += qty; runningBalance -= qty; }
-          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, balance: runningBalance, uom: itemInTrans?.uom || item.unit };
+          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, balance: runningBalance, uom: it?.uom || item.unit };
       });
       return { openingStock, closingStock: runningBalance, totalIn, totalOut, rows };
   };
@@ -109,404 +107,154 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   }, [scSelectedItem, scStartDate, scEndDate, transactions]);
 
   const handleAdvancedExport = (mode: 'single' | 'all') => {
-      if (mode === 'single') {
-          if (!scSelectedItem || !stockCardData) return;
-          // FIX: Explicitly type exportData as any[][] to prevent type inference from restricting elements to string only
-          const exportData: any[][] = [
-              ['LAPORAN KARTU STOK'], [`Item: ${scSelectedItem.name} (${scSelectedItem.sku})`], [`Periode: ${scStartDate} s/d ${scEndDate}`], [],
-              ['Tanggal', 'ID Transaksi', 'Tipe', 'Referensi', 'Masuk', 'Keluar', 'Saldo', 'Unit']
-          ];
-          exportData.push(['-', 'STOK AWAL', '-', '-', '-', '-', stockCardData.openingStock.toString(), scSelectedItem.unit]);
-          stockCardData.rows.forEach(r => {
-              exportData.push([new Date(r.date).toLocaleString(), r.id, r.type.toUpperCase(), r.ref, r.in || '-', r.out || '-', r.balance.toString(), r.uom]);
-          });
-          const ws = XLSX.utils.aoa_to_sheet(exportData);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok");
-          XLSX.writeFile(wb, `KartuStok_${scSelectedItem.sku}.xlsx`);
-      } else {
-          const summary = items.filter(i => i.active).map(i => {
-              const d = calculateItemMovement(i, scStartDate, scEndDate);
-              return { SKU: i.sku, Nama: i.name, 'Stok Awal': d.openingStock, 'Total Masuk': d.totalIn, 'Total Keluar': d.totalOut, 'Stok Akhir': d.closingStock, Unit: i.unit };
-          });
-          const ws = XLSX.utils.json_to_sheet(summary);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Summary Inventaris");
-          XLSX.writeFile(wb, `Summary_Inventaris_${scStartDate}.xlsx`);
+      if (mode === 'single' && scSelectedItem && stockCardData) {
+          const exportData: any[][] = [['LAPORAN KARTU STOK'], [`Item: ${scSelectedItem.name}`], [`Periode: ${scStartDate} s/d ${scEndDate}`], [], ['Tanggal', 'ID Transaksi', 'Tipe', 'Masuk', 'Keluar', 'Saldo', 'Unit']];
+          exportData.push(['-', 'STOK AWAL', '-', '-', '-', stockCardData.openingStock, scSelectedItem.unit]);
+          stockCardData.rows.forEach(r => exportData.push([new Date(r.date).toLocaleString(), r.id, r.type.toUpperCase(), r.in || '-', r.out || '-', r.balance, r.uom]));
+          const ws = XLSX.utils.aoa_to_sheet(exportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok"); XLSX.writeFile(wb, `KartuStok_${scSelectedItem.sku}.xlsx`);
       }
   };
 
   const handleDelete = async (id: string) => {
-      if (window.confirm("Hapus transaksi ini? Stok barang akan dikembalikan otomatis.")) {
-          try {
-              await storageService.deleteTransaction(id);
-              onRefresh();
-          } catch (err) {
-              alert("Gagal menghapus transaksi.");
-          }
+      if (window.confirm("Hapus transaksi ini?")) {
+          try { await storageService.deleteTransaction(id); onRefresh(); } catch (err) { alert("Error deleting"); }
       }
   };
 
-  const handleEditClick = (t: Transaction) => {
-      setEditingTransaction(JSON.parse(JSON.stringify(t)));
-      setIsEditModalOpen(true);
-  };
-
+  const handleEditClick = (t: Transaction) => { setEditingTransaction(JSON.parse(JSON.stringify(t))); setIsEditModalOpen(true); };
   const handleUpdate = async (updatedTx: Transaction) => {
      if (editingTransaction) {
-         try {
-             await storageService.updateTransaction(editingTransaction, updatedTx);
-             setIsEditModalOpen(false);
-             onRefresh();
-         } catch (err) {
-             alert("Gagal memperbarui transaksi.");
-         }
+         try { await storageService.updateTransaction(editingTransaction, updatedTx); setIsEditModalOpen(false); onRefresh(); } catch (err) { alert("Error updating"); }
      }
-  };
-
-  const downloadImage = (base64: string, filename: string) => {
-      const link = document.createElement('a');
-      link.href = base64; link.download = filename;
-      document.body.appendChild(link); link.click();
-      document.body.removeChild(link);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
         <div className="relative w-full xl:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-                type="text" 
-                placeholder="Cari ID, Barang, Supplier..." 
-                className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-ice-300 text-sm dark:text-white"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Cari ID, Barang, Supplier..." className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl focus:outline-none text-sm dark:text-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
-
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-            <select 
-                className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-            >
-                <option value="all">Semua Tipe</option>
-                <option value="inbound">Inbound</option>
-                <option value="outbound">Outbound</option>
-            </select>
-
-            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-400 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 px-3 py-2.5 rounded-xl">
-                <Calendar size={14} />
-                <input type="date" className="bg-transparent focus:outline-none dark:invert" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                <span className="text-slate-400">sd</span>
-                <input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-            
-            <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-xl hover:bg-indigo-100 transition-all font-bold text-sm"><LineChart size={16} /> Kartu Stok</button>
-            <button onClick={() => {
-                const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Supplier: t.supplier || '-', Total: t.totalValue })));
-                const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History");
-                XLSX.writeFile(wb, `Nexus_History.xlsx`);
-            }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
+            <select className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option></select>
+            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-400 bg-ice-50 dark:bg-gray-900 border border-ice-200 px-3 py-2.5 rounded-xl"><Calendar size={14} /><input type="date" className="bg-transparent focus:outline-none dark:invert" value={startDate} onChange={e => setStartDate(e.target.value)} /><span>sd</span><input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+            <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl hover:bg-indigo-100 font-bold text-sm"><LineChart size={16} /> Kartu Stok</button>
+            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
         </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left relative border-collapse">
-            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase tracking-widest sticky top-0 z-10">
-              <tr>
-                <th className="p-4">ID Transaksi</th>
-                <th className="p-4">Tipe</th>
-                <th className="p-4">Tanggal</th>
-                <th className="p-4">Supplier / PO</th>
-                <th className="p-4">Ringkasan Barang</th>
-                <th className="p-4 text-right">Total Nilai</th>
-                <th className="p-4">Catatan</th>
-                <th className="p-4 text-right">Aksi</th>
-              </tr>
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
+              <tr><th className="p-4">ID Transaksi</th><th className="p-4">Tipe</th><th className="p-4">Tanggal</th><th className="p-4">Supplier / PO</th><th className="p-4">Ringkasan Barang</th><th className="p-4 text-right">Total Nilai</th><th className="p-4 text-right">Aksi</th></tr>
             </thead>
             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
               {filtered.map(t => (
                   <tr key={t.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors text-sm">
                       <td className="p-4 font-bold text-slate-800 dark:text-white">{t.id}</td>
-                      <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type}</span>
-                      </td>
+                      <td className="p-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type}</span></td>
                       <td className="p-4 text-slate-600 dark:text-gray-400">{new Date(t.date).toLocaleString()}</td>
                       <td className="p-4 text-slate-500 font-medium">{t.supplier || t.poNumber || '-'}</td>
                       <td className="p-4">
                           <div className="flex flex-col gap-0.5">
-                              {t.items.slice(0, 2).map((it, idx) => (
-                                  <span key={idx} className="text-[11px] truncate w-40 text-slate-600 dark:text-gray-400">• {it.name} ({it.qty} {it.uom})</span>
-                              ))}
+                              {t.items.slice(0, 2).map((it, idx) => (<span key={idx} className="text-[11px] truncate w-40 text-slate-600 dark:text-gray-400">• {it.name} ({getDisplayQty(it)} {it.uom})</span>))}
                               {t.items.length > 2 && <span className="text-[10px] text-slate-400">+{t.items.length - 2} lainnya...</span>}
                           </div>
                       </td>
                       <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {t.totalValue.toLocaleString()}</td>
-                      <td className="p-4 text-xs italic text-slate-400 truncate max-w-[150px]">{t.notes || '-'}</td>
                       <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => handleEditClick(t)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-all" title="Edit/Detail"><Edit2 size={16} /></button>
-                              <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-all" title="Hapus"><Trash2 size={16} /></button>
+                              <button onClick={() => handleEditClick(t)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"><Edit2 size={16} /></button>
+                              <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={16} /></button>
                           </div>
                       </td>
                   </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400 italic">Data transaksi tidak ditemukan.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL KARTU STOK */}
       {isStockCardOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3>
-                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button>
-                </div>
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3><button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button></div>
                 <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
-                    <div className="md:col-span-2 relative" ref={autocompleteRef}>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label>
-                        <input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white" placeholder="Nama atau SKU..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} onFocus={() => setIsAutocompleteOpen(true)} />
-                        {isAutocompleteOpen && scSearchItem && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-50 overflow-hidden">
-                                {filteredItemsForSC.map(it => (
-                                    <div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b last:border-0 dark:text-white">
-                                        <div className="font-bold text-sm">{it.name}</div>
-                                        <div className="text-[10px] text-slate-400">{it.sku}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                    <div className="md:col-span-2 relative" ref={autocompleteRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label><input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white" placeholder="Nama..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} onFocus={() => setIsAutocompleteOpen(true)} />
+                        {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-50 overflow-hidden">{filteredItemsForSC.map(it => (<div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b dark:text-white"><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></div>))}</div>)}
                     </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label>
-                        <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label>
-                        <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    </div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label><input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900">
-                    {scSelectedItem && stockCardData ? (
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-200 dark:border-gray-700 text-center">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Stok Awal</p>
-                                    <p className="text-xl font-black dark:text-white">{stockCardData.openingStock} <span className="text-xs text-slate-400 font-normal">{scSelectedItem.unit}</span></p>
-                                </div>
-                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800 text-center">
-                                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Total In</p>
-                                    <p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p>
-                                </div>
-                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800 text-center">
-                                    <p className="text-[10px] font-bold text-rose-600 uppercase">Total Out</p>
-                                    <p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p>
-                                </div>
-                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 text-center">
-                                    <p className="text-[10px] font-bold text-indigo-600 uppercase">Stok Akhir</p>
-                                    <p className="text-xl font-black text-indigo-700 dark:text-indigo-400">{stockCardData.closingStock} <span className="text-xs text-slate-400 font-normal">{scSelectedItem.unit}</span></p>
-                                </div>
-                            </div>
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase">
-                                    <tr><th className="p-3">Tanggal</th><th className="p-3">ID & Ref</th><th className="p-3 text-center">In</th><th className="p-3 text-center">Out</th><th className="p-3 text-center">Saldo</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-gray-700">
-                                    {stockCardData.rows.map((row, idx) => (
-                                        <tr key={idx} className="dark:text-gray-300">
-                                            <td className="p-3 whitespace-nowrap">{new Date(row.date).toLocaleString()}</td>
-                                            <td className="p-3 text-xs"><span className="font-bold">{row.id}</span> <br/> <span className="text-slate-400">{row.ref}</span></td>
-                                            <td className="p-3 text-center text-emerald-600 font-bold">{row.in || '-'}</td>
-                                            <td className="p-3 text-center text-rose-600 font-bold">{row.out || '-'}</td>
-                                            <td className="p-3 text-center font-bold bg-slate-50/50 dark:bg-gray-800/50">{row.balance} {row.uom}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 opacity-50">
-                            <Package size={48} className="mb-2" />
-                            <p>Pilih barang untuk melihat penelusuran stok</p>
-                        </div>
-                    )}
-                </div>
-                <div className="p-4 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
-                    <button onClick={() => handleAdvancedExport('single')} disabled={!scSelectedItem} className="px-5 py-2 bg-white dark:bg-gray-700 border border-ice-200 dark:border-gray-600 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"><FileText size={14}/> Export Item Ini</button>
-                    <button onClick={() => handleAdvancedExport('all')} className="px-5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all"><Layers size={14}/> Export Ringkasan Semua</button>
+                    {scSelectedItem && stockCardData && (<div className="space-y-6"><div className="grid grid-cols-4 gap-4"><div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border text-center"><p className="text-[10px] font-bold text-slate-400">STOK AWAL</p><p className="text-xl font-black dark:text-white">{stockCardData.openingStock} {scSelectedItem.unit}</p></div><div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-emerald-600">MASUK</p><p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p></div><div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-rose-600">KELUAR</p><p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p></div><div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-indigo-600">STOK AKHIR</p><p className="text-xl font-black text-indigo-700">{stockCardData.closingStock} {scSelectedItem.unit}</p></div></div><table className="w-full text-left text-sm"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase"><tr><th className="p-3">Tanggal</th><th className="p-3">Ref</th><th className="p-3 text-center">In</th><th className="p-3 text-center">Out</th><th className="p-3 text-center">Saldo</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-gray-700">{stockCardData.rows.map((row, idx) => (<tr key={idx} className="dark:text-gray-300"><td className="p-3">{new Date(row.date).toLocaleString()}</td><td className="p-3 text-xs">{row.id}</td><td className="p-3 text-center text-emerald-600 font-bold">{row.in || '-'}</td><td className="p-3 text-center text-rose-600 font-bold">{row.out || '-'}</td><td className="p-3 text-center font-bold bg-slate-50/50 dark:bg-gray-800/50">{row.balance} {row.uom}</td></tr>))}</tbody></table></div>)}
                 </div>
             </div>
         </div>
       )}
 
-      {/* MODAL EDIT TRANSAKSI */}
       {isEditModalOpen && editingTransaction && (
-          <TransactionEditModal 
-             transaction={editingTransaction} 
-             onClose={() => setIsEditModalOpen(false)}
-             onSave={handleUpdate}
-             onPreview={(img) => setPreviewImage(img)}
-             onDownload={downloadImage}
-          />
-      )}
-
-      {/* PREVIEW FOTO */}
-      {previewImage && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 animate-in fade-in">
-              <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"><X size={32}/></button>
-              <img src={previewImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl shadow-indigo-500/20" alt="Preview" />
-              <div className="absolute bottom-6 flex gap-4">
-                  <button onClick={() => downloadImage(previewImage!, 'NEXUS_DOC.png')} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-xl transition-all"><DownloadCloud size={20}/> Download Foto</button>
-              </div>
-          </div>
+          <TransactionEditModal transaction={editingTransaction} items={items} onClose={() => setIsEditModalOpen(false)} onSave={handleUpdate} />
       )}
     </div>
   );
 };
 
-const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownload }: { 
-    transaction: Transaction, 
-    onClose: () => void, 
-    onSave: (t: Transaction) => void,
-    onPreview: (img: string) => void,
-    onDownload: (img: string, name: string) => void
-}) => {
+const TransactionEditModal = ({ transaction, items, onClose, onSave }: { transaction: Transaction, items: InventoryItem[], onClose: () => void, onSave: (t: Transaction) => void }) => {
     const [data, setData] = useState<Transaction>(JSON.parse(JSON.stringify(transaction)));
 
-    const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setData(prev => ({ ...prev, [name]: value }));
+    // Helper untuk modal edit
+    const getConversionFactor = (item: InventoryItem, uom: string) => {
+        if (!item || uom === item.unit) return 1;
+        if (item.unit2 && uom === item.unit2 && item.ratio2) return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;
+        if (item.unit3 && uom === item.unit3 && item.ratio3) return item.op3 === 'divide' ? (1 / item.ratio3) : item.ratio3;
+        return 1;
     };
 
-    const handleItemChange = (index: number, newQty: number) => {
+    const handleItemChange = (index: number, newDisplayQty: number) => {
         const newItems = [...data.items];
-        const item = newItems[index];
-        const updatedItem = { ...item, qty: newQty, total: Number((newQty * item.unitPrice).toFixed(2)) };
-        newItems[index] = updatedItem;
+        const tItem = newItems[index];
+        const master = items.find(i => i.id === tItem.itemId);
+        if (!master) return;
         
+        const ratio = getConversionFactor(master, tItem.uom);
+        const baseQty = parseFloat((newDisplayQty * ratio).toFixed(2));
+        
+        newItems[index] = { ...tItem, qty: baseQty, total: Number((baseQty * tItem.unitPrice).toFixed(2)) };
         const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
         setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(data);
+    const getDisplayQty = (tItem: TransactionItem) => {
+        const master = items.find(i => i.id === tItem.itemId);
+        if (!master) return tItem.qty;
+        const ratio = getConversionFactor(master, tItem.uom);
+        return parseFloat((tItem.qty / ratio).toFixed(2));
     };
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <div className="flex items-center gap-3">
-                        <FileText className="text-indigo-600" />
-                        <h3 className="text-xl font-bold text-slate-800 dark:text-white">Edit / Detail Transaksi</h3>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-colors"><X size={24} className="text-slate-400"/></button>
-                </div>
-                
-                <form id="edit-transaction-form" onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar bg-white dark:bg-gray-900">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <div className="md:col-span-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">ID Transaksi</label>
-                            <input disabled value={data.id} className="w-full border p-3 rounded-xl bg-slate-50 dark:bg-gray-800 dark:border-gray-700 text-slate-400 font-mono text-xs" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Tipe</label>
-                            <span className={`block w-full text-center py-3 rounded-xl font-bold uppercase text-xs ${data.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{data.type}</span>
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Tanggal</label>
-                            <input type="datetime-local" value={data.date.replace(' ', 'T')} onChange={e => setData({...data, date: e.target.value.replace('T', ' ')})} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-xs" />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Supplier / Client</label>
-                            <input name="supplier" value={data.supplier || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="Nama perusahaan..." />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Nomor PO / Reff</label>
-                            <input name="poNumber" value={data.poNumber || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="PO-XXXX" />
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Keterangan</label>
-                            <input name="notes" value={data.notes || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="Catatan transaksi..." />
-                        </div>
-                    </div>
-
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><h3 className="font-bold text-xl text-slate-800 dark:text-white">Detail Transaksi</h3><button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors"><X className="text-slate-400"/></button></div>
+                <div className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar">
                     <div className="border border-ice-100 dark:border-gray-700 rounded-3xl overflow-hidden shadow-sm">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                <tr>
-                                    <th className="p-4">Item Details</th>
-                                    <th className="p-4 w-32 text-center">Qty</th>
-                                    <th className="p-4 text-center">Unit</th>
-                                    <th className="p-4 text-right">Harga Per Unit</th>
-                                    <th className="p-4 text-right">Total Baris</th>
-                                </tr>
-                            </thead>
+                        <table className="w-full text-left"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase"><tr><th className="p-4">Item Details</th><th className="p-4 w-32 text-center">Qty</th><th className="p-4 text-center">Unit</th><th className="p-4 text-right">Total Baris</th></tr></thead>
                             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
                                 {data.items.map((it, idx) => (
-                                    <tr key={idx} className="text-sm dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors">
-                                        <td className="p-4"><span className="font-bold">{it.name}</span> <br/> <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">{it.sku}</span></td>
-                                        <td className="p-4">
-                                            <input type="number" step="any" value={it.qty} onChange={e => handleItemChange(idx, Number(e.target.value))} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 focus:ring-2 focus:ring-indigo-300 outline-none" />
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="text-[10px] font-bold px-2 py-1 bg-ice-50 dark:bg-gray-700 text-ice-600 dark:text-ice-300 rounded-lg">{it.uom}</span>
-                                        </td>
-                                        <td className="p-4 text-right text-slate-500">Rp {it.unitPrice.toLocaleString()}</td>
+                                    <tr key={idx} className="text-sm dark:text-gray-300">
+                                        <td className="p-4 font-bold">{it.name}</td>
+                                        <td className="p-4"><input type="number" step="any" value={getDisplayQty(it)} onChange={e => handleItemChange(idx, Number(e.target.value))} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 outline-none" /></td>
+                                        <td className="p-4 text-center"><span className="text-[10px] font-bold px-2 py-1 bg-ice-50 dark:bg-gray-700 rounded-lg">{it.uom}</span></td>
                                         <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {it.total.toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-
-                    {data.documents && data.documents.length > 0 && (
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={14}/> Lampiran Foto / Dokumen</h4>
-                            <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
-                                {data.documents.map((doc, i) => (
-                                    <div key={i} className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer">
-                                        <img src={doc} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Lampiran" />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                            <button type="button" onClick={() => onPreview(doc)} className="p-2 bg-white/20 hover:bg-white text-white hover:text-indigo-600 rounded-full transition-all"><ExternalLink size={16}/></button>
-                                            <button type="button" onClick={() => onDownload(doc, `DOC_${data.id}_${i}.png`)} className="p-2 bg-white/20 hover:bg-white text-white hover:text-emerald-600 rounded-full transition-all"><Download size={16}/></button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="flex justify-between items-center p-6 bg-slate-800 rounded-3xl border border-slate-700 text-white shadow-xl shadow-slate-200 dark:shadow-none">
-                         <div className="space-y-1">
-                             <span className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Ringkasan Nilai</span>
-                             <p className="text-xs text-slate-300">Total akumulasi dari {data.items.length} item dalam batch ini.</p>
-                         </div>
-                         <div className="text-right">
-                             <span className="text-3xl font-black tracking-tight">Rp {data.totalValue.toLocaleString()}</span>
-                         </div>
-                    </div>
-                </form>
-
+                </div>
                 <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
-                    <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 dark:text-gray-400 font-bold hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all">Batal</button>
-                    <button 
-                        type="submit" 
-                        form="edit-transaction-form"
-                        className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 group"
-                    >
-                        <Save size={20} className="group-hover:rotate-12 transition-transform" /> Simpan Perubahan
-                    </button>
+                    <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Batal</button>
+                    <button onClick={() => onSave(data)} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg">Simpan Perubahan</button>
                 </div>
             </div>
         </div>
