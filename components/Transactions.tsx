@@ -110,15 +110,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   };
 
   const downloadTransactionTemplate = () => {
-      const template = [
-          { 'SKU': 'SKU-001', 'Nama Barang': 'Contoh Barang A', 'QTY': 10, 'Unit': 'Pcs' },
-          { 'SKU': 'SKU-002', 'Nama Barang': 'Contoh Barang B', 'QTY': 5, 'Unit': 'Box' }
+      // Header yang sinkron dengan sistem import
+      const header = ["SKU", "Nama Barang", "QTY", "Unit"];
+      const data = [
+          ["BRW-001", "Contoh Barang A", 10, "Pcs"],
+          ["BRW-002", "Contoh Barang B", 5, "Box"]
       ];
-      const ws = XLSX.utils.json_to_sheet(template);
+      const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Template_Transaksi");
-      XLSX.writeFile(wb, "Nexus_Transaction_Template.xlsx");
-      notify("Template diunduh", "success");
+      XLSX.utils.book_append_sheet(wb, ws, "Template");
+      XLSX.writeFile(wb, "Nexus_Template_Transaksi.xlsx");
+      notify("Template terbaru diunduh", "success");
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,8 +137,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        // Membaca mentah sebagai array of arrays untuk mendeteksi baris data
-        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
 
         if (rawRows.length === 0) {
             notify("File Excel kosong!", "warning");
@@ -145,7 +146,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         setIsImporting(true);
 
-        // Alias kata kunci untuk pemetaan kolom
         const keywords = {
             sku: ['sku', 'kode', 'part', 'pn', 'kd', 'no'],
             name: ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan'],
@@ -154,25 +154,25 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         };
 
         let headerIdx = -1;
-        let mapping = { sku: 0, name: 1, qty: 2, unit: 3 }; // Fallback default (urut 0,1,2,3)
+        let mapping = { sku: 0, name: 1, qty: 2, unit: 3 }; 
 
-        // Cari baris header di 10 baris pertama
-        for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+        // Scan header lebih agresif
+        for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
             const row = rawRows[i].map(c => String(c).toLowerCase().trim());
             const hasSku = row.some(c => keywords.sku.some(k => c.includes(k)));
             const hasQty = row.some(c => keywords.qty.some(k => c.includes(k)));
             
-            if (hasSku && hasQty) {
+            if (hasSku || hasQty) {
                 headerIdx = i;
-                // Petakan index kolom
-                mapping.sku = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
-                mapping.name = row.findIndex(c => keywords.name.some(k => c.includes(k)));
-                mapping.qty = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
-                mapping.unit = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
+                const skuCol = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
+                const nameCol = row.findIndex(c => keywords.name.some(k => c.includes(k)));
+                const qtyCol = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
+                const unitCol = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
                 
-                // Pastikan index valid (tidak -1), jika -1 pakai fallback urutan
-                if (mapping.name === -1) mapping.name = 1;
-                if (mapping.unit === -1) mapping.unit = 3;
+                if (skuCol !== -1) mapping.sku = skuCol;
+                if (nameCol !== -1) mapping.name = nameCol;
+                if (qtyCol !== -1) mapping.qty = qtyCol;
+                if (unitCol !== -1) mapping.unit = unitCol;
                 break;
             }
         }
@@ -189,15 +189,22 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             if (!row || row.length === 0) continue;
 
             const sku = String(row[mapping.sku] || '').trim().toUpperCase();
-            const qty = Number(row[mapping.qty]);
+            if (!sku || sku === "SKU") continue; // Lewati header yang mungkin terbaca lagi
+
+            let rawQtyVal = row[mapping.qty];
+            // Bersihkan format angka jika ada (misal: "1.000" jadi 1000)
+            if (typeof rawQtyVal === 'string') {
+                rawQtyVal = rawQtyVal.replace(/[^0-9.-]+/g, "");
+            }
+            const qty = Number(rawQtyVal);
+            
             const name = String(row[mapping.name] || sku).trim();
             const unit = String(row[mapping.unit] || 'Pcs').trim();
 
-            if (!sku || isNaN(qty)) continue;
+            if (isNaN(qty)) continue;
 
             let inventoryItem = sessionItems.find(item => item.sku.toUpperCase() === sku);
 
-            // AUTO-CREATE MASTER JIKA BELUM ADA
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
@@ -219,7 +226,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     sessionItems.push(newItem);
                     createdCount++;
                 } catch (err) {
-                    console.error("Gagal buat barang master:", sku, err);
                     continue; 
                 }
             }
@@ -230,7 +236,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     sku: inventoryItem.sku,
                     name: inventoryItem.name,
                     qty: qty,
-                    uom: unit,
+                    uom: unit || inventoryItem.unit,
                     unitPrice: inventoryItem.price || 0,
                     total: qty * (inventoryItem.price || 0)
                 });
@@ -240,7 +246,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
             onSuccess();
-            
             let msg = `${newItemsInCart.length} item masuk batch.`;
             if (createdCount > 0) msg += ` (${createdCount} barang baru terdaftar)`;
             notify(msg, 'success');
@@ -248,7 +253,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             notify("Data tidak ditemukan! Gunakan format: SKU, Nama, Qty, Unit.", "error");
         }
       } catch (err) {
-        console.error("Import Error:", err);
         notify("Gagal membaca Excel!", "error");
       } finally {
         setIsImporting(false);
@@ -305,8 +309,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         setDocumentImages([]);
         notify(`Transaksi ${transaction.id} berhasil`, 'success');
     } catch (e) { 
-        console.error("Submit error:", e);
-        notify("Gagal menyimpan transaksi ke database", 'error'); 
+        notify("Gagal menyimpan transaksi", 'error'); 
     }
   };
 
