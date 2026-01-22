@@ -6,7 +6,7 @@ import {
   Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
   Database, Wifi, Play, Globe, Download, Upload, RefreshCcw, 
   ShieldCheck, Youtube, ListMusic, Terminal, AlertCircle, FileJson, 
-  Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor
+  Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor, ChevronDown
 } from 'lucide-react';
 
 interface AdminProps {
@@ -64,19 +64,17 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     const handleDeleteUser = async (id: string) => {
         if (id === 'admin') {
-            alert("Keamanan Sistem: Akun Super Admin tidak bisa dihapus.");
+            alert("Sistem Keamanan: Super Admin tidak bisa dihapus.");
             return;
         }
-        if (window.confirm("Hapus staff ini secara permanen?")) {
+        if (window.confirm("Hapus akun staff ini secara permanen?")) {
             await storageService.deleteUser(id);
             refreshUsers();
         }
     };
 
-    // Playlist Management
     const addToPlaylist = () => {
         if (!newMediaTitle || !newMediaUrl) return;
-        
         let embedUrl = newMediaUrl;
         if (newMediaUrl.includes('watch?v=')) {
             const videoId = newMediaUrl.split('v=')[1]?.split('&')[0];
@@ -85,13 +83,11 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
             const videoId = newMediaUrl.split('youtu.be/')[1]?.split('?')[0];
             embedUrl = `https://www.youtube.com/embed/${videoId}`;
         }
-
         const newItem = { id: Math.random().toString(36).substr(2, 9), title: newMediaTitle, url: embedUrl };
         const next = [...playlist, newItem];
         setPlaylist(next);
         localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
-        setNewMediaTitle('');
-        setNewMediaUrl('');
+        setNewMediaTitle(''); setNewMediaUrl('');
     };
 
     const deleteFromPlaylist = (id: string) => {
@@ -100,38 +96,9 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
     };
 
-    const exportConfig = () => {
-        const data: any = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key?.startsWith('nexus_')) data[key] = localStorage.getItem(key);
-        }
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `NEXUS_SYSTEM_BACKUP_${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
-    };
-
-    const importConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            try {
-                const data = JSON.parse(evt.target?.result as string);
-                Object.keys(data).forEach(k => localStorage.setItem(k, data[k]));
-                alert("Restorasi Berhasil! Memuat ulang sistem...");
-                window.location.reload();
-            } catch (err) { alert("File backup tidak valid!"); }
-        };
-        reader.readAsText(file);
-    };
-
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        alert("Command disalin! Paste di Terminal SSH Abang.");
+        alert("Command berhasil disalin! Sekarang buka Terminal/Putty dan klik kanan untuk Paste.");
     };
 
     const filteredUsers = users.filter(u => 
@@ -141,206 +108,160 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     return (
         <div className="space-y-8 max-w-7xl mx-auto pb-24">
-            {/* STICKY HEADER SECTION */}
-            <div className="sticky top-[-1.5rem] z-30 pt-4 pb-6 bg-slate-50/90 dark:bg-gray-900/90 backdrop-blur-md -mx-4 px-4 border-b border-ice-100 dark:border-gray-800 transition-all duration-300">
+            {/* STICKY HEADER - HUB */}
+            <div className="sticky top-[-1.5rem] z-[35] pt-4 pb-6 bg-slate-50/80 dark:bg-gray-900/80 backdrop-blur-md -mx-4 px-4 border-b border-ice-100 dark:border-gray-800 transition-all duration-300">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="space-y-1">
                         <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-3">
                             Management Hub <Settings className="text-indigo-600 animate-spin-slow" size={32} />
                         </h2>
-                        <p className="text-slate-500 dark:text-gray-400 font-medium">Panel kendali utama Nexus WMS.</p>
+                        <p className="text-slate-500 dark:text-gray-400 font-medium italic">Konfigurasi infrastruktur dan personil Nexus WMS.</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        <button onClick={exportConfig} className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-gray-800 text-slate-700 dark:text-white border border-ice-200 dark:border-gray-700 rounded-2xl font-bold shadow-sm hover:shadow-md transition-all active:scale-95">
-                            <FileJson size={18} className="text-indigo-500"/> Export Config
+                    <div className="flex gap-2">
+                        <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+                            <Plus size={18}/> Rekrut Staff
                         </button>
-                        <label className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 cursor-pointer transition-all active:scale-95">
-                            <Upload size={18}/> Import Config
-                            <input type="file" accept=".json" onChange={importConfig} className="hidden" />
-                        </label>
                     </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Column 1: Staff & Migration */}
+                {/* Column 1: Staff & Migration Guide */}
                 <div className="lg:col-span-2 space-y-8">
-                    {/* Staff List Card */}
+                    {/* Staff List */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                        <div className="flex items-center justify-between mb-8">
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600 shadow-sm"><Users size={28}/></div>
+                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Users size={28}/></div>
                                 <div>
-                                    <h3 className="font-bold text-2xl text-slate-800 dark:text-white tracking-tight">Daftar Staff</h3>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{users.length} Akun Terdaftar</p>
+                                    <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Akses Staff</h3>
+                                    <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{users.length} Akun Terdaftar</p>
                                 </div>
                             </div>
-                            <div className="flex gap-2 w-full sm:w-auto">
-                                <div className="relative flex-1 sm:w-48">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Cari nama..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-gray-900 border border-ice-100 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
-                                </div>
-                                <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="p-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl shadow-lg transition-all active:scale-95"><Plus size={20}/></button>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Cari staff..." className="pl-10 pr-4 py-2 bg-slate-50 dark:bg-gray-900 border border-ice-100 dark:border-gray-700 rounded-xl text-sm outline-none" />
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {filteredUsers.length > 0 ? filteredUsers.map(u => (
-                                <div key={u.id} className="group bg-slate-50 dark:bg-gray-900/30 p-5 rounded-3xl border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/50 transition-all flex items-center justify-between">
+                            {filteredUsers.map(u => (
+                                <div key={u.id} className="group flex items-center justify-between p-5 bg-slate-50 dark:bg-gray-900/40 rounded-3xl border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-14 h-14 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center text-2xl font-black text-indigo-600 shadow-sm border border-ice-50 dark:border-gray-700 uppercase">
-                                            {u.name.charAt(0)}
-                                        </div>
+                                        <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-xl flex items-center justify-center text-xl font-black text-indigo-600 shadow-sm border border-ice-50 dark:border-gray-700 uppercase">{u.name.charAt(0)}</div>
                                         <div>
-                                            <p className="font-black text-slate-800 dark:text-white leading-tight">{u.name}</p>
-                                            <p className="text-xs text-slate-400 font-mono">@{u.username}</p>
-                                            <span className={`inline-block px-2 py-0.5 mt-1 rounded text-[9px] font-black uppercase tracking-widest ${u.role === 'admin' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>
-                                                {u.role}
-                                            </span>
+                                            <p className="font-bold text-slate-800 dark:text-white leading-tight">{u.name}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">@{u.username}</p>
+                                            <span className={`inline-block px-2 py-0.5 mt-1 rounded text-[9px] font-black uppercase tracking-widest ${u.role === 'admin' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>{u.role}</span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all" title="Edit Staff"><Edit2 size={18}/></button>
-                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all" title="Hapus Staff"><Trash2 size={18}/></button>
-                                    </div>
-                                </div>
-                            )) : <div className="col-span-full py-10 text-center text-slate-400 italic text-sm">Staff tidak ditemukan.</div>}
-                        </div>
-                    </div>
-
-                    {/* NEWBIE-FRIENDLY MIGRATION GUIDE */}
-                    <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-700 text-white space-y-8 overflow-hidden">
-                        <div className="flex items-center gap-4">
-                            <div className="p-4 bg-indigo-600 rounded-2xl text-white shadow-lg"><Monitor size={28}/></div>
-                            <div>
-                                <h3 className="font-bold text-2xl">Panduan Pindah Server (Migrasi)</h3>
-                                <p className="text-xs text-indigo-300 font-black uppercase tracking-[0.2em]">Step-by-Step for Newbies</p>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-6">
-                            {/* STEP 1 */}
-                            <div className="space-y-3">
-                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <span className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px]">1</span> 
-                                    Export Database (Di VPS LAMA)
-                                </h4>
-                                <p className="text-xs text-slate-400 ml-8 leading-relaxed">Jalankan perintah ini di terminal server lama untuk mengambil data database.</p>
-                                <div className="group relative ml-8">
-                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono leading-relaxed overflow-x-auto">
-                                        mysqldump -u root -p nexus_wms {'>'} backup_nexus.sql
-                                    </code>
-                                    <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:text-white" title="Copy Command"><Copy size={14}/></button>
-                                </div>
-                            </div>
-
-                            {/* STEP 2 */}
-                            <div className="space-y-3">
-                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <span className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px]">2</span> 
-                                    Pindahkan File
-                                </h4>
-                                <p className="text-xs text-slate-400 ml-8 leading-relaxed">Pindahkan file <span className="text-indigo-400 font-bold">backup_nexus.sql</span> dari server lama ke server baru. Abang bisa pakai aplikasi <b>FileZilla</b> atau perintah SCP ini:</p>
-                                <div className="group relative ml-8">
-                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-indigo-400 border border-slate-800 font-mono leading-relaxed overflow-x-auto">
-                                        scp backup_nexus.sql user@ip-server-baru:/home/user/
-                                    </code>
-                                </div>
-                            </div>
-
-                            {/* STEP 3 */}
-                            <div className="space-y-3">
-                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <span className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px]">3</span> 
-                                    Import Database (Di VPS BARU)
-                                </h4>
-                                <p className="text-xs text-slate-400 ml-8 leading-relaxed">Masuk ke server baru, lalu masukkan data dari file .sql ke database baru.</p>
-                                <div className="group relative ml-8">
-                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono leading-relaxed overflow-x-auto">
-                                        mysql -u root -p nexus_wms {'<'} backup_nexus.sql
-                                    </code>
-                                    <button onClick={() => copyToClipboard(`mysql -u root -p nexus_wms < backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:text-white" title="Copy Command"><Copy size={14}/></button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="p-5 bg-indigo-900/30 rounded-3xl border border-indigo-800/50 flex items-start gap-4">
-                            <AlertCircle className="text-indigo-400 flex-shrink-0 mt-1" size={20}/>
-                            <div className="space-y-1">
-                                <p className="text-xs font-bold text-indigo-200">Tips Untuk Newbie:</p>
-                                <p className="text-[11px] text-indigo-100/70 leading-relaxed italic">
-                                    "Jika muncul error 'Access Denied', pastikan user MySQL di server baru sudah diberi izin (Privileges). Dan jangan lupa file .env di server baru disesuaikan dengan password database yang baru."
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Column 2: Media & Config */}
-                <div className="space-y-8">
-                    {/* YouTube Playlist */}
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700 flex flex-col h-full">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600 shadow-sm"><Youtube size={28}/></div>
-                            <h3 className="font-bold text-2xl text-slate-800 dark:text-white tracking-tight">Media Hub</h3>
-                        </div>
-
-                        <div className="space-y-4 mb-8 p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-dashed border-ice-200 dark:border-gray-700">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Judul Video</label>
-                                <input value={newMediaTitle} onChange={e => setNewMediaTitle(e.target.value)} placeholder="Contoh: Lo-Fi Study Music" className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">URL YouTube</label>
-                                <div className="flex gap-2">
-                                    <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="Tempel link YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" />
-                                    <button onClick={addToPlaylist} className="bg-rose-600 text-white p-3 rounded-xl hover:bg-rose-700 transition-all shadow-lg active:scale-95"><Plus size={20}/></button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-3 overflow-y-auto max-h-[350px] custom-scrollbar pr-2">
-                            {playlist.map(p => (
-                                <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800 shadow-sm scale-[1.02]' : 'bg-white dark:bg-gray-800 border-ice-50 dark:border-gray-700 hover:border-rose-200'}`}>
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className={`p-2.5 rounded-xl ${currentMediaUrl === p.url ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-100 dark:bg-gray-700 text-slate-400'}`}>
-                                            <Music size={16}/>
-                                        </div>
-                                        <div className="truncate">
-                                            <p className={`text-sm font-black truncate ${currentMediaUrl === p.url ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-gray-300'}`}>{p.title}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">YT Embed Ready</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        {onUpdateMedia && currentMediaUrl !== p.url && (
-                                            <button onClick={() => onUpdateMedia(p.url)} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all"><Play size={18}/></button>
-                                        )}
-                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-xl transition-all"><X size={18}/></button>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Edit2 size={16}/></button>
+                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* API Connection Settings */}
+                    {/* NEWBIE-FRIENDLY MIGRATION GUIDE */}
+                    <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-700 text-white space-y-8 overflow-hidden">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-emerald-600 rounded-2xl text-white shadow-lg"><Monitor size={28}/></div>
+                            <div>
+                                <h3 className="font-bold text-2xl">Panduan Pindah Server (Migrasi)</h3>
+                                <p className="text-xs text-emerald-300 font-black uppercase tracking-[0.2em]">Khusus Newbie / Pemula</p>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-8">
+                            <div className="relative pl-8 border-l-2 border-slate-800 group">
+                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">1</span></div>
+                                <h4 className="text-sm font-bold text-indigo-300 mb-2">SIAPKAN BACKUP (DI SERVER LAMA)</h4>
+                                <p className="text-xs text-slate-400 mb-4 leading-relaxed italic">"Ketik perintah di bawah ini di terminal server lama untuk mengambil data."</p>
+                                <div className="group/code relative">
+                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
+                                        mysqldump -u root -p nexus_wms {'>'} backup_nexus.sql
+                                    </code>
+                                    <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
+                                </div>
+                            </div>
+
+                            <div className="relative pl-8 border-l-2 border-slate-800 group">
+                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">2</span></div>
+                                <h4 className="text-sm font-bold text-indigo-300 mb-2">TRANSFER FILE KE SERVER BARU</h4>
+                                <p className="text-xs text-slate-400 mb-4 leading-relaxed">Pindahkan file <span className="text-white font-bold">backup_nexus.sql</span> ke server baru. <br/> Tips: Gunakan aplikasi <span className="text-indigo-400 underline">WinSCP</span> atau <span className="text-indigo-400 underline">FileZilla</span> biar tinggal tarik-lepas file gampang.</p>
+                            </div>
+
+                            <div className="relative pl-8 border-l-2 border-slate-800 group">
+                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">3</span></div>
+                                <h4 className="text-sm font-bold text-indigo-300 mb-2">PASANG DATA (DI SERVER BARU)</h4>
+                                <p className="text-xs text-slate-400 mb-4 leading-relaxed italic">"Masuk ke terminal server baru, lalu jalankan perintah ini:"</p>
+                                <div className="group/code relative">
+                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
+                                        mysql -u root -p nexus_wms {'<'} backup_nexus.sql
+                                    </code>
+                                    <button onClick={() => copyToClipboard(`mysql -u root -p nexus_wms < backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-5 bg-amber-900/20 rounded-3xl border border-amber-800/30 flex items-start gap-4">
+                            <AlertCircle className="text-amber-500 flex-shrink-0 mt-1" size={20}/>
+                            <div>
+                                <p className="text-[11px] font-bold text-amber-200">Catatan Penting:</p>
+                                <p className="text-[11px] text-amber-100/70 leading-relaxed italic">"Jika server baru belum punya database, ketik: <b>mysql -u root -p -e 'CREATE DATABASE nexus_wms;'</b> terlebih dahulu di terminal sebelum langkah nomor 3."</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Column 2: Media & Hub Settings */}
+                <div className="space-y-8">
+                    {/* Media Manager */}
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-8">
+                            <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={28}/></div>
+                            <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Media Hub</h3>
+                        </div>
+                        <div className="space-y-4 mb-8 p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-dashed border-ice-200 dark:border-gray-700">
+                            <input value={newMediaTitle} onChange={e => setNewMediaTitle(e.target.value)} placeholder="Judul Video..." className="w-full p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-rose-300" />
+                            <div className="flex gap-2">
+                                <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="URL YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none" />
+                                <button onClick={addToPlaylist} className="bg-rose-600 text-white p-3 rounded-xl hover:bg-rose-700 active:scale-95 transition-all shadow-lg"><Plus size={20}/></button>
+                            </div>
+                        </div>
+                        <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+                            {playlist.map(p => (
+                                <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20' : 'bg-white dark:bg-gray-800 border-ice-50 dark:border-gray-700'}`}>
+                                    <div className="flex items-center gap-3 truncate">
+                                        <Music size={16} className={currentMediaUrl === p.url ? 'text-rose-600' : 'text-slate-300'}/>
+                                        <p className={`text-sm font-bold truncate ${currentMediaUrl === p.url ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-gray-300'}`}>{p.title}</p>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        {onUpdateMedia && currentMediaUrl !== p.url && <button onClick={() => onUpdateMedia(p.url)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg"><Play size={16}/></button>}
+                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><X size={16}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* API Connection */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600 shadow-sm"><Server size={28}/></div>
+                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Server size={28}/></div>
                             <h3 className="font-bold text-2xl text-slate-800 dark:text-white">API Config</h3>
                         </div>
                         <div className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Vercel Proxy Path / VPS URL</label>
-                                <div className="flex gap-2">
-                                    <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl font-mono text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50/20 dark:bg-gray-900 outline-none focus:ring-2 focus:ring-indigo-500" />
-                                    <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 shadow-lg transition-all active:scale-95"><Save size={18}/></button>
-                                </div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Vercel Proxy / VPS URL</label>
+                            <div className="flex gap-2">
+                                <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl font-mono text-xs bg-indigo-50/20 dark:bg-gray-900 dark:text-indigo-400 outline-none" />
+                                <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 active:scale-95 transition-all shadow-lg"><Save size={18}/></button>
                             </div>
-                            <div className={`flex items-center gap-3 p-4 rounded-2xl border ${apiUrl.startsWith('/') ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-amber-50 border-amber-100'}`}>
-                                <Wifi size={16} className={apiUrl.startsWith('/') ? 'text-emerald-500' : 'text-amber-500'} />
-                                <span className={`text-xs font-bold ${apiUrl.startsWith('/') ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700'}`}>
-                                    {apiUrl.startsWith('/') ? 'Vercel Proxy: Aktif (Aman)' : 'Mode URL Custom: Aktif'}
-                                </span>
+                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
+                                <Wifi size={16} className="text-emerald-500"/>
+                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Connection: Active (Online)</span>
                             </div>
                         </div>
                     </div>
@@ -353,15 +274,12 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 };
 
 const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () => void, onSave: () => void }) => {
-    const [formData, setFormData] = useState({
-        name: user?.name || '', username: user?.username || '', role: user?.role || 'staff', password: ''
-    });
+    const [formData, setFormData] = useState({ name: user?.name || '', username: user?.username || '', role: user?.role || 'staff', password: '' });
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name || !formData.username) return;
-        
         setIsSaving(true);
         try {
             const newUser: User = { 
@@ -371,9 +289,9 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                 role: formData.role as Role 
             };
             await storageService.saveUser(newUser, formData.password || undefined);
-            onSave(); // Refresh list and close
+            onSave();
         } catch (err) {
-            alert("Gagal menyimpan profil staff. Silakan cek koneksi API.");
+            alert("Gagal menyimpan staff. Pastikan server API Abang sudah running di VPS.");
         } finally {
             setIsSaving(false);
         }
@@ -381,11 +299,9 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden border border-white/20">
+            <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden border border-white/10">
                 <div className="p-8 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-                        <ShieldCheck size={20} className="text-indigo-600"/> {user ? 'Edit Profil Staff' : 'Rekrut Staff Baru'}
-                    </h3>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3"><ShieldCheck size={20} className="text-indigo-600"/> {user ? 'Edit Profil Staff' : 'Rekrut Staff Baru'}</h3>
                     <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><X size={24}/></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -398,9 +314,9 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                         <input required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full border border-ice-100 dark:border-gray-700 p-4 rounded-2xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Username unik..." />
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Tanggung Jawab (Role)</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Role / Jabatan</label>
                         <div className="relative">
-                            <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full border border-ice-100 dark:border-gray-700 p-4 rounded-2xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none">
+                            <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full border border-ice-100 dark:border-gray-700 p-4 rounded-2xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none appearance-none focus:ring-4 focus:ring-indigo-500/10">
                                 <option value="staff">Staff Gudang</option>
                                 <option value="admin">Administrator</option>
                                 <option value="viewer">Viewer Only</option>
@@ -415,8 +331,9 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                     <div className="pt-4 flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all">Batal</button>
                         <button type="submit" disabled={isSaving} className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50">
+                            {/* FIX: Use RefreshCcw instead of RefreshCw */}
                             {isSaving ? <RefreshCcw size={18} className="animate-spin" /> : <Save size={18} />} 
-                            {isSaving ? 'Menyimpan...' : 'Simpan Profil'}
+                            {isSaving ? 'Menyimpan...' : 'Simpan Profil Staff'}
                         </button>
                     </div>
                 </form>
@@ -424,8 +341,3 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
         </div>
     );
 };
-
-// Helper component for select dropdown
-const ChevronDown = ({ className, size }: { className?: string, size?: number }) => (
-  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-);
