@@ -29,8 +29,8 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Helper untuk format tanggal MySQL
-  const formatMySQLDate = (date: Date) => {
+  // Helper untuk format tanggal MySQL (YYYY-MM-DD HH:mm:ss)
+  const formatMySQLDateTime = (date: Date) => {
       return date.toISOString().slice(0, 19).replace('T', ' ');
   };
 
@@ -98,7 +98,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
               const data = XLSX.utils.sheet_to_json(ws) as any[];
 
               const updatedMaster = [...rejectMasterData];
-              const nowFormatted = formatMySQLDate(new Date());
+              const nowFormatted = formatMySQLDateTime(new Date());
 
               data.forEach(row => {
                   const sku = String(row.SKU || '').trim();
@@ -243,6 +243,8 @@ const RejectLogsList: React.FC<{ logs: RejectLog[], onEdit: (l: RejectLog) => vo
     </div>
 );
 
+// --- Modals ---
+
 const MasterItemModal: React.FC<{ item: RejectItem | null, onClose: () => void, onSave: (i: RejectItem) => void }> = ({ item, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<RejectItem>>(item || { sku: '', name: '', baseUnit: 'Pcs', op2: 'multiply', op3: 'multiply' });
 
@@ -309,9 +311,38 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
 
     const handleAddItem = () => { if (!selectedItem || !quantityInput || quantityInput <= 0) return; const baseQty = calculateBaseQuantity(Number(quantityInput), conversionRatio, conversionOp); const newItem: RejectItemDetail = { itemId: selectedItem.id, itemName: selectedItem.name, sku: selectedItem.sku, baseUnit: selectedItem.baseUnit, quantity: Number(quantityInput), unit: selectedUnit, ratio: conversionRatio, operation: conversionOp, totalBaseQuantity: baseQty, reason: reason, unit2: selectedItem.unit2, ratio2: selectedItem.ratio2, op2: selectedItem.op2, unit3: selectedItem.unit3, ratio3: selectedItem.ratio3, op3: selectedItem.op3 }; setItems([...items, newItem]); setQuantityInput(''); setReason(''); setItemSearch(''); setSelectedItemId(''); setSelectedUnit(''); };
     const handleRemoveItem = (idx: number) => { setItems(items.filter((_, i) => i !== idx)); };
-    const handleSave = () => { onSave({ id: log?.id || `RJ-${Date.now()}`, date, items, notes, timestamp: new Date().toISOString() }); };
+    
+    const handleSave = () => { 
+        const now = new Date();
+        // MySQL DATETIME: YYYY-MM-DD HH:mm:ss
+        const mysqlTimestamp = now.toISOString().slice(0, 19).replace('T', ' ');
+        
+        onSave({ 
+            id: log?.id || `RJ-${Date.now()}`, 
+            date, 
+            items, 
+            notes, 
+            timestamp: mysqlTimestamp 
+        }); 
+    };
 
-    const handleCopyToClipboard = () => { try { const d = new Date(date); const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, ''); let text = `Data Reject KKL ${dateStr}\n`; items.forEach(item => { text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'Sesuai Fisik'})\n`; }); navigator.clipboard.writeText(text); alert("Format teks berhasil disalin ke clipboard!"); } catch (e) { alert("Gagal menyalin teks."); } };
+    const handleCopyToClipboard = () => { 
+        try { 
+            // Format ddmmyy dari date (YYYY-MM-DD)
+            const [y, m, d] = date.split('-');
+            const ddmmyy = `${d}${m}${y.slice(2)}`;
+            
+            let text = `Data Reject KKL ${ddmmyy}\n`; 
+            items.forEach(item => { 
+                text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'Sesuai Fisik'})\n`; 
+            }); 
+            
+            navigator.clipboard.writeText(text); 
+            alert("Format teks berhasil disalin ke clipboard!"); 
+        } catch (e) { 
+            alert("Gagal menyalin teks."); 
+        } 
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
