@@ -7,8 +7,6 @@ const DEFAULT_API_URL = '/api';
 
 const getApiUrl = () => {
     const stored = localStorage.getItem('nexus_api_url');
-    
-    // Auto-fix: Clear old IPs or placeholders to ensure the new default takes effect
     if (stored && (
         stored.includes('178.128.106.33') || 
         stored.includes('89.21.85.28') || 
@@ -17,7 +15,6 @@ const getApiUrl = () => {
         localStorage.removeItem('nexus_api_url');
         return DEFAULT_API_URL;
     }
-
     if (stored === 'local') return '';
     return stored || DEFAULT_API_URL;
 };
@@ -46,7 +43,6 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
     }
 };
 
-// --- REST OF THE SERVICE LOGIC ---
 const INITIAL_ITEMS: InventoryItem[] = [
   { id: '1', sku: 'ELEC-001', name: 'Wireless Headphones', category: 'Electronics', price: 1500000, location: 'A-01', unit: 'Pcs', stock: 50, minLevel: 10, active: true },
 ];
@@ -168,10 +164,8 @@ export const storageService = {
   },
 
   updateTransaction: async (oldTx: Transaction, newTx: Transaction) => {
-      if (isApiMode()) {
-          alert("Update requires direct transaction management via API.");
-          return;
-      }
+      if (isApiMode()) return apiCall(`transactions/${newTx.id}`, 'PUT', { oldTx, newTx });
+      
       const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
       oldTx.items.forEach(tItem => {
         const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
