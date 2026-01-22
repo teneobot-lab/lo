@@ -228,7 +228,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                 <p className="text-xs text-slate-400 ml-8 leading-relaxed">Jalankan perintah ini di terminal server lama untuk mengambil data database.</p>
                                 <div className="group relative ml-8">
                                     <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono leading-relaxed overflow-x-auto">
-                                        mysqldump -u root -p nexus_wms > backup_nexus.sql
+                                        mysqldump -u root -p nexus_wms {'>'} backup_nexus.sql
                                     </code>
                                     <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:text-white" title="Copy Command"><Copy size={14}/></button>
                                 </div>
