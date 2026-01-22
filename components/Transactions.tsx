@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -134,71 +135,80 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        // Use defval to ensure null columns are still included in object keys
-        const rawData = XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[];
+        // Membaca mentah sebagai array of arrays untuk mendeteksi baris data
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-        if (rawData.length === 0) {
+        if (rawRows.length === 0) {
             notify("File Excel kosong!", "warning");
             return;
         }
 
         setIsImporting(true);
 
-        // Super aggressive aliases
-        const skuAliases = ['sku', 'kode', 'part', 'pn', 'kd', 'no'];
-        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'pcs', 'jml', 'vol'];
-        const nameAliases = ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan', 'ket'];
-        const unitAliases = ['unit', 'satuan', 'uom', 'sat', 'pack'];
-
-        const getValByAlias = (row: any, aliases: string[]) => {
-            const keys = Object.keys(row);
-            const foundKey = keys.find(k => {
-                const cleanK = k.trim().toLowerCase();
-                // Check if any alias is contained within the header or vice versa
-                return aliases.some(a => cleanK.includes(a) || a.includes(cleanK));
-            });
-            return foundKey ? row[foundKey] : null;
+        // Alias kata kunci untuk pemetaan kolom
+        const keywords = {
+            sku: ['sku', 'kode', 'part', 'pn', 'kd', 'no'],
+            name: ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan'],
+            qty: ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'pcs', 'jml'],
+            unit: ['unit', 'satuan', 'uom', 'sat', 'pack']
         };
 
+        let headerIdx = -1;
+        let mapping = { sku: 0, name: 1, qty: 2, unit: 3 }; // Fallback default (urut 0,1,2,3)
+
+        // Cari baris header di 10 baris pertama
+        for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+            const row = rawRows[i].map(c => String(c).toLowerCase().trim());
+            const hasSku = row.some(c => keywords.sku.some(k => c.includes(k)));
+            const hasQty = row.some(c => keywords.qty.some(k => c.includes(k)));
+            
+            if (hasSku && hasQty) {
+                headerIdx = i;
+                // Petakan index kolom
+                mapping.sku = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
+                mapping.name = row.findIndex(c => keywords.name.some(k => c.includes(k)));
+                mapping.qty = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
+                mapping.unit = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
+                
+                // Pastikan index valid (tidak -1), jika -1 pakai fallback urutan
+                if (mapping.name === -1) mapping.name = 1;
+                if (mapping.unit === -1) mapping.unit = 3;
+                break;
+            }
+        }
+
+        const dataStartIdx = headerIdx + 1;
         const newItemsInCart: TransactionItem[] = [];
         let createdCount = 0;
         
-        // Fetch freshest items list to check against
         const currentItems = await storageService.getItems();
-        // Local cache for items created within THIS import loop
         const sessionItems: InventoryItem[] = [...currentItems];
 
-        for (const row of rawData) {
-            const rawSku = getValByAlias(row, skuAliases);
-            const rawQty = getValByAlias(row, qtyAliases);
-            const rawName = getValByAlias(row, nameAliases);
-            const rawUnit = getValByAlias(row, unitAliases);
+        for (let i = dataStartIdx; i < rawRows.length; i++) {
+            const row = rawRows[i];
+            if (!row || row.length === 0) continue;
 
-            // Skip if critical data missing
-            if (!rawSku || rawQty === null || rawQty === undefined || rawQty === "") continue;
+            const sku = String(row[mapping.sku] || '').trim().toUpperCase();
+            const qty = Number(row[mapping.qty]);
+            const name = String(row[mapping.name] || sku).trim();
+            const unit = String(row[mapping.unit] || 'Pcs').trim();
 
-            const sku = String(rawSku).trim().toUpperCase();
-            const qty = Number(rawQty);
-            const name = rawName ? String(rawName).trim() : sku;
-            const unit = rawUnit ? String(rawUnit).trim() : 'Pcs';
+            if (!sku || isNaN(qty)) continue;
 
-            if (isNaN(qty)) continue;
+            let inventoryItem = sessionItems.find(item => item.sku.toUpperCase() === sku);
 
-            // 1. Check if item exists in current list (or already created in this loop)
-            let inventoryItem = sessionItems.find(i => i.sku.toUpperCase() === sku);
-
-            // 2. AUTO-CREATE if not found
+            // AUTO-CREATE MASTER JIKA BELUM ADA
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
                     id: newId,
                     sku: sku,
-                    name: name,
-                    category: 'Imported', // Default
-                    price: 0,             // Default
-                    location: 'UNSET',    // Default
-                    unit: unit,
-                    stock: 0,             // Master starts at 0, updated by transaction
+                    name: name || sku,
+                    category: 'Imported',
+                    price: 0,
+                    location: 'UNSET',
+                    unit: unit || 'Pcs',
+                    stock: 0, 
                     minLevel: 0,
                     active: true
                 };
@@ -206,15 +216,14 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 try {
                     await storageService.saveItem(newItem);
                     inventoryItem = newItem;
-                    sessionItems.push(newItem); // Add to session cache to avoid double create
+                    sessionItems.push(newItem);
                     createdCount++;
                 } catch (err) {
-                    console.error("Failed to auto-create item:", sku, err);
+                    console.error("Gagal buat barang master:", sku, err);
                     continue; 
                 }
             }
 
-            // 3. Add to cart
             if (inventoryItem) {
                 newItemsInCart.push({
                     itemId: inventoryItem.id,
@@ -230,19 +239,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
-            
-            // Refresh parent state to include new master items
             onSuccess();
             
-            let msg = `${newItemsInCart.length} item berhasil masuk cart.`;
-            if (createdCount > 0) msg += ` (${createdCount} barang baru otomatis didaftarkan)`;
+            let msg = `${newItemsInCart.length} item masuk batch.`;
+            if (createdCount > 0) msg += ` (${createdCount} barang baru terdaftar)`;
             notify(msg, 'success');
         } else {
-            notify("Tidak ada data valid (Cek kolom SKU/Qty)! Pastikan header Excel jelas.", "error");
+            notify("Data tidak ditemukan! Gunakan format: SKU, Nama, Qty, Unit.", "error");
         }
       } catch (err) {
         console.error("Import Error:", err);
-        notify("Gagal membaca file Excel!", "error");
+        notify("Gagal membaca Excel!", "error");
       } finally {
         setIsImporting(false);
       }
