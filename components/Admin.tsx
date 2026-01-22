@@ -218,7 +218,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Download size={14}/> 1. Backup Database (VPS Lama)</h4>
                                 <div className="group relative">
                                     <code className="block bg-black p-4 rounded-2xl text-[10px] text-emerald-400 border border-slate-700 font-mono leading-relaxed overflow-x-auto">
-                                        mysqldump -u {process.env.DB_USER || 'root'} -p {process.env.DB_NAME || 'nexus_wms'} > backup.sql
+                                        mysqldump -u {process.env.DB_USER || 'root'} -p {process.env.DB_NAME || 'nexus_wms'} {'>'} backup.sql
                                     </code>
                                     <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><Copy size={14}/></button>
                                 </div>
