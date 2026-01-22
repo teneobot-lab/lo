@@ -2,20 +2,33 @@
 import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
-import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database, Wifi, WifiOff, Play, Link, Globe } from 'lucide-react';
+import { Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, Database, Wifi, WifiOff, Play, Link, Globe, Download, Upload, RefreshCcw, ShieldCheck, Youtube, ListMusic, Terminal, AlertCircle, FileJson } from 'lucide-react';
 
 interface AdminProps {
     currentMediaUrl?: string;
     onUpdateMedia?: (url: string) => void;
 }
 
+interface PlaylistItem {
+    id: string;
+    title: string;
+    url: string;
+}
+
 export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [apiUrl, setApiUrl] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    
+    // Media Playlist State
+    const [playlist, setPlaylist] = useState<PlaylistItem[]>(() => {
+        const saved = localStorage.getItem('nexus_media_playlist');
+        return saved ? JSON.parse(saved) : [{ id: '1', title: 'Default Relaxing', url: 'https://www.youtube.com/embed/jfKfPfyJRdk' }];
+    });
+    const [newMediaTitle, setNewMediaTitle] = useState('');
+    const [newMediaUrl, setNewMediaUrl] = useState('');
 
-    // Default use the proxy path
     const PROXY_PATH = '/api';
 
     useEffect(() => {
@@ -39,84 +52,198 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         window.location.reload();
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDeleteUser = async (id: string) => {
         if (id === 'admin') {
-            alert("Tidak bisa menghapus akun admin utama.");
+            alert("Sistem Keamanan: Akun Super Admin Utama tidak dapat dihapus.");
             return;
         }
-        if (window.confirm("Hapus user ini?")) {
+        if (window.confirm("Hapus user ini secara permanen?")) {
             await storageService.deleteUser(id);
             refreshUsers();
         }
     };
 
-    const isLocalMode = apiUrl === 'local';
+    // Playlist Logic
+    const addToPlaylist = () => {
+        if (!newMediaTitle || !newMediaUrl) return;
+        let embedUrl = newMediaUrl;
+        if (newMediaUrl.includes('watch?v=')) {
+            embedUrl = newMediaUrl.replace('watch?v=', 'embed/');
+        } else if (newMediaUrl.includes('youtu.be/')) {
+            embedUrl = newMediaUrl.replace('youtu.be/', 'youtube.com/embed/');
+        }
+        const newItem = { id: crypto.randomUUID(), title: newMediaTitle, url: embedUrl };
+        const next = [...playlist, newItem];
+        setPlaylist(next);
+        localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
+        setNewMediaTitle('');
+        setNewMediaUrl('');
+    };
+
+    const deleteFromPlaylist = (id: string) => {
+        const next = playlist.filter(p => p.id !== id);
+        setPlaylist(next);
+        localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
+    };
+
+    // Backup & Restore Logic
+    const exportSystemConfig = () => {
+        const data: any = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('nexus_')) {
+                data[key] = localStorage.getItem(key);
+            }
+        }
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Nexus_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+    };
+
+    const importSystemConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const data = JSON.parse(evt.target?.result as string);
+                Object.keys(data).forEach(key => localStorage.setItem(key, data[key]));
+                alert("Konfigurasi Lokal Berhasil Diimpor! Halaman akan dimuat ulang.");
+                window.location.reload();
+            } catch (err) { alert("Gagal mengimpor file backup."); }
+        };
+        reader.readAsText(file);
+    };
 
     return (
-        <div className="space-y-6 max-w-5xl mx-auto">
-            <h2 className="text-2xl font-bold text-dark dark:text-white mb-4">Control Center</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-8 max-w-7xl mx-auto pb-20 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Pusat Kendali Admin</h2>
+                    <p className="text-sm text-slate-500 font-medium">Manajemen user, playlist media, dan pemeliharaan server.</p>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={exportSystemConfig} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-slate-700 dark:text-white border border-ice-200 dark:border-gray-700 rounded-xl text-sm font-bold shadow-sm hover:bg-ice-50 transition-all"><FileJson size={16}/> Backup Sistem</button>
+                    <label className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg hover:bg-indigo-700 cursor-pointer transition-all"><Upload size={16}/> Restore<input type="file" accept=".json" onChange={importSystemConfig} className="hidden"/></label>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* User Management */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="flex items-center gap-2 font-bold text-lg text-dark dark:text-white">
-                            <Users size={20} className="text-primary" /> User Management
-                        </h3>
+                <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700 flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Users size={24}/></div>
+                            <h3 className="font-bold text-xl text-slate-800 dark:text-white">Manajemen Staff</h3>
+                        </div>
+                        <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl shadow-lg transition-all"><Plus size={20}/></button>
                     </div>
-                    <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar pr-2">
                         {users.map(u => (
-                            <div key={u.id} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-gray-700/50 rounded-xl">
-                                <div>
-                                    <p className="font-semibold text-sm dark:text-gray-200">{u.name}</p>
-                                    <p className="text-xs text-muted dark:text-gray-400">@{u.username}</p>
+                            <div key={u.id} className="group flex justify-between items-center p-4 bg-slate-50 dark:bg-gray-700/30 rounded-2xl border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/50 transition-all">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-white dark:bg-gray-700 rounded-2xl flex items-center justify-center text-indigo-600 font-bold text-lg shadow-sm">{u.name.charAt(0)}</div>
+                                    <div>
+                                        <p className="font-bold text-slate-800 dark:text-white">{u.name}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-xs text-slate-400 font-mono">@{u.username}</span>
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${u.role === 'admin' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>{u.role}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="px-2 py-1 bg-white dark:bg-gray-600 border border-border dark:border-gray-500 rounded text-[10px] uppercase font-bold text-muted dark:text-gray-300">{u.role}</span>
-                                    <button onClick={() => { setEditingUser(u); setIsModalOpen(true); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"><Edit2 size={14} /></button>
-                                    <button onClick={() => handleDelete(u.id)} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all"><Edit2 size={16} /></button>
+                                    <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all"><Trash2 size={16} /></button>
                                 </div>
                             </div>
                         ))}
                     </div>
-                    <button onClick={() => { setEditingUser(null); setIsModalOpen(true); }} className="mt-4 w-full py-2 border border-dashed border-primary text-primary rounded-xl text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center gap-2"><Plus size={16} /> Add New User</button>
                 </div>
 
-                {/* Database Connection */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-soft border border-slate-100 dark:border-gray-700">
-                    <h3 className="flex items-center gap-2 font-bold text-lg mb-4 text-dark dark:text-white"><Server size={20} className="text-indigo-500" /> Vercel Proxy Config</h3>
-                    <div className="space-y-4">
-                         <div>
-                             <label className="block text-xs font-bold text-muted dark:text-gray-400 uppercase mb-1">Backend API Path</label>
-                             <div className="flex gap-2">
-                                 <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-border dark:border-gray-600 rounded-lg text-sm font-mono text-slate-600 dark:text-gray-300 bg-slate-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none" />
-                                 <button onClick={handleSaveConfig} className="bg-primary text-white p-3 rounded-lg hover:bg-blue-600 transition-all shadow-md"><Save size={18}/></button>
-                             </div>
-                             <p className="text-[10px] text-muted dark:text-gray-500 mt-2">
-                                💡 Gunakan <code>/api</code> agar Vercel meneruskan data ke VPS <code>165.245.187.238</code> secara aman.
-                             </p>
-                         </div>
-                         
-                         <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
-                            <div className="flex items-start gap-3">
-                                <Globe size={18} className="text-indigo-600 mt-0.5" />
-                                <div>
-                                    <p className="text-sm font-bold text-indigo-900 dark:text-indigo-300">Status Proxy Aktif</p>
-                                    <p className="text-xs text-indigo-700 dark:text-indigo-400 mt-0.5">Frontend Vercel akan otomatis me-route semua request dari <code>/api</code> ke server backend di port <code>5000</code>.</p>
+                {/* Media Playlist Manager */}
+                <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700 flex flex-col h-full">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-3 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={24}/></div>
+                        <h3 className="font-bold text-xl text-slate-800 dark:text-white">YouTube Playlist</h3>
+                    </div>
+                    
+                    <div className="flex flex-col gap-3 mb-6 p-4 bg-slate-50 dark:bg-gray-900/50 rounded-2xl border border-dashed border-ice-200 dark:border-gray-700">
+                        <input value={newMediaTitle} onChange={e => setNewMediaTitle(e.target.value)} placeholder="Judul Lagu/Video..." className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" />
+                        <div className="flex gap-2">
+                            <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="Link YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" />
+                            <button onClick={addToPlaylist} className="px-4 py-3 bg-rose-600 text-white rounded-xl font-bold shadow-lg hover:bg-rose-700 active:scale-95 transition-all"><Plus size={20}/></button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 flex-1 overflow-y-auto max-h-[250px] custom-scrollbar pr-2">
+                        {playlist.map(p => (
+                            <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800' : 'bg-white dark:bg-gray-700/20 border-ice-50 dark:border-gray-700'}`}>
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className={`p-2 rounded-lg ${currentMediaUrl === p.url ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-100 dark:bg-gray-700 text-slate-400'}`}><Music size={16}/></div>
+                                    <span className={`text-sm font-bold truncate ${currentMediaUrl === p.url ? 'text-rose-700 dark:text-rose-400' : 'text-slate-600 dark:text-gray-300'}`}>{p.title}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    {onUpdateMedia && currentMediaUrl !== p.url && (
+                                        <button onClick={() => onUpdateMedia(p.url)} className="p-2 text-emerald-500 hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all" title="Putar"><Play size={16}/></button>
+                                    )}
+                                    <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-xl transition-all"><X size={16}/></button>
                                 </div>
                             </div>
-                         </div>
+                        ))}
+                    </div>
+                </div>
 
-                         <div className={`flex items-center justify-between p-3 rounded-xl border ${!isLocalMode ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/20'}`}>
-                             <div className="flex items-center gap-2">
-                                 {!isLocalMode ? <Wifi size={16} className="text-emerald-600" /> : <WifiOff size={16} className="text-amber-600" />}
-                                 <span className={`text-sm font-medium ${!isLocalMode ? 'text-emerald-800 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-400'}`}>{!isLocalMode ? 'Connected via Proxy' : 'Offline Mode'}</span>
+                {/* Vercel Proxy Config */}
+                <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
+                    <h3 className="flex items-center gap-3 font-bold text-xl mb-6 text-slate-800 dark:text-white"><Server size={24} className="text-indigo-500" /> Vercel Proxy Config</h3>
+                    <div className="space-y-4">
+                         <div>
+                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Backend API Path</label>
+                             <div className="flex gap-2">
+                                 <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl text-sm font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-gray-900 outline-none focus:ring-2 focus:ring-indigo-300" />
+                                 <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 transition-all shadow-lg active:scale-95"><Save size={18}/></button>
                              </div>
-                             <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${!isLocalMode ? 'bg-emerald-200 text-emerald-800' : 'bg-amber-200 text-amber-800'}`}>ONLINE</span>
+                             <p className="text-[10px] text-slate-400 mt-3 flex items-center gap-1.5"><AlertCircle size={12}/> Vercel Proxy meneruskan request ke server VPS di port 5000.</p>
+                         </div>
+                         <div className={`flex items-center justify-between p-4 rounded-2xl border ${apiUrl.startsWith('/') ? 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800' : 'bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-800'}`}>
+                             <div className="flex items-center gap-3">
+                                 <div className={`p-2 rounded-full ${apiUrl.startsWith('/') ? 'bg-emerald-500' : 'bg-amber-500'} text-white`}><Wifi size={14} /></div>
+                                 <span className={`text-sm font-bold ${apiUrl.startsWith('/') ? 'text-emerald-800 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-400'}`}>{apiUrl.startsWith('/') ? 'Proxy Status: Active' : 'Custom External URL'}</span>
+                             </div>
+                             <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 bg-white dark:bg-gray-800 rounded shadow-sm">VERIFIED</span>
                          </div>
                     </div>
                 </div>
+
+                {/* Backup & Migrate Guide */}
+                <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-700 text-white flex flex-col">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg"><Terminal size={24}/></div>
+                        <h3 className="font-bold text-xl">Backup & Migrate Guide</h3>
+                    </div>
+                    <div className="flex-1 space-y-4">
+                        <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">1. Backup Database VPS</h4>
+                            <p className="text-[11px] text-slate-400 mb-2">Jalankan perintah ini di terminal VPS lama Anda:</p>
+                            <code className="block bg-black p-3 rounded-lg text-[10px] text-emerald-400 break-all border border-slate-950">mysqldump -u dudung -p nexus_wms > nexus_backup.sql</code>
+                        </div>
+                        <div className="p-4 bg-slate-800 rounded-2xl border border-slate-700">
+                            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">2. Migrate ke VPS Baru</h4>
+                            <p className="text-[11px] text-slate-400 mb-2">Pindahkan file .sql lalu jalankan di VPS baru:</p>
+                            {/* FIX: Escaped the '<' symbol to prevent JSX parsing errors */}
+                            <code className="block bg-black p-3 rounded-lg text-[10px] text-emerald-400 break-all border border-slate-950">mysql -u root -p nexus_wms {'<'} nexus_backup.sql</code>
+                        </div>
+                        <div className="p-4 bg-indigo-900/30 rounded-2xl border border-indigo-800/50">
+                            <p className="text-xs text-indigo-200 leading-relaxed italic">"Pastikan username dan password MySQL di server baru sama dengan yang terdaftar di file .env backend Nexus agar sistem langsung sinkron."</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            {isModalOpen && <UserModal user={editingUser} onClose={() => setIsModalOpen(false)} onSave={() => { refreshUsers(); setIsModalOpen(false); }} />}
+
+            {isUserModalOpen && <UserModal user={editingUser} onClose={() => setIsUserModalOpen(false)} onSave={() => { refreshUsers(); setIsUserModalOpen(false); }} />}
         </div>
     );
 };
@@ -132,36 +259,36 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
         onSave();
     };
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                <div className="p-6 border-b border-border dark:border-gray-800 flex justify-between items-center bg-slate-50 dark:bg-gray-800/50">
-                    <h3 className="text-xl font-bold text-dark dark:text-white">{user ? 'Edit User' : 'New User'}</h3>
-                    <button onClick={onClose} className="text-muted dark:text-gray-400 hover:text-dark dark:hover:text-white"><X size={24}/></button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-md max-w-md overflow-hidden border border-white/20">
+                <div className="p-8 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><ShieldCheck size={20}/> {user ? 'Edit Profil Staff' : 'Rekrut Staff Baru'}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X size={24}/></button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-xs font-semibold text-muted dark:text-gray-400 uppercase mb-1">Full Name</label>
-                        <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border dark:border-gray-700 p-2 rounded-lg bg-white dark:bg-gray-950 text-dark dark:text-white" />
+                <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Nama Lengkap</label>
+                        <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-ice-100 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Misal: Ahmad Dani" />
                     </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-muted dark:text-gray-400 uppercase mb-1">Username</label>
-                        <input required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full border dark:border-gray-700 p-2 rounded-lg bg-white dark:bg-gray-950 text-dark dark:text-white" />
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Username Login</label>
+                        <input required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full border border-ice-100 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Username unik..." />
                     </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-muted dark:text-gray-400 uppercase mb-1">Role</label>
-                        <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full border dark:border-gray-700 p-2 rounded-lg bg-white dark:bg-gray-950 text-dark dark:text-white">
-                            <option value="staff">Staff</option>
-                            <option value="admin">Admin</option>
-                            <option value="viewer">Viewer</option>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Tanggung Jawab (Role)</label>
+                        <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full border border-ice-100 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 appearance-none">
+                            <option value="staff">Staff Gudang</option>
+                            <option value="admin">Administrator</option>
+                            <option value="viewer">Viewer Only</option>
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-muted dark:text-gray-400 uppercase mb-1">Password {user && '(Kosongkan jika tetap)'}</label>
-                        <input type="password" required={!user} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border dark:border-gray-700 p-2 rounded-lg bg-white dark:bg-gray-950 text-dark dark:text-white" placeholder={user ? "********" : "Enter password"} />
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Password {user && '(Kosongkan jika tetap)'}</label>
+                        <input type="password" required={!user} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full border border-ice-100 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder={user ? "••••••••" : "Masukkan password"} />
                     </div>
                     <div className="pt-4 flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-5 py-2 text-muted dark:text-gray-400 font-medium hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl">Cancel</button>
-                        <button type="submit" className="px-5 py-2 bg-primary text-white font-medium rounded-xl hover:bg-blue-600 transition-all flex items-center gap-2 shadow-md"><Save size={18} /> Save User</button>
+                        <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button>
+                        <button type="submit" className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95 flex items-center gap-2"><Save size={18} /> Simpan Profil</button>
                     </div>
                 </form>
             </div>
