@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -121,17 +122,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    // FIX: Use currentTarget for better type narrowing and access to files
+    const file = e.currentTarget.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        // Fix: Explicitly cast result to ArrayBuffer to satisfy XLSX.read
         const dataBuffer = evt.target?.result as ArrayBuffer;
         if (!dataBuffer) return;
         
-        // Gunakan array buffer untuk kompatibilitas lebih baik
         const wb = XLSX.read(dataBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
@@ -144,7 +144,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         setIsImporting(true);
 
-        // Helper untuk mencocokkan kolom dengan berbagai variasi nama
+        // Helper cari kolom (case-insensitive & trim)
         const getVal = (row: any, targets: string[]) => {
             const keys = Object.keys(row);
             const foundKey = keys.find(k => {
@@ -154,20 +154,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             return foundKey ? row[foundKey] : null;
         };
 
-        const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
-        
-        // Target aliases untuk SKU, QTY, Nama, dan Unit
-        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code'];
-        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar'];
-        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi'];
+        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code', 'no part'];
+        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar', 'pcs'];
+        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi', 'nama item'];
         const unitAliases = ['unit', 'satuan', 'uom', 'sat'];
 
-        rawData.forEach(row => {
+        const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
+
+        rawData.forEach((row, index) => {
             const rawSku = getVal(row, skuAliases);
-            if (!rawSku) return;
+            const rawQty = getVal(row, qtyAliases);
+            
+            if (!rawSku || rawQty === null || rawQty === undefined) {
+                console.warn(`Baris ${index + 2} dilewati: SKU atau QTY kosong.`);
+                return;
+            }
             
             const sku = String(rawSku).trim().toUpperCase();
-            const rawQty = getVal(row, qtyAliases);
             const qty = isNaN(Number(rawQty)) ? 0 : Number(rawQty);
             const name = String(getVal(row, nameAliases) || sku);
             const unit = String(getVal(row, unitAliases) || 'Pcs');
@@ -181,7 +184,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         const skusToProcess = Object.values(aggregated);
         if (skusToProcess.length === 0) {
-            notify("Format kolom Excel tidak dikenali (Pastikan ada kolom SKU/Kuantitas)", "error");
+            notify("Gagal: SKU/Qty tidak ditemukan. Cek header Excel.", "error");
             setIsImporting(false);
             return;
         }
@@ -189,11 +192,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const newItemsInCart: TransactionItem[] = [];
 
         for (const item of skusToProcess) {
-            // Cari di memori dulu
+            // Cari apakah barang sudah ada di Inventory
             let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
 
             if (!inventoryItem) {
-                // Jika tidak ada di memori, buat item baru otomatis di Database
+                console.log(`Auto-creating item: ${item.sku}`);
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
                     id: newId,
@@ -203,7 +206,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     price: 0,
                     location: 'A-01',
                     unit: item.unit,
-                    stock: 0,
+                    stock: 0, // Master stok mulai dari 0, nanti diupdate lewat submit transaksi
                     minLevel: 0,
                     active: true
                 };
@@ -211,8 +214,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     await storageService.saveItem(newItem);
                     inventoryItem = newItem;
                 } catch (err) {
-                    console.error("Gagal auto-save item baru:", item.sku);
-                    // Lanjut saja, nanti mungkin gagal di proses transaksi tapi tidak mematikan UI
+                    console.error("Gagal save item baru:", item.sku, err);
+                    continue; // Lewati jika gagal simpan master
                 }
             }
 
@@ -232,21 +235,21 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
-            notify(`${newItemsInCart.length} item berhasil masuk ke Cart.`, 'success');
-            onSuccess(); // Refresh data utama agar item baru muncul di inventory
+            notify(`${newItemsInCart.length} item dimuat ke Cart.`, 'success');
+            onSuccess(); // Refresh list inventory biar item barunya kelihatan
         } else {
-            notify("Tidak ada item valid untuk dimasukkan ke Cart.", "warning");
+            notify("Tidak ada item valid yang bisa ditambahkan.", "warning");
         }
       } catch (err) {
         console.error("Import Error:", err);
-        notify("Gagal memproses file Excel. Pastikan format benar.", "error");
+        notify("Terjadi kesalahan sistem saat membaca file.", "error");
       } finally {
         setIsImporting(false);
       }
     };
-    // Fix: Explicitly cast file to Blob to satisfy readAsArrayBuffer
-    reader.readAsArrayBuffer(file as Blob);
-    e.target.value = '';
+    // FIX: Cast to any to avoid 'unknown' type error in some TS configurations
+    reader.readAsArrayBuffer(file as any);
+    e.currentTarget.value = '';
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
