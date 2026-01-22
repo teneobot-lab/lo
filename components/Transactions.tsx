@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, ArrowDownCircle, ArrowUpCircle, Loader2 } from 'lucide-react';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -33,7 +33,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [deliveryNote, setDeliveryNote] = useState('');
   const [documentImage, setDocumentImage] = useState<string | null>(null);
 
-  const selectedItemData = items.find(i => i.id === selectedItemId);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -45,6 +45,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const selectedItemData = items.find(i => i.id === selectedItemId);
+
   const filteredItems = items.filter(i => 
     i.active && (
       i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
@@ -54,29 +56,14 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const getConversionFactor = (item: InventoryItem, uom: string) => {
       if (uom === item.unit) return 1;
-      
-      // Unit 2
       if (item.unit2 && uom === item.unit2 && item.ratio2) {
           return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;
       }
-      
-      // Unit 3
       if (item.unit3 && uom === item.unit3 && item.ratio3) {
            return item.op3 === 'divide' ? (1 / item.ratio3) : item.ratio3;
       }
-
-      // Legacy fallback
-      if (item.conversionUnit && uom === item.conversionUnit && item.conversionRatio) {
-          return item.conversionRatio;
-      }
-      
       return 1;
   };
-
-  const conversionRatio = selectedItemData ? getConversionFactor(selectedItemData, selectedUOM) : 1;
-  const currentQty = qty === '' ? 0 : qty;
-  const actualQtyToDeduct = parseFloat((currentQty * conversionRatio).toFixed(2));
-  const isStockInsufficient = type === 'outbound' && selectedItemData && actualQtyToDeduct > selectedItemData.stock;
 
   const handleSelectItem = (item: InventoryItem) => {
       setSelectedItemId(item.id);
@@ -88,22 +75,25 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const addToCart = () => {
     if (!selectedItemData || qty === '' || qty <= 0) return;
-    if (isStockInsufficient) {
+    
+    const conversionRatio = getConversionFactor(selectedItemData, selectedUOM);
+    const actualQtyToDeduct = parseFloat((qty * conversionRatio).toFixed(2));
+    
+    if (type === 'outbound' && actualQtyToDeduct > selectedItemData.stock) {
       notify("Stok tidak mencukupi", 'error');
       return;
     }
     
-    // Total price is calculated based on Base Price * Ratio
     const unitPricePerUOM = selectedItemData.price * conversionRatio;
     
     setCart([...cart, {
       itemId: selectedItemData.id,
       sku: selectedItemData.sku,
       name: selectedItemData.name,
-      qty: actualQtyToDeduct, // This is always converted to base unit for DB consistency
+      qty: actualQtyToDeduct,
       uom: selectedUOM,
       unitPrice: unitPricePerUOM,
-      total: currentQty * unitPricePerUOM
+      total: qty * unitPricePerUOM
     }]);
 
     setQty('');
@@ -116,6 +106,100 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const removeFromCart = (index: number) => {
     setCart(cart.filter((_, i) => i !== index));
+  };
+
+  // --- LOGIKA BULK IMPORT BARU ---
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+        if (data.length === 0) {
+            notify("File kosong!", "warning");
+            return;
+        }
+
+        setIsImporting(true);
+
+        // 1. Aggregasi Data berdasarkan SKU (Case Insensitive)
+        const aggregated: Record<string, { sku: string, name: string, qty: number, price: number }> = {};
+        
+        data.forEach(row => {
+            const rawSku = String(row.SKU || row.sku || '').trim();
+            if (!rawSku) return;
+            
+            const sku = rawSku.toUpperCase();
+            const qty = Number(row.Qty || row.qty || row.Jumlah || 0);
+            const name = String(row.Name || row.Nama || row.name || sku);
+            const price = Number(row.Price || row.Harga || row.price || 0);
+
+            if (aggregated[sku]) {
+                aggregated[sku].qty += qty;
+            } else {
+                aggregated[sku] = { sku, name, qty, price };
+            }
+        });
+
+        const newItemsInCart: TransactionItem[] = [];
+        const uniqueSkus = Object.values(aggregated);
+
+        // 2. Loop & Sync dengan Inventory
+        for (const item of uniqueSkus) {
+            let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
+
+            // Jika item belum ada di inventory, buat otomatis
+            if (!inventoryItem) {
+                const newId = crypto.randomUUID();
+                const newItem: InventoryItem = {
+                    id: newId,
+                    sku: item.sku,
+                    name: item.name,
+                    category: 'Imported',
+                    price: item.price || 0,
+                    location: 'A-01',
+                    unit: 'Pcs',
+                    stock: 0, // Awal 0, nanti ditambah oleh transaksi inbound/outbound
+                    minLevel: 0,
+                    active: true
+                };
+                await storageService.saveItem(newItem);
+                inventoryItem = newItem;
+            }
+
+            const conversionRatio = 1; // Default Pcs jika import massal
+            const unitPrice = inventoryItem.price || item.price;
+
+            newItemsInCart.push({
+                itemId: inventoryItem.id,
+                sku: inventoryItem.sku,
+                name: inventoryItem.name,
+                qty: item.qty, // Base unit
+                uom: inventoryItem.unit,
+                unitPrice: unitPrice,
+                total: item.qty * unitPrice
+            });
+        }
+
+        setCart(prev => [...prev, ...newItemsInCart]);
+        notify(`${uniqueSkus.length} tipe barang berhasil dimuat ke Cart.`, 'success');
+        onSuccess(); // Refresh inventory list agar SKU baru terdeteksi
+      } catch (err) {
+        console.error(err);
+        notify("Gagal memproses file Excel", "error");
+      } finally {
+        setIsImporting(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';
   };
 
   const handleSubmit = async () => {
@@ -210,22 +294,48 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     type="number" 
                     value={qty} 
                     onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className={`w-full p-3 border rounded-xl outline-none ${isStockInsufficient ? 'border-rose-400 bg-rose-50' : 'border-ice-200'}`}
+                    className="w-full p-3 border border-ice-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300"
                     placeholder="0"
                   />
                 </div>
             </div>
 
-            {isStockInsufficient && (
-                <div className="p-3 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center gap-2 border border-rose-100">
-                    <AlertCircle size={14} /> Stok tidak cukup. Anda butuh {actualQtyToDeduct} {selectedItemData?.unit}.
+            <div className="flex flex-col md:flex-row gap-3">
+                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="flex-1 py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+                    <Plus size={18} /> Tambah ke Batch
+                </button>
+                
+                <div className="relative flex-1">
+                    <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    <button disabled={isImporting} className="w-full py-4 bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-600 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
+                        {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel
+                    </button>
                 </div>
-            )}
-
-            <button onClick={addToCart} disabled={!selectedItemId || isStockInsufficient || !qty} className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
-                <Plus size={18} /> Tambah ke Batch
-            </button>
+            </div>
           </div>
+        </div>
+
+        {/* Extra Information (Suppliers, Notes, etc) */}
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-6 flex items-center gap-2">
+                <FileSpreadsheet size={16} className="text-indigo-500"/> Informasi Tambahan
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Supplier / Client</label>
+                        <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" placeholder="Nama perusahaan..." />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Nomor PO / Surat Jalan</label>
+                        <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" placeholder="PO-XXXXX" />
+                    </div>
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Tanggal Transaksi</label>
+                    <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" />
+                </div>
+            </div>
         </div>
       </div>
 
@@ -240,7 +350,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 <div key={idx} className="p-4 border-b border-ice-50 dark:border-gray-700 flex justify-between items-center hover:bg-slate-50">
                     <div>
                         <p className="font-bold text-sm dark:text-white">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.sku} | {item.qty} Base Unit</p>
+                        <p className="text-[10px] text-slate-400">{item.sku} | {item.qty} {item.uom}</p>
                     </div>
                     <div className="flex items-center gap-4">
                         <span className="font-bold text-sm text-indigo-600">Rp {item.total.toLocaleString()}</span>
@@ -248,11 +358,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     </div>
                 </div>
             ))}
+            {cart.length === 0 && (
+                <div className="p-10 text-center space-y-3 opacity-40">
+                    <ShoppingCart size={48} className="mx-auto text-slate-300" />
+                    <p className="text-xs font-bold text-slate-400 uppercase">Keranjang Kosong</p>
+                </div>
+            )}
         </div>
 
         <div className="p-6 bg-slate-50 dark:bg-gray-900">
             <div className="flex justify-between mb-4">
-                <span className="font-bold text-slate-500">Total</span>
+                <span className="font-bold text-slate-500">Total Transaksi</span>
                 <span className="font-black text-xl dark:text-white">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
             </div>
             <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50">
