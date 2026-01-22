@@ -75,19 +75,34 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     const addToPlaylist = () => {
         if (!newMediaTitle || !newMediaUrl) return;
-        let embedUrl = newMediaUrl;
-        if (newMediaUrl.includes('watch?v=')) {
-            const videoId = newMediaUrl.split('v=')[1]?.split('&')[0];
-            embedUrl = `https://www.youtube.com/embed/${videoId}`;
-        } else if (newMediaUrl.includes('youtu.be/')) {
-            const videoId = newMediaUrl.split('youtu.be/')[1]?.split('?')[0];
-            embedUrl = `https://www.youtube.com/embed/${videoId}`;
+        
+        let videoId = '';
+        const url = newMediaUrl.trim();
+
+        // YouTube Link Parsing Logic
+        if (url.includes('watch?v=')) {
+            videoId = url.split('v=')[1]?.split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+            videoId = url.split('youtu.be/')[1]?.split('?')[0];
+        } else if (url.includes('/shorts/')) {
+            videoId = url.split('/shorts/')[1]?.split('?')[0];
+        } else if (url.includes('/embed/')) {
+            videoId = url.split('/embed/')[1]?.split('?')[0];
         }
+
+        if (!videoId) {
+            alert("Link YouTube tidak valid! Gunakan link dari address bar atau menu share.");
+            return;
+        }
+
+        const embedUrl = `https://www.youtube.com/embed/${videoId}`;
         const newItem = { id: Math.random().toString(36).substr(2, 9), title: newMediaTitle, url: embedUrl };
         const next = [...playlist, newItem];
+        
         setPlaylist(next);
         localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
-        setNewMediaTitle(''); setNewMediaUrl('');
+        setNewMediaTitle(''); 
+        setNewMediaUrl('');
     };
 
     const deleteFromPlaylist = (id: string) => {
@@ -157,7 +172,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                     </div>
                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                         <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Edit2 size={16}/></button>
-                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Trash2 size={16}/></button>
+                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all" title="Hapus Staff"><Trash2 size={18}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -331,7 +346,6 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                     <div className="pt-4 flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all">Batal</button>
                         <button type="submit" disabled={isSaving} className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50">
-                            {/* FIX: Use RefreshCcw instead of RefreshCw */}
                             {isSaving ? <RefreshCcw size={18} className="animate-spin" /> : <Save size={18} />} 
                             {isSaving ? 'Menyimpan...' : 'Simpan Profil Staff'}
                         </button>

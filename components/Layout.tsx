@@ -51,17 +51,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Simulate Latency Fluctuation (Visual only, keep connection stable)
+  // Simulate Latency Fluctuation
   useEffect(() => {
-    // Latency Fluctuation (Simulate Ping for visual activity)
     const latencyInterval = setInterval(() => {
-      const baseLatency = Math.floor(Math.random() * (45 - 20) + 20); // More stable latency
+      const baseLatency = Math.floor(Math.random() * (45 - 20) + 20);
       setLatency(baseLatency);
     }, 3000);
-
-    return () => {
-      clearInterval(latencyInterval);
-    };
+    return () => clearInterval(latencyInterval);
   }, []);
 
   const getLatencyColor = (ms: number) => {
@@ -80,6 +76,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     { id: 'admin', label: 'Admin & Media', icon: Settings },
   ];
 
+  // Helper to construct YouTube URL properly
+  const getEmbedUrl = (url: string) => {
+    if (!url) return '';
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}autoplay=1&mute=0&rel=0`;
+  };
+
   return (
     <div className="flex h-screen bg-background dark:bg-gray-900 text-dark dark:text-white font-sans overflow-hidden transition-colors duration-500">
       {/* Mobile Overlay */}
@@ -96,15 +99,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
       >
         <div className="h-20 flex items-center justify-center border-b border-ice-100 dark:border-gray-700 bg-gradient-to-br from-ice-50 to-[#FCFCFC] dark:from-gray-800 dark:to-gray-900">
             <div className={`flex items-center gap-3 transition-all duration-300 ${isSidebarOpen ? 'px-4' : 'px-0'}`}>
-                {/* Logo Icon */}
                 <div className="relative group cursor-pointer">
                     <div className="absolute -inset-2 bg-ice-300/50 rounded-full blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                     <div className="relative w-10 h-10 bg-gradient-to-br from-ice-200 to-ice-400 dark:from-indigo-600 dark:to-purple-600 rounded-xl flex items-center justify-center shadow-lg text-ice-600 dark:text-white">
                         <Hexagon size={20} strokeWidth={2.5} className="text-white dark:text-white/90" />
                     </div>
                 </div>
-                
-                {/* Logo Text */}
                 {isSidebarOpen && (
                     <div className="flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
                         <span className="font-bold text-xl text-slate-800 dark:text-white tracking-tight leading-none">NEXUS</span>
@@ -155,7 +155,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#EEF2F6] dark:bg-gray-900">
-        {/* Header */}
         <header className="h-16 bg-white/60 dark:bg-gray-800/80 backdrop-blur-xl border-b border-ice-200 dark:border-gray-700 sticky top-0 z-30 flex items-center justify-between px-6 transition-colors">
             <div className="flex items-center gap-4">
                 <button 
@@ -168,7 +167,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             </div>
 
             <div className="flex items-center gap-3">
-                {/* Media Toggle */}
                 {mediaUrl && (
                     <button 
                         onClick={() => setIsPlayerOpen(!isPlayerOpen)}
@@ -178,8 +176,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                         <Music size={18} />
                     </button>
                 )}
-
-                {/* Theme Toggle */}
                 <button 
                   onClick={toggleTheme}
                   className="p-2 rounded-full hover:bg-ice-50 dark:hover:bg-gray-700 text-slate-400 dark:text-yellow-400 transition-all"
@@ -187,14 +183,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 >
                   {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
-
-                {/* Server Latency Indicator */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-500 ${getLatencyColor(latency)}`}>
                     <Activity size={14} className={latency > 200 ? 'animate-pulse' : ''} />
                     <span className="hidden sm:inline">VPS: {latency} ms</span>
                 </div>
-
-                {/* Cloud Status - FIXED to Online */}
                 <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors bg-ice-100 text-ice-600 border-ice-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400`}>
                     <Cloud size={14} />
                     <span className="hidden sm:inline">System Online</span>
@@ -202,7 +194,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             </div>
         </header>
 
-        {/* Page Content - Updated Gradient to Soft Grey/Blue instead of White */}
         <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-gradient-to-br from-[#EBF3FA] via-[#F5F7FA] to-[#F9FAFB] dark:from-gray-900 dark:to-gray-900 relative">
             {children}
         </div>
@@ -212,14 +203,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
              <div 
                 className={`fixed bottom-4 right-4 z-50 transition-all duration-500 ease-in-out bg-black rounded-2xl shadow-2xl overflow-hidden border border-slate-700 ${isPlayerOpen ? 'w-80 h-48 opacity-100 translate-y-0' : 'w-80 h-48 opacity-0 translate-y-[150%] pointer-events-none'}`}
              >
-                 {/* Header for Drag (Simplified) */}
                  <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-end p-2 opacity-0 hover:opacity-100 transition-opacity">
                      <button onClick={() => setIsPlayerOpen(false)} className="text-white/80 hover:text-white bg-black/50 rounded-full p-1"><Minimize2 size={14}/></button>
                  </div>
                  <iframe 
                     width="100%" 
                     height="100%" 
-                    src={`${mediaUrl}&autoplay=1`}
+                    src={getEmbedUrl(mediaUrl)}
                     title="Nexus Media Player" 
                     frameBorder="0" 
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
