@@ -32,7 +32,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [poNumber, setPoNumber] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
   const [notes, setNotes] = useState('');
-  const [documentImages, setDocumentImages] = useState<string[]>([]); // Multi-photo state
+  const [documentImages, setDocumentImages] = useState<string[]>([]);
 
   const [isImporting, setIsImporting] = useState(false);
 
@@ -109,11 +109,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     setCart(cart.filter((_, i) => i !== index));
   };
 
-  // --- LOGIKA TEMPLATE & IMPORT ---
+  // --- LOGIKA TEMPLATE & IMPORT REFINED ---
   const downloadTransactionTemplate = () => {
       const template = [
-          { SKU: 'SKU-001', 'Nama Barang': 'Contoh Barang A', QTY: 10, Unit: 'Pcs' },
-          { SKU: 'SKU-002', 'Nama Barang': 'Contoh Barang B', QTY: 5, Unit: 'Box' }
+          { 'SKU': 'SKU-001', 'Nama Barang': 'Contoh Barang A', 'QTY': 10, 'Unit': 'Pcs' },
+          { 'SKU': 'SKU-002', 'Nama Barang': 'Contoh Barang B', 'QTY': 5, 'Unit': 'Box' }
       ];
       const ws = XLSX.utils.json_to_sheet(template);
       const wb = XLSX.utils.book_new();
@@ -141,16 +141,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         }
 
         setIsImporting(true);
+
+        // Helper untuk cari value berdasarkan key yang mirip
+        const getVal = (row: any, targets: string[]) => {
+            const key = Object.keys(row).find(k => targets.includes(k.trim().toLowerCase()) || targets.includes(k.trim()));
+            return key ? row[key] : null;
+        };
+
         const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
         
         data.forEach(row => {
-            const rawSku = String(row.SKU || row.sku || '').trim();
-            if (!rawSku) return;
+            const skuVal = getVal(row, ['sku', 'sku barang', 'kode barang']);
+            if (!skuVal) return;
             
-            const sku = rawSku.toUpperCase();
-            const qty = Number(row.QTY || row.Qty || row.qty || row.Jumlah || 0);
-            const name = String(row['Nama Barang'] || row.Name || row.name || sku);
-            const unit = String(row.Unit || row.unit || 'Pcs');
+            const sku = String(skuVal).trim().toUpperCase();
+            const qty = Number(getVal(row, ['qty', 'jumlah', 'kuantitas']) || 0);
+            const name = String(getVal(row, ['nama barang', 'name', 'nama']) || sku);
+            const unit = String(getVal(row, ['unit', 'satuan']) || 'Pcs');
 
             if (aggregated[sku]) {
                 aggregated[sku].qty += qty;
@@ -165,6 +172,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         for (const item of uniqueSkus) {
             let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
 
+            // Jika item belum ada, buat otomatis dengan data default (Price/Category/Location kosong/default)
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
@@ -196,10 +204,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         }
 
         setCart(prev => [...prev, ...newItemsInCart]);
-        notify(`${uniqueSkus.length} tipe barang dimuat.`, 'success');
-        onSuccess();
+        notify(`${uniqueSkus.length} tipe barang dimuat ke Cart.`, 'success');
+        onSuccess(); // Refresh inventory list
       } catch (err) {
-        notify("Gagal memproses Excel", "error");
+        console.error("Import Error:", err);
+        notify("Gagal memproses file Excel. Cek format kolom.", "error");
       } finally {
         setIsImporting(false);
       }
@@ -208,7 +217,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     e.target.value = '';
   };
 
-  // --- MULTI PHOTO HANDLER ---
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files) return;
@@ -240,8 +248,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       supplier, 
       poNumber, 
       deliveryNote,
-      notes, // Field keterangan
-      documents: documentImages // Simpan array foto
+      notes,
+      documents: documentImages
     };
 
     try {
