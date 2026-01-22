@@ -10,13 +10,18 @@ interface State {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary class definition to ensure 'props' is correctly recognized by TypeScript by extending Component directly
-export class ErrorBoundary extends Component<Props, State> {
-  // Define initial state for the error boundary.
-  public state: State = {
-    hasError: false,
-    error: null,
-  };
+// Fixed ErrorBoundary class definition to ensure 'props' is correctly recognized 
+// by TypeScript by explicitly extending React.Component and using a constructor.
+export class ErrorBoundary extends React.Component<Props, State> {
+  // Define initial state for the error boundary in the constructor to ensure 
+  // correct inheritance and property recognition by the TypeScript compiler.
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };

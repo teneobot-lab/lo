@@ -263,10 +263,14 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             item={editingItem} 
             onClose={() => setIsModalOpen(false)} 
             onSave={async (item) => { 
-                await storageService.saveItem(item); 
-                onRefresh(); 
-                setIsModalOpen(false); 
-                notify('Data barang disimpan', 'success'); 
+                try {
+                    await storageService.saveItem(item); 
+                    onRefresh(); 
+                    setIsModalOpen(false); 
+                    notify('Data barang disimpan', 'success'); 
+                } catch (err) {
+                    notify('Gagal menyimpan barang ke server', 'error');
+                }
             }} 
           />
       )}
@@ -278,15 +282,21 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
     const [formData, setFormData] = useState<any>(() => {
         if (item) return { 
             ...item, 
-            unit2: item.unit2 || '', ratio2: item.ratio2, op2: item.op2 || 'multiply',
-            unit3: item.unit3 || '', ratio3: item.ratio3, op3: item.op3 || 'multiply' 
+            unit2: item.unit2 || '', ratio2: item.ratio2 ?? '', op2: item.op2 || 'multiply',
+            unit3: item.unit3 || '', ratio3: item.ratio3 ?? '', op3: item.op3 || 'multiply' 
         };
-        return { active: true, stock: 0, minLevel: 0, price: 0, unit: 'Pcs', unit2: '', ratio2: undefined, op2: 'multiply', unit3: '', ratio3: undefined, op3: 'multiply' };
+        // Inisialisasi field dengan string kosong agar input bersih dari angka 0 / undefined
+        return { 
+            sku: '', name: '', category: '', location: '',
+            active: true, stock: '', minLevel: '', price: '', unit: 'Pcs', 
+            unit2: '', ratio2: '', op2: 'multiply', 
+            unit3: '', ratio3: '', op3: 'multiply' 
+        };
     });
 
     const handleChange = (e: any) => { 
-        const { name, value, type } = e.target; 
-        setFormData((prev: any) => ({ ...prev, [name]: type === 'number' ? (value === '' ? '' : parseFloat(value)) : value })); 
+        const { name, value } = e.target; 
+        setFormData((prev: any) => ({ ...prev, [name]: value })); 
     };
 
     const handleOpChange = (level: 2 | 3, op: 'multiply' | 'divide') => { 
@@ -295,15 +305,28 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
 
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
-        onSave({ 
-            id: item?.id || crypto.randomUUID(), 
-            ...formData, 
-            price: Number(formData.price || 0), 
-            stock: Number(formData.stock || 0), 
-            minLevel: Number(formData.minLevel || 0), 
-            ratio2: formData.ratio2 ? Number(formData.ratio2) : undefined,
-            ratio3: formData.ratio3 ? Number(formData.ratio3) : undefined
-        } as InventoryItem); 
+        
+        // Pastikan konversi tipe data sebelum dikirim ke onSave
+        const payload: InventoryItem = {
+            id: item?.id || crypto.randomUUID(),
+            sku: formData.sku || '',
+            name: formData.name || '',
+            category: formData.category || '',
+            location: formData.location || '',
+            price: formData.price === '' ? 0 : Number(formData.price),
+            unit: formData.unit || 'Pcs',
+            stock: formData.stock === '' ? 0 : Number(formData.stock),
+            minLevel: formData.minLevel === '' ? 0 : Number(formData.minLevel),
+            active: Boolean(formData.active),
+            unit2: formData.unit2 || null,
+            ratio2: (formData.ratio2 === '' || formData.ratio2 === undefined) ? null : Number(formData.ratio2),
+            op2: formData.op2 || 'multiply',
+            unit3: formData.unit3 || null,
+            ratio3: (formData.ratio3 === '' || formData.ratio3 === undefined) ? null : Number(formData.ratio3),
+            op3: formData.op3 || 'multiply'
+        };
+
+        onSave(payload); 
     };
 
     return (
@@ -311,48 +334,48 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/50">
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-ice-50/50 dark:bg-gray-800">
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white">{item ? 'Edit Item' : 'Tambah Item Baru'}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X size={20} className="text-slate-400"/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors"><X size={20} className="text-slate-400"/></button>
                 </div>
                 
                 <form onSubmit={handleSubmit} className="p-8 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">SKU</label>
-                            <input required name="sku" value={formData.sku || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white" />
+                            <input required name="sku" value={formData.sku || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Nama Barang</label>
-                            <input required name="name" value={formData.name || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white" />
+                            <input required name="name" value={formData.name || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Kategori</label>
-                            <input required name="category" value={formData.category || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white"/>
+                            <input required name="category" value={formData.category || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Lokasi Rak/Gudang</label>
-                            <input required name="location" value={formData.location || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white"/>
+                            <input required name="location" value={formData.location || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Harga Dasar</label>
-                            <input required type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl" />
+                            <input required type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Satuan Utama</label>
-                            <input required name="unit" value={formData.unit} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl" placeholder="Pcs/Kg/Meter"/>
+                            <input required name="unit" value={formData.unit || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all" placeholder="Pcs/Kg/Meter"/>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Stok Sekarang</label>
-                            <input required type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl font-bold text-indigo-600" />
+                            <input required type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl font-bold text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                         </div>
                     </div>
 
-                    {/* MULTI-UNIT SETTINGS (PERSIS SCREENSHOT) */}
+                    {/* MULTI-UNIT SETTINGS */}
                     <div className="p-6 bg-indigo-50/30 dark:bg-gray-800/50 rounded-2xl border border-indigo-100 dark:border-gray-700 space-y-6">
                         <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase flex items-center gap-2">
                             <Layers size={14}/> Multi-Unit & Konversi
@@ -363,11 +386,11 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                             <div className="flex gap-4">
                                 <div className="flex-1">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase">Satuan 2 (Optional)</label>
-                                    <input name="unit2" value={formData.unit2 || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm" placeholder="Contoh: BOX" />
+                                    <input name="unit2" value={formData.unit2 || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Contoh: BOX" />
                                 </div>
                                 <div className="w-28">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase">Isi / Ratio</label>
-                                    <input type="number" name="ratio2" value={formData.ratio2 ?? ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm font-bold" />
+                                    <input type="number" name="ratio2" value={formData.ratio2} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
                             </div>
                             {formData.unit2 && (
@@ -378,7 +401,7 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                                         <button type="button" onClick={() => handleOpChange(2, 'divide')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.op2 === 'divide' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>/</button>
                                     </div>
                                     <span className="text-[10px] text-slate-400 italic">
-                                        (1 {formData.unit2} = {formData.op2 === 'multiply' ? formData.ratio2 : `1/${formData.ratio2}`} {formData.unit})
+                                        (1 {formData.unit2} = {formData.op2 === 'multiply' ? (formData.ratio2 || 0) : `1/${formData.ratio2 || 0}`} {formData.unit})
                                     </span>
                                 </div>
                             )}
@@ -391,11 +414,11 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                             <div className="flex gap-4">
                                 <div className="flex-1">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase">Satuan 3 (Optional)</label>
-                                    <input name="unit3" value={formData.unit3 || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm" placeholder="Contoh: CTN" />
+                                    <input name="unit3" value={formData.unit3 || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Contoh: CTN" />
                                 </div>
                                 <div className="w-28">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase">Isi / Ratio</label>
-                                    <input type="number" name="ratio3" value={formData.ratio3 ?? ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm font-bold" />
+                                    <input type="number" name="ratio3" value={formData.ratio3} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-600 p-3 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
                                 </div>
                             </div>
                             {formData.unit3 && (
@@ -406,7 +429,7 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                                         <button type="button" onClick={() => handleOpChange(3, 'divide')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.op3 === 'divide' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>/</button>
                                     </div>
                                     <span className="text-[10px] text-slate-400 italic">
-                                        (1 {formData.unit3} = {formData.op3 === 'multiply' ? formData.ratio3 : `1/${formData.ratio3}`} {formData.unit})
+                                        (1 {formData.unit3} = {formData.op3 === 'multiply' ? (formData.ratio3 || 0) : `1/${formData.ratio3 || 0}`} {formData.unit})
                                     </span>
                                 </div>
                             )}
@@ -415,12 +438,12 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                     
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Minimal Stok (Alert)</label>
-                        <input type="number" name="minLevel" value={formData.minLevel} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl" />
+                        <input type="number" name="minLevel" value={formData.minLevel} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                     </div>
 
                     <div className="pt-4 flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button>
-                        <button type="submit" className="px-8 py-2.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 shadow-lg">Simpan Barang</button>
+                        <button type="button" onClick={onClose} className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all">Batal</button>
+                        <button type="submit" className="px-8 py-2.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 shadow-lg transition-all">Simpan Barang</button>
                     </div>
                 </form>
             </div>
