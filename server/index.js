@@ -27,6 +27,7 @@ async function query(sql, params) {
 
 app.get('/api/health', (req, res) => res.json({ status: 'OK', time: new Date() }));
 
+/* ================= ITEMS API ================= */
 app.get('/api/items', async (req, res) => {
     try {
         const rows = await query('SELECT * FROM items');
@@ -58,6 +59,14 @@ app.post('/api/items', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/items/:id', async (req, res) => {
+    try {
+        await query('DELETE FROM items WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ================= TRANSACTIONS API ================= */
 app.get('/api/transactions', async (req, res) => {
     try {
         const txs = await query('SELECT * FROM transactions ORDER BY date DESC LIMIT 500');
@@ -108,35 +117,6 @@ app.post('/api/transactions', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         await conn.rollback();
-        console.error("TX Error:", e);
-        res.status(500).json({ error: e.message });
-    } finally {
-        conn.release();
-    }
-});
-
-app.delete('/api/transactions/:id', async (req, res) => {
-    const id = req.params.id;
-    const conn = await pool.getConnection();
-    try {
-        await conn.beginTransaction();
-        
-        // Find transaction items to revert stock
-        const tx = await conn.query('SELECT type FROM transactions WHERE id = ?', [id]);
-        if (tx[0].length === 0) throw new Error("Transaction not found");
-        const type = tx[0][0].type;
-        
-        const items = await conn.query('SELECT item_id, qty FROM transaction_items WHERE transaction_id = ?', [id]);
-        for (let it of items[0]) {
-            const revertOp = type === 'inbound' ? '-' : '+';
-            await conn.execute(`UPDATE items SET stock = stock ${revertOp} ? WHERE id = ?`, [it.qty, it.item_id]);
-        }
-        
-        await conn.execute('DELETE FROM transactions WHERE id = ?', [id]);
-        await conn.commit();
-        res.json({ success: true });
-    } catch (e) {
-        await conn.rollback();
         res.status(500).json({ error: e.message });
     } finally {
         conn.release();
@@ -148,20 +128,14 @@ app.put('/api/transactions/:id', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        
-        // 1. Revert Old Stock
         for (let it of oldTx.items) {
             const revertOp = oldTx.type === 'inbound' ? '-' : '+';
             await conn.execute(`UPDATE items SET stock = stock ${revertOp} ? WHERE id = ?`, [it.qty, it.itemId]);
         }
-        
-        // 2. Update Transaction Header
         await conn.execute(
             `UPDATE transactions SET date=?, total_value=?, supplier=?, po_number=?, notes=? WHERE id=?`,
             [newTx.date, newTx.totalValue, newTx.supplier || '', newTx.poNumber || '', newTx.notes || '', newTx.id]
         );
-        
-        // 3. Clear and Re-insert Transaction Items
         await conn.execute('DELETE FROM transaction_items WHERE transaction_id = ?', [newTx.id]);
         for (let it of newTx.items) {
             await conn.execute(
@@ -169,11 +143,9 @@ app.put('/api/transactions/:id', async (req, res) => {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [newTx.id, it.itemId, it.sku, it.name, it.qty, it.uom, it.unitPrice, it.total]
             );
-            // Apply New Stock
             const applyOp = newTx.type === 'inbound' ? '+' : '-';
             await conn.execute(`UPDATE items SET stock = stock ${applyOp} ? WHERE id = ?`, [it.qty, it.itemId]);
         }
-        
         await conn.commit();
         res.json({ success: true });
     } catch (e) {
@@ -184,14 +156,98 @@ app.put('/api/transactions/:id', async (req, res) => {
     }
 });
 
+app.delete('/api/transactions/:id', async (req, res) => {
+    const id = req.params.id;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [tx] = await conn.query('SELECT type FROM transactions WHERE id = ?', [id]);
+        if (tx.length === 0) throw new Error("Transaction not found");
+        const type = tx[0].type;
+        const [items] = await conn.query('SELECT item_id, qty FROM transaction_items WHERE transaction_id = ?', [id]);
+        for (let it of items) {
+            const revertOp = type === 'inbound' ? '-' : '+';
+            await conn.execute(`UPDATE items SET stock = stock ${revertOp} ? WHERE id = ?`, [it.qty, it.item_id]);
+        }
+        await conn.execute('DELETE FROM transactions WHERE id = ?', [id]);
+        await conn.commit();
+        res.json({ success: true });
+    } catch (e) {
+        await conn.rollback();
+        res.status(500).json({ error: e.message });
+    } finally {
+        conn.release();
+    }
+});
+
+/* ================= REJECT MODULE API ================= */
+app.get('/api/reject_master', async (req, res) => {
+    try {
+        const rows = await query('SELECT * FROM reject_master');
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/reject_master', async (req, res) => {
+    const items = req.body;
+    try {
+        await query('DELETE FROM reject_master');
+        for (let i of items) {
+            await query(
+                `INSERT INTO reject_master (id, sku, name, base_unit, unit2, ratio2, op2, unit3, ratio3, op3, last_updated)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [i.id, i.sku, i.name, i.baseUnit, i.unit2 || null, i.ratio2 || null, i.op2 || 'multiply', i.unit3 || null, i.ratio3 || null, i.op3 || 'multiply', i.lastUpdated]
+            );
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/reject_logs', async (req, res) => {
+    try {
+        const rows = await query('SELECT * FROM reject_logs ORDER BY timestamp DESC');
+        res.json(rows.map(r => ({
+            ...r,
+            items: typeof r.items_json === 'string' ? JSON.parse(r.items_json) : r.items_json
+        })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/reject_logs', async (req, res) => {
+    const log = req.body;
+    try {
+        await query(
+            'INSERT INTO reject_logs (id, date, notes, timestamp, items_json) VALUES (?, ?, ?, ?, ?)',
+            [log.id, log.date, log.notes || '', log.timestamp, JSON.stringify(log.items)]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/reject_logs/:id', async (req, res) => {
+    try {
+        await query('DELETE FROM reject_logs WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/reject_logs/:id', async (req, res) => {
+    const log = req.body;
+    try {
+        await query(
+            'UPDATE reject_logs SET date=?, notes=?, items_json=? WHERE id=?',
+            [log.date, log.notes || '', JSON.stringify(log.items), req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ================= AUTH & USERS ================= */
 app.post('/api/login', async (req, res) => {
     const { username, hash } = req.body;
     try {
         const users = await query('SELECT * FROM users WHERE username = ? AND password_hash = ?', [username, hash]);
-        if (users.length > 0) {
-            const u = users[0];
-            res.json({ id: u.id, username: u.username, role: u.role, name: u.name });
-        } else { res.status(401).json({ error: 'Invalid credentials' }); }
+        if (users.length > 0) { res.json(users[0]); } else { res.status(401).json({ error: 'Invalid credentials' }); }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

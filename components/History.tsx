@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface HistoryProps {
@@ -13,13 +13,32 @@ interface HistoryProps {
 export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // States for Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // States for Stock Card
+  const [isStockCardOpen, setIsStockCardOpen] = useState(false);
+  const [scStartDate, setScStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [scEndDate, setScEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [scSearchItem, setScSearchItem] = useState('');
+  const [scSelectedItem, setScSelectedItem] = useState<InventoryItem | null>(null);
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (autocompleteRef.current && !autocompleteRef.current.contains(event.target as Node)) {
+              setIsAutocompleteOpen(false);
+          }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const filtered = transactions.filter(t => {
       const matchType = filterType === 'all' || t.type === filterType;
@@ -36,6 +55,86 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                           (t.poNumber || "").toLowerCase().includes(query);
       return matchType && matchDate && (matchHeader || matchItems);
   });
+
+  const filteredItemsForSC = useMemo(() => {
+      if (!scSearchItem) return [];
+      return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 5);
+  }, [scSearchItem, items]);
+
+  // --- LOGIKA KARTU STOK ---
+  const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string) => {
+      const start = new Date(startStr); start.setHours(0,0,0,0);
+      const end = new Date(endStr); end.setHours(23,59,59,999);
+
+      // Hitung Opening Stock mundur dari stok sekarang
+      let openingStock = item.stock;
+      const allItemTrans = transactions
+        .filter(t => t.items.some(i => i.itemId === item.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
+
+      allItemTrans.forEach(t => {
+          const tDate = new Date(t.date);
+          if (tDate >= start) { // Jika transaksi terjadi SETELAH startDate, kita balikkan efeknya
+              const itemInTrans = t.items.find(i => i.itemId === item.id);
+              if (itemInTrans) {
+                  if (t.type === 'inbound') openingStock -= itemInTrans.qty;
+                  else openingStock += itemInTrans.qty;
+              }
+          }
+      });
+
+      const periodTrans = allItemTrans.filter(t => {
+          const d = new Date(t.date);
+          return d >= start && d <= end;
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+
+      let runningBalance = openingStock;
+      let totalIn = 0;
+      let totalOut = 0;
+
+      const rows = periodTrans.map(t => {
+          const itemInTrans = t.items.find(i => i.itemId === item.id);
+          const qty = itemInTrans ? itemInTrans.qty : 0;
+          let inQty = 0; let outQty = 0;
+          if (t.type === 'inbound') { inQty = qty; totalIn += qty; runningBalance += qty; }
+          else { outQty = qty; totalOut += qty; runningBalance -= qty; }
+          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, balance: runningBalance, uom: itemInTrans?.uom || item.unit };
+      });
+      return { openingStock, closingStock: runningBalance, totalIn, totalOut, rows };
+  };
+
+  const stockCardData = useMemo(() => {
+      if (!scSelectedItem) return null;
+      return calculateItemMovement(scSelectedItem, scStartDate, scEndDate);
+  }, [scSelectedItem, scStartDate, scEndDate, transactions]);
+
+  const handleAdvancedExport = (mode: 'single' | 'all') => {
+      if (mode === 'single') {
+          if (!scSelectedItem || !stockCardData) return;
+          // FIX: Explicitly type exportData as any[][] to prevent type inference from restricting elements to string only
+          const exportData: any[][] = [
+              ['LAPORAN KARTU STOK'], [`Item: ${scSelectedItem.name} (${scSelectedItem.sku})`], [`Periode: ${scStartDate} s/d ${scEndDate}`], [],
+              ['Tanggal', 'ID Transaksi', 'Tipe', 'Referensi', 'Masuk', 'Keluar', 'Saldo', 'Unit']
+          ];
+          exportData.push(['-', 'STOK AWAL', '-', '-', '-', '-', stockCardData.openingStock.toString(), scSelectedItem.unit]);
+          stockCardData.rows.forEach(r => {
+              exportData.push([new Date(r.date).toLocaleString(), r.id, r.type.toUpperCase(), r.ref, r.in || '-', r.out || '-', r.balance.toString(), r.uom]);
+          });
+          const ws = XLSX.utils.aoa_to_sheet(exportData);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok");
+          XLSX.writeFile(wb, `KartuStok_${scSelectedItem.sku}.xlsx`);
+      } else {
+          const summary = items.filter(i => i.active).map(i => {
+              const d = calculateItemMovement(i, scStartDate, scEndDate);
+              return { SKU: i.sku, Nama: i.name, 'Stok Awal': d.openingStock, 'Total Masuk': d.totalIn, 'Total Keluar': d.totalOut, 'Stok Akhir': d.closingStock, Unit: i.unit };
+          });
+          const ws = XLSX.utils.json_to_sheet(summary);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Summary Inventaris");
+          XLSX.writeFile(wb, `Summary_Inventaris_${scStartDate}.xlsx`);
+      }
+  };
 
   const handleDelete = async (id: string) => {
       if (window.confirm("Hapus transaksi ini? Stok barang akan dikembalikan otomatis.")) {
@@ -67,27 +166,9 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const downloadImage = (base64: string, filename: string) => {
       const link = document.createElement('a');
-      link.href = base64;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
+      link.href = base64; link.download = filename;
+      document.body.appendChild(link); link.click();
       document.body.removeChild(link);
-  };
-
-  const exportToExcel = () => {
-    const data = filtered.map(t => ({
-      'ID Transaksi': t.id, 
-      'Tipe': t.type.toUpperCase(),
-      'Tanggal': new Date(t.date).toLocaleString(), 
-      'Supplier/PO': t.supplier || t.poNumber || '-',
-      'Barang': t.items.map(i => `${i.name} (${i.qty} ${i.uom || ''})`).join(', '),
-      'Total Nilai (Rp)': t.totalValue, 
-      'Catatan': t.notes || '-'
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "History");
-    XLSX.writeFile(wb, `Nexus_History_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   return (
@@ -122,14 +203,19 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 <input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
             
-            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
+            <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-xl hover:bg-indigo-100 transition-all font-bold text-sm"><LineChart size={16} /> Kartu Stok</button>
+            <button onClick={() => {
+                const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Supplier: t.supplier || '-', Total: t.totalValue })));
+                const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History");
+                XLSX.writeFile(wb, `Nexus_History.xlsx`);
+            }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
         </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left relative border-collapse">
-            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase sticky top-0 z-10">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase tracking-widest sticky top-0 z-10">
               <tr>
                 <th className="p-4">ID Transaksi</th>
                 <th className="p-4">Tipe</th>
@@ -174,6 +260,92 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
         </div>
       </div>
 
+      {/* MODAL KARTU STOK */}
+      {isStockCardOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3>
+                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button>
+                </div>
+                <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
+                    <div className="md:col-span-2 relative" ref={autocompleteRef}>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label>
+                        <input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white" placeholder="Nama atau SKU..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} onFocus={() => setIsAutocompleteOpen(true)} />
+                        {isAutocompleteOpen && scSearchItem && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-50 overflow-hidden">
+                                {filteredItemsForSC.map(it => (
+                                    <div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b last:border-0 dark:text-white">
+                                        <div className="font-bold text-sm">{it.name}</div>
+                                        <div className="text-[10px] text-slate-400">{it.sku}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label>
+                        <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label>
+                        <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                    </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900">
+                    {scSelectedItem && stockCardData ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-200 dark:border-gray-700 text-center">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Stok Awal</p>
+                                    <p className="text-xl font-black dark:text-white">{stockCardData.openingStock} <span className="text-xs text-slate-400 font-normal">{scSelectedItem.unit}</span></p>
+                                </div>
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800 text-center">
+                                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Total In</p>
+                                    <p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p>
+                                </div>
+                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800 text-center">
+                                    <p className="text-[10px] font-bold text-rose-600 uppercase">Total Out</p>
+                                    <p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p>
+                                </div>
+                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 text-center">
+                                    <p className="text-[10px] font-bold text-indigo-600 uppercase">Stok Akhir</p>
+                                    <p className="text-xl font-black text-indigo-700 dark:text-indigo-400">{stockCardData.closingStock} <span className="text-xs text-slate-400 font-normal">{scSelectedItem.unit}</span></p>
+                                </div>
+                            </div>
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase">
+                                    <tr><th className="p-3">Tanggal</th><th className="p-3">ID & Ref</th><th className="p-3 text-center">In</th><th className="p-3 text-center">Out</th><th className="p-3 text-center">Saldo</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-gray-700">
+                                    {stockCardData.rows.map((row, idx) => (
+                                        <tr key={idx} className="dark:text-gray-300">
+                                            <td className="p-3 whitespace-nowrap">{new Date(row.date).toLocaleString()}</td>
+                                            <td className="p-3 text-xs"><span className="font-bold">{row.id}</span> <br/> <span className="text-slate-400">{row.ref}</span></td>
+                                            <td className="p-3 text-center text-emerald-600 font-bold">{row.in || '-'}</td>
+                                            <td className="p-3 text-center text-rose-600 font-bold">{row.out || '-'}</td>
+                                            <td className="p-3 text-center font-bold bg-slate-50/50 dark:bg-gray-800/50">{row.balance} {row.uom}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 opacity-50">
+                            <Package size={48} className="mb-2" />
+                            <p>Pilih barang untuk melihat penelusuran stok</p>
+                        </div>
+                    )}
+                </div>
+                <div className="p-4 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
+                    <button onClick={() => handleAdvancedExport('single')} disabled={!scSelectedItem} className="px-5 py-2 bg-white dark:bg-gray-700 border border-ice-200 dark:border-gray-600 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"><FileText size={14}/> Export Item Ini</button>
+                    <button onClick={() => handleAdvancedExport('all')} className="px-5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all"><Layers size={14}/> Export Ringkasan Semua</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT TRANSAKSI */}
       {isEditModalOpen && editingTransaction && (
           <TransactionEditModal 
              transaction={editingTransaction} 
@@ -184,13 +356,13 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           />
       )}
 
-      {/* Fullscreen Image Preview */}
+      {/* PREVIEW FOTO */}
       {previewImage && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 animate-in fade-in">
-              <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full"><X size={32}/></button>
+              <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"><X size={32}/></button>
               <img src={previewImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl shadow-indigo-500/20" alt="Preview" />
               <div className="absolute bottom-6 flex gap-4">
-                  <button onClick={() => downloadImage(previewImage, 'NEXUS_DOC.png')} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-xl"><DownloadCloud size={20}/> Download Foto</button>
+                  <button onClick={() => downloadImage(previewImage!, 'NEXUS_DOC.png')} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-xl transition-all"><DownloadCloud size={20}/> Download Foto</button>
               </div>
           </div>
       )}
@@ -205,7 +377,7 @@ const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownl
     onPreview: (img: string) => void,
     onDownload: (img: string, name: string) => void
 }) => {
-    const [data, setData] = useState<Transaction>(transaction);
+    const [data, setData] = useState<Transaction>(JSON.parse(JSON.stringify(transaction)));
 
     const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -238,7 +410,7 @@ const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownl
                     <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-colors"><X size={24} className="text-slate-400"/></button>
                 </div>
                 
-                <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar bg-white dark:bg-gray-900">
+                <form id="edit-transaction-form" onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar bg-white dark:bg-gray-900">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         <div className="md:col-span-2">
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">ID Transaksi</label>
@@ -298,7 +470,6 @@ const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownl
                         </table>
                     </div>
 
-                    {/* Documents Section */}
                     {data.documents && data.documents.length > 0 && (
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={14}/> Lampiran Foto / Dokumen</h4>
@@ -329,7 +500,11 @@ const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownl
 
                 <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
                     <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 dark:text-gray-400 font-bold hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all">Batal</button>
-                    <button type="submit" onClick={handleSubmit} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 group">
+                    <button 
+                        type="submit" 
+                        form="edit-transaction-form"
+                        className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 group"
+                    >
                         <Save size={20} className="group-hover:rotate-12 transition-transform" /> Simpan Perubahan
                     </button>
                 </div>
