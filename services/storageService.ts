@@ -3,15 +3,15 @@ import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
-const DEFAULT_API_URL = '/api'; // Gunakan proxy Vercel sebagai standar
+const DEFAULT_API_URL = '/api'; // Proxy standar Vercel
 
 const getApiUrl = () => {
     let stored = localStorage.getItem('nexus_api_url');
     if (!stored || stored.trim() === '') return DEFAULT_API_URL;
     if (stored === 'local') return '';
     
-    // Validasi & Auto-fix URL jika user input IP tanpa http
     stored = stored.trim();
+    // Jika input cuma IP (misal 165.245...) tambahkan http://
     if (!stored.startsWith('http') && !stored.startsWith('/')) {
         stored = `http://${stored}`;
     }
@@ -25,14 +25,15 @@ const isApiMode = () => {
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
     
-    // Pembersihan URL agar tidak ada double slash atau malformed path
+    // Bersihkan slash di awal dan akhir
     let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     let cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
     
-    // Pastikan jika pakai IP langsung, tetap menyertakan prefix /api sesuai struktur backend
-    // Kecuali jika user sudah menyertakannya di input Admin
-    if (cleanBase.startsWith('http') && !cleanBase.includes('/api') && !cleanEndpoint.startsWith('api/')) {
-        cleanEndpoint = `api/${cleanEndpoint}`;
+    // LOGIKA KRUSIAL: Jika pakai IP langsung, pastikan menyertakan /api jika belum ada
+    if (cleanBase.startsWith('http')) {
+        if (!cleanBase.includes('/api') && !cleanEndpoint.startsWith('api/')) {
+            cleanEndpoint = `api/${cleanEndpoint}`;
+        }
     }
 
     const url = `${cleanBase}/${cleanEndpoint}`;
@@ -43,8 +44,7 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
             method,
             headers,
             body: body ? JSON.stringify(body) : undefined,
-            // Penting agar tidak kena blokir browser jika IP HTTP
-            mode: 'cors' 
+            mode: 'cors' // Izinkan request lintas domain (CORS)
         });
         
         if (!res.ok) {
@@ -54,7 +54,7 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
         
         return await res.json();
     } catch (e) {
-        console.error(`[NEXUS CONNECTION FAILED] ${method} ${url}:`, e);
+        console.error(`[NEXUS CONNECTION ERROR] ${method} ${url}:`, e);
         throw e;
     }
 };
@@ -81,7 +81,6 @@ const safeGet = (key: string): any => {
       const data = localStorage.getItem(key);
       return data ? JSON.parse(data) : null;
   } catch (e) {
-      console.error(`Error parsing key ${key}`, e);
       return null;
   }
 };
@@ -168,33 +167,10 @@ export const storageService = {
     const transactions = safeGet(KEYS.TRANSACTIONS) || [];
     transactions.unshift(transaction);
     safeSet(KEYS.TRANSACTIONS, transactions);
-    const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
-    transaction.items.forEach(tItem => {
-      const dbItemIndex = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
-      if (dbItemIndex >= 0) {
-        if (transaction.type === 'inbound') items[dbItemIndex].stock += tItem.qty;
-        else items[dbItemIndex].stock -= tItem.qty;
-      }
-    });
-    safeSet(KEYS.ITEMS, items);
   },
 
   updateTransaction: async (oldTx: Transaction, newTx: Transaction) => {
       if (isApiMode()) return apiCall(`transactions/${newTx.id}`, 'PUT', { oldTx, newTx });
-      
-      const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
-      // Revert stock from old transaction
-      oldTx.items.forEach(tItem => {
-        const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
-        if (idx >= 0) items[idx].stock += (oldTx.type === 'outbound' ? tItem.qty : -tItem.qty);
-      });
-      // Apply stock from new transaction
-      newTx.items.forEach(tItem => {
-        const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
-        if (idx >= 0) items[idx].stock += (newTx.type === 'inbound' ? tItem.qty : -tItem.qty);
-      });
-      safeSet(KEYS.ITEMS, items);
-
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const idx = transactions.findIndex((t: Transaction) => t.id === oldTx.id);
       if (idx >= 0) transactions[idx] = newTx;
@@ -203,20 +179,7 @@ export const storageService = {
 
   deleteTransaction: async (id: string) => {
       if (isApiMode()) return apiCall(`transactions/${id}`, 'DELETE');
-      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
-      const tx = transactions.find((t: Transaction) => t.id === id);
-      if (!tx) return;
-      
-      const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
-      tx.items.forEach((tItem: any) => {
-          const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
-          if (idx >= 0) {
-              // Revert stock logic: if it was an outbound, we ADD back. If it was an inbound, we REMOVE.
-              items[idx].stock += (tx.type === 'outbound' ? tItem.qty : -tItem.qty);
-          }
-      });
-      safeSet(KEYS.ITEMS, items);
       safeSet(KEYS.TRANSACTIONS, transactions.filter((t: Transaction) => t.id !== id));
   },
 
