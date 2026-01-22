@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   const [statusFilter, setStatusFilter] = useState('All'); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  
+  // State untuk Progress Import
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
 
   const categories = useMemo(() => {
     const cats = new Set(items.map(i => i.category));
@@ -71,7 +75,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       const ws = XLSX.utils.json_to_sheet(template);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Template");
-      XLSX.writeFile(wb, "Nexus_Import_Inventory.xlsx");
+      XLSX.writeFile(wb, "Nexus_Import_Template.xlsx");
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,47 +89,70 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws) as any[];
         
-        let importedCount = 0;
-        for (const row of data) {
-          if (row.SKU) {
-              const sku = String(row.SKU).trim();
-              const existing = items.find(i => i.sku === sku);
-
-              const parseNum = (val: any, fallback: number = 0) => {
-                  if (val === undefined || val === null || val === '') return fallback;
-                  const str = String(val).trim();
-                  if (str === '-') return 0;
-                  const n = Number(str.replace(/[^0-9.-]+/g, ""));
-                  return isNaN(n) ? fallback : n;
-              };
-
-              const newItem: InventoryItem = {
-                  id: existing ? existing.id : crypto.randomUUID(), 
-                  sku: sku,
-                  name: row.Name || row.Nama || (existing?.name || 'Unnamed Item'),
-                  category: row.Category || row.Kategori || (existing?.category || 'General'),
-                  price: parseNum(row.Price || row.Harga, existing?.price || 0),
-                  location: row.Location || row.Lokasi || (existing?.location || 'A-01'),
-                  unit: row.Unit || row.Satuan || (existing?.unit || 'Pcs'),
-                  stock: parseNum(row.Stock || row.Stok, existing?.stock || 0),
-                  minLevel: parseNum(row.MinLevel || row.MinStok, existing?.minLevel || 0),
-                  active: existing ? existing.active : true,
-                  unit2: row.Unit2 || existing?.unit2,
-                  ratio2: row.Ratio2 ? parseNum(row.Ratio2) : existing?.ratio2,
-                  op2: (row.Op2 === 'divide' || row.Op2 === 'multiply') ? row.Op2 : (existing?.op2 || 'multiply'),
-                  unit3: row.Unit3 || existing?.unit3,
-                  ratio3: row.Ratio3 ? parseNum(row.Ratio3) : existing?.ratio3,
-                  op3: (row.Op3 === 'divide' || row.Op3 === 'multiply') ? row.Op3 : (existing?.op3 || 'multiply'),
-              };
-              await storageService.saveItem(newItem);
-              importedCount++;
-          }
+        // Membaca seluruh baris tanpa batas
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+        const validRows = data.filter(row => row.SKU || row.sku);
+        
+        if (validRows.length === 0) {
+            notify("Tidak ada data valid ditemukan (Kolom SKU wajib ada)", "warning");
+            return;
         }
-        notify(`${importedCount} item berhasil diproses.`, 'success');
+
+        setIsImporting(true);
+        setImportProgress({ current: 0, total: validRows.length });
+
+        // Helper untuk parse angka yang bandel
+        const parseNum = (val: any, fallback: number = 0) => {
+            if (val === undefined || val === null || val === '') return fallback;
+            const str = String(val).trim();
+            if (str === '-') return 0;
+            const n = Number(str.replace(/[^0-9.-]+/g, ""));
+            return isNaN(n) ? fallback : n;
+        };
+
+        // Chunking Strategy: Proses 5 item sekaligus (Parallel)
+        const chunkSize = 5;
+        for (let i = 0; i < validRows.length; i += chunkSize) {
+            const chunk = validRows.slice(i, i + chunkSize);
+            
+            await Promise.all(chunk.map(async (row) => {
+                const sku = String(row.SKU || row.sku).trim();
+                const existing = items.find(item => item.sku === sku);
+
+                const newItem: InventoryItem = {
+                    id: existing ? existing.id : crypto.randomUUID(), 
+                    sku: sku,
+                    name: row.Name || row.Nama || row.name || (existing?.name || 'Unnamed Item'),
+                    category: row.Category || row.Kategori || row.category || (existing?.category || 'General'),
+                    price: parseNum(row.Price || row.Harga || row.price, existing?.price || 0),
+                    location: row.Location || row.Lokasi || row.location || (existing?.location || 'A-01'),
+                    unit: row.Unit || row.Satuan || row.unit || (existing?.unit || 'Pcs'),
+                    stock: parseNum(row.Stock || row.Stok || row.stock, existing?.stock || 0),
+                    minLevel: parseNum(row.MinLevel || row.MinStok || row.minLevel, existing?.minLevel || 0),
+                    active: existing ? existing.active : true,
+                    unit2: row.Unit2 || row.unit2 || existing?.unit2 || null,
+                    ratio2: (row.Ratio2 || row.ratio2) ? parseNum(row.Ratio2 || row.ratio2) : (existing?.ratio2 || null),
+                    op2: (row.Op2 || row.op2) === 'divide' ? 'divide' : 'multiply',
+                    unit3: row.Unit3 || row.unit3 || existing?.unit3 || null,
+                    ratio3: (row.Ratio3 || row.ratio3) ? parseNum(row.Ratio3 || row.ratio3) : (existing?.ratio3 || null),
+                    op3: (row.Op3 || row.op3) === 'divide' ? 'divide' : 'multiply',
+                };
+                
+                return storageService.saveItem(newItem);
+            }));
+
+            setImportProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
+        }
+
+        notify(`${validRows.length} item berhasil di-import/update.`, 'success');
         onRefresh();
-      } catch (e) { notify("Gagal memproses file.", 'error'); }
+      } catch (e) { 
+        console.error(e);
+        notify("Gagal memproses file. Pastikan format Excel benar.", 'error'); 
+      } finally {
+        setIsImporting(false);
+      }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
@@ -139,6 +166,34 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   return (
     <div className="space-y-6">
+      {/* Overlay Loading Import */}
+      {isImporting && (
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md">
+              <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20">
+                  <div className="relative">
+                      <Loader2 size={48} className="animate-spin text-indigo-600" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[10px] font-bold text-indigo-600">
+                              {Math.round((importProgress.current / importProgress.total) * 100)}%
+                          </span>
+                      </div>
+                  </div>
+                  <div className="text-center space-y-2">
+                      <h4 className="font-bold text-slate-800 dark:text-white">Sedang Import Data...</h4>
+                      <p className="text-xs text-slate-500 dark:text-gray-400">
+                          Memproses {importProgress.current} dari {importProgress.total} item. <br/> Mohon tidak menutup halaman ini.
+                      </p>
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-indigo-600 h-full transition-all duration-300" 
+                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                      ></div>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
         <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
@@ -172,7 +227,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
              <div className="relative">
                 <input type="file" accept=".csv, .xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
                 <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-300 border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold transition-colors text-sm whitespace-nowrap">
-                    <FileSpreadsheet size={18} /> Import
+                    <FileSpreadsheet size={18} /> Bulk Import
                 </button>
              </div>
             <button 
@@ -185,7 +240,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         )}
       </div>
 
-      {/* Table */}
+      {/* Table Area */}
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left relative border-collapse">
@@ -285,7 +340,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
             unit2: item.unit2 || '', ratio2: item.ratio2 ?? '', op2: item.op2 || 'multiply',
             unit3: item.unit3 || '', ratio3: item.ratio3 ?? '', op3: item.op3 || 'multiply' 
         };
-        // Inisialisasi field dengan string kosong agar input bersih dari angka 0 / undefined
         return { 
             sku: '', name: '', category: '', location: '',
             active: true, stock: '', minLevel: '', price: '', unit: 'Pcs', 
@@ -306,7 +360,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
         
-        // Pastikan konversi tipe data sebelum dikirim ke onSave
         const payload: InventoryItem = {
             id: item?.id || crypto.randomUUID(),
             sku: formData.sku || '',
@@ -381,7 +434,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                             <Layers size={14}/> Multi-Unit & Konversi
                         </h4>
 
-                        {/* Unit 2 Row */}
                         <div className="space-y-3">
                             <div className="flex gap-4">
                                 <div className="flex-1">
@@ -409,7 +461,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
 
                         <div className="h-px bg-indigo-100 dark:bg-gray-700"></div>
 
-                        {/* Unit 3 Row */}
                         <div className="space-y-3">
                             <div className="flex gap-4">
                                 <div className="flex-1">
