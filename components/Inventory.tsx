@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
 import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2, CheckSquare, Square } from 'lucide-react';
@@ -23,11 +22,9 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   // State untuk Progress Import & Delete
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  // Fix: Explicitly type actionProgress state to avoid "unknown" in functional updates
   const [actionProgress, setActionProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   // State untuk Multi-Select
-  // Fix: Explicitly type selectedIds to ensure Set operations remain typed
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>());
 
   const categories = useMemo(() => {
@@ -52,7 +49,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     });
   }, [items, searchTerm, categoryFilter, statusFilter]);
 
-  // Handlers for selection
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredItems.length) {
       setSelectedIds(new Set<string>());
@@ -92,9 +88,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       const chunkSize = 5;
       for (let i = 0; i < idsArray.length; i += chunkSize) {
         const chunk = idsArray.slice(i, i + chunkSize);
-        // Fix: Explicitly type id as string to avoid "unknown" argument error
         await Promise.all(chunk.map((id: string) => storageService.deleteItem(id)));
-        // Fix: Explicitly type prev in functional update to avoid "unknown" error
         setActionProgress((prev: { current: number; total: number }) => ({ ...prev, current: Math.min(i + chunkSize, idsArray.length) }));
       }
       
@@ -189,7 +183,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                 return storageService.saveItem(newItem);
             }));
 
-            // Fix: Explicitly type prev in functional update to avoid "unknown" error
             setActionProgress((prev: { current: number; total: number }) => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
         }
 
@@ -214,7 +207,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   return (
     <div className="space-y-6">
-      {/* Overlay Loading Action (Import / Delete) */}
+      {/* Overlay Loading Action */}
       {(isImporting || isDeleting) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md">
               <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20">
@@ -442,8 +435,8 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
             id: item?.id || crypto.randomUUID(),
             sku: formData.sku || '',
             name: formData.name || '',
-            category: formData.category || '',
-            location: formData.location || '',
+            category: formData.category || 'General',
+            location: formData.location || 'UNSET',
             price: formData.price === '' ? 0 : Number(formData.price),
             unit: formData.unit || 'Pcs',
             stock: formData.stock === '' ? 0 : Number(formData.stock),
@@ -483,18 +476,18 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                     <div className="grid grid-cols-2 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Kategori</label>
-                            <input required name="category" value={formData.category || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
+                            <input name="category" value={formData.category || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Lokasi Rak/Gudang</label>
-                            <input required name="location" value={formData.location || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
+                            <input name="location" value={formData.location || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"/>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-5">
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Harga Dasar</label>
-                            <input required type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
+                            <input type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Satuan Utama</label>

@@ -134,37 +134,39 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        // Membaca data sebagai array of arrays dulu untuk mencari header secara manual jika perlu
-        const rawData = XLSX.utils.sheet_to_json(ws) as any[];
+        // Use defval to ensure null columns are still included in object keys
+        const rawData = XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[];
 
         if (rawData.length === 0) {
-            notify("File Excel kosong atau tidak terbaca!", "warning");
+            notify("File Excel kosong!", "warning");
             return;
         }
 
         setIsImporting(true);
 
-        // Alias kolom super lengkap
-        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code', 'no part', 'kd brg', 'kode item'];
-        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar', 'pcs', 'jml', 'qyt', 'volume'];
-        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi', 'nama item', 'ket', 'keterangan', 'item'];
-        const unitAliases = ['unit', 'satuan', 'uom', 'sat', 'packaging'];
+        // Super aggressive aliases
+        const skuAliases = ['sku', 'kode', 'part', 'pn', 'kd', 'no'];
+        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'pcs', 'jml', 'vol'];
+        const nameAliases = ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan', 'ket'];
+        const unitAliases = ['unit', 'satuan', 'uom', 'sat', 'pack'];
 
-        // Fungsi pembantu untuk mencari nilai berdasarkan alias
         const getValByAlias = (row: any, aliases: string[]) => {
             const keys = Object.keys(row);
             const foundKey = keys.find(k => {
                 const cleanK = k.trim().toLowerCase();
-                return aliases.some(a => a.toLowerCase() === cleanK);
+                // Check if any alias is contained within the header or vice versa
+                return aliases.some(a => cleanK.includes(a) || a.includes(cleanK));
             });
             return foundKey ? row[foundKey] : null;
         };
 
         const newItemsInCart: TransactionItem[] = [];
         let createdCount = 0;
-
-        // Kita butuh data items terbaru dari storage untuk pengecekan SKU
+        
+        // Fetch freshest items list to check against
         const currentItems = await storageService.getItems();
+        // Local cache for items created within THIS import loop
+        const sessionItems: InventoryItem[] = [...currentItems];
 
         for (const row of rawData) {
             const rawSku = getValByAlias(row, skuAliases);
@@ -172,34 +174,31 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             const rawName = getValByAlias(row, nameAliases);
             const rawUnit = getValByAlias(row, unitAliases);
 
-            // Jika SKU atau QTY tidak ada, kita coba ambil berdasarkan urutan kolom (Fallback)
-            // Asumsi: Col 1 = SKU, Col 2 = Nama, Col 3 = QTY, Col 4 = Unit
-            const rowValues = Object.values(row);
-            const sku = (rawSku ? String(rawSku) : String(rowValues[0] || '')).trim().toUpperCase();
-            const qty = Number(rawQty !== null ? rawQty : (rowValues[2] || 0));
-            const name = (rawName ? String(rawName) : String(rowValues[1] || sku)).trim();
-            const unit = (rawUnit ? String(rawUnit) : String(rowValues[3] || 'Pcs')).trim();
+            // Skip if critical data missing
+            if (!rawSku || rawQty === null || rawQty === undefined || rawQty === "") continue;
 
-            if (!sku || isNaN(qty)) {
-                console.warn("Baris dilewati karena SKU kosong atau QTY bukan angka:", row);
-                continue;
-            }
+            const sku = String(rawSku).trim().toUpperCase();
+            const qty = Number(rawQty);
+            const name = rawName ? String(rawName).trim() : sku;
+            const unit = rawUnit ? String(rawUnit).trim() : 'Pcs';
 
-            // Cari apakah barang sudah ada di master
-            let inventoryItem = currentItems.find(i => i.sku.toUpperCase() === sku);
+            if (isNaN(qty)) continue;
 
-            // AUTO-CREATE jika tidak ada
+            // 1. Check if item exists in current list (or already created in this loop)
+            let inventoryItem = sessionItems.find(i => i.sku.toUpperCase() === sku);
+
+            // 2. AUTO-CREATE if not found
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
                     id: newId,
                     sku: sku,
-                    name: name || sku,
-                    category: 'Imported',
-                    price: 0,
-                    location: 'UNSET',
-                    unit: unit || 'Pcs',
-                    stock: 0,
+                    name: name,
+                    category: 'Imported', // Default
+                    price: 0,             // Default
+                    location: 'UNSET',    // Default
+                    unit: unit,
+                    stock: 0,             // Master starts at 0, updated by transaction
                     minLevel: 0,
                     active: true
                 };
@@ -207,21 +206,22 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 try {
                     await storageService.saveItem(newItem);
                     inventoryItem = newItem;
+                    sessionItems.push(newItem); // Add to session cache to avoid double create
                     createdCount++;
-                    console.log(`Auto-created: ${sku}`);
                 } catch (err) {
-                    console.error("Gagal simpan item baru:", sku, err);
-                    continue;
+                    console.error("Failed to auto-create item:", sku, err);
+                    continue; 
                 }
             }
 
+            // 3. Add to cart
             if (inventoryItem) {
                 newItemsInCart.push({
                     itemId: inventoryItem.id,
                     sku: inventoryItem.sku,
                     name: inventoryItem.name,
                     qty: qty,
-                    uom: unit || inventoryItem.unit,
+                    uom: unit,
                     unitPrice: inventoryItem.price || 0,
                     total: qty * (inventoryItem.price || 0)
                 });
@@ -231,24 +231,22 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
             
-            // PENTING: Refresh state aplikasi agar list items terbaru (termasuk yang baru di-create) tersedia
+            // Refresh parent state to include new master items
             onSuccess();
             
-            let msg = `${newItemsInCart.length} item berhasil masuk batch.`;
-            if (createdCount > 0) msg += ` (${createdCount} barang baru otomatis terdaftar di Inventory)`;
+            let msg = `${newItemsInCart.length} item berhasil masuk cart.`;
+            if (createdCount > 0) msg += ` (${createdCount} barang baru otomatis didaftarkan)`;
             notify(msg, 'success');
         } else {
-            notify("Tidak ada data valid (Cek kolom SKU/Qty)! Pastikan format header Excel sesuai.", "error");
+            notify("Tidak ada data valid (Cek kolom SKU/Qty)! Pastikan header Excel jelas.", "error");
         }
       } catch (err) {
-        console.error("Import Error Detail:", err);
-        notify("Terjadi kesalahan saat memproses file Excel.", "error");
+        console.error("Import Error:", err);
+        notify("Gagal membaca file Excel!", "error");
       } finally {
         setIsImporting(false);
       }
     };
-    
-    // Gunakan readAsArrayBuffer agar lebih stabil untuk file .xlsx
     reader.readAsArrayBuffer(file as any);
     e.currentTarget.value = '';
   };
