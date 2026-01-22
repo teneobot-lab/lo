@@ -322,7 +322,20 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </div>
                 <div className="w-full">
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Jumlah</label>
-                  <input ref={qtyInputRef} type="number" value={qty} onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))} className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-gray-900 dark:text-white" placeholder="0" />
+                  <input 
+                    ref={qtyInputRef} 
+                    type="number" 
+                    value={qty} 
+                    onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))} 
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            addToCart();
+                        }
+                    }}
+                    className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-gray-900 dark:text-white" 
+                    placeholder="0" 
+                  />
                 </div>
             </div>
             <div className="flex flex-col md:flex-row gap-3">
