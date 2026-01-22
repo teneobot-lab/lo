@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, ArrowRight, ArrowRightLeft, FileText, Layers, User as UserIcon } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface HistoryProps {
@@ -16,34 +16,10 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [viewImage, setViewImage] = useState<string | null>(null);
-
-  const [isStockCardOpen, setIsStockCardOpen] = useState(false);
-  const [scStartDate, setScStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
-  const [scEndDate, setScEndDate] = useState(new Date().toISOString().slice(0, 10));
-  const [scSearchItem, setScSearchItem] = useState('');
-  const [scSelectedItem, setScSelectedItem] = useState<InventoryItem | null>(null);
-  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
-
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-
-  useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-          if (autocompleteRef.current && !autocompleteRef.current.contains(event.target as Node)) {
-              setIsAutocompleteOpen(false);
-          }
-          if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-              setShowExportMenu(false);
-          }
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const filtered = transactions.filter(t => {
       const matchType = filterType === 'all' || t.type === filterType;
@@ -52,97 +28,17 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       const eDate = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
       const matchDate = tDate >= sDate && tDate <= eDate;
       const query = searchQuery.toLowerCase();
+      
       const matchItems = t.items.some(i => i.name.toLowerCase().includes(query) || i.sku.toLowerCase().includes(query));
-      const matchSearch = t.id.toLowerCase().includes(query) || (t.supplier && t.supplier.toLowerCase().includes(query)) || (t.notes && t.notes.toLowerCase().includes(query)) || (t.poNumber && t.poNumber.toLowerCase().includes(query)) || matchItems;
-      return matchType && matchDate && matchSearch;
+      const matchHeader = (t.id || "").toLowerCase().includes(query) || 
+                          (t.supplier || "").toLowerCase().includes(query) || 
+                          (t.notes || "").toLowerCase().includes(query) || 
+                          (t.poNumber || "").toLowerCase().includes(query);
+      return matchType && matchDate && (matchHeader || matchItems);
   });
 
-  const filteredItems = useMemo(() => {
-      if (!scSearchItem) return [];
-      return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 5);
-  }, [scSearchItem, items]);
-
-  const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string) => {
-      const start = new Date(startStr);
-      start.setHours(0,0,0,0);
-      const end = new Date(endStr);
-      end.setHours(23,59,59,999);
-      let openingStock = item.stock;
-      const allItemTrans = transactions
-        .filter(t => t.items.some(i => i.itemId === item.id))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
-
-      allItemTrans.forEach(t => {
-          const tDate = new Date(t.date);
-          if (tDate >= start) {
-              const itemInTrans = t.items.find(i => i.itemId === item.id);
-              if (itemInTrans) {
-                  const qty = itemInTrans.qty; 
-                  if (t.type === 'inbound') openingStock -= qty;
-                  else openingStock += qty;
-              }
-          }
-      });
-
-      const periodTrans = allItemTrans.filter(t => {
-          const d = new Date(t.date);
-          return d >= start && d <= end;
-      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
-
-      let runningBalance = openingStock;
-      let totalIn = 0;
-      let totalOut = 0;
-
-      const rows = periodTrans.map(t => {
-          const itemInTrans = t.items.find(i => i.itemId === item.id);
-          const qty = itemInTrans ? itemInTrans.qty : 0;
-          const uom = itemInTrans ? itemInTrans.uom : item.unit;
-          let inQty = 0; let outQty = 0;
-          if (t.type === 'inbound') { inQty = qty; totalIn += qty; runningBalance += qty; }
-          else { outQty = qty; totalOut += qty; runningBalance -= qty; }
-          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, uom: uom, balance: runningBalance };
-      });
-      return { openingStock, closingStock: runningBalance, totalIn, totalOut, rows };
-  };
-
-  const stockCardData = useMemo(() => {
-      if (!scSelectedItem) return null;
-      return calculateItemMovement(scSelectedItem, scStartDate, scEndDate);
-  }, [scSelectedItem, scStartDate, scEndDate, transactions]);
-
-  const handleAdvancedExport = (mode: 'single' | 'all') => {
-      if (mode === 'single') {
-          if (!scSelectedItem || !stockCardData) return;
-          const exportData = [
-              ['STOCK CARD REPORT'], [`Item: ${scSelectedItem.name} (${scSelectedItem.sku})`], [`Period: ${scStartDate} to ${scEndDate}`], [],
-              ['Date', 'Time', 'Transaction ID', 'Type', 'Reference', 'In', 'Out', 'Balance', 'Unit']
-          ];
-          exportData.push(['', '', 'OPENING STOCK', '', '', '', '', stockCardData.openingStock.toString(), scSelectedItem.unit]);
-          stockCardData.rows.forEach(r => {
-              exportData.push([new Date(r.date).toLocaleDateString(), new Date(r.date).toLocaleTimeString(), r.id, r.type.toUpperCase(), r.ref, r.in > 0 ? r.in.toString() : '-', r.out > 0 ? r.out.toString() : '-', r.balance.toString(), r.uom]);
-          });
-          exportData.push(['', '', 'CLOSING STOCK', '', '', '', '', stockCardData.closingStock.toString(), scSelectedItem.unit]);
-          const ws = XLSX.utils.aoa_to_sheet(exportData);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Stock Card");
-          XLSX.writeFile(wb, `StockCard_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
-      } else {
-          const summaryData: any[] = [];
-          items.forEach(item => {
-              if(!item.active) return;
-              const data = calculateItemMovement(item, scStartDate, scEndDate);
-              summaryData.push({ SKU: item.sku, Name: item.name, Unit: item.unit, 'Opening Stock': data.openingStock, 'Total In': data.totalIn, 'Total Out': data.totalOut, 'Closing Stock': data.closingStock });
-          });
-          const ws = XLSX.utils.json_to_sheet(summaryData);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Inventory Summary");
-          XLSX.writeFile(wb, `Inventory_Summary_${scStartDate}_${scEndDate}.xlsx`);
-      }
-      setShowExportMenu(false);
-  };
-
   const handleDelete = async (id: string) => {
-      if (window.confirm("Hapus transaksi ini? Stok akan otomatis dikembalikan.")) {
+      if (window.confirm("Hapus transaksi ini? Stok barang akan dikembalikan otomatis.")) {
           try {
               await storageService.deleteTransaction(id);
               onRefresh();
@@ -169,12 +65,24 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
      }
   };
 
+  const downloadImage = (base64: string, filename: string) => {
+      const link = document.createElement('a');
+      link.href = base64;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   const exportToExcel = () => {
     const data = filtered.map(t => ({
-      ID: t.id, Date: new Date(t.date).toLocaleString(), Type: t.type.toUpperCase(),
-      Supplier_Ref: t.supplier || t.poNumber || '-',
-      Items: t.items.map(i => `${i.name} (${i.qty} ${i.uom || ''})`).join(', '),
-      Value_Rp: t.totalValue, Notes: t.notes || '-'
+      'ID Transaksi': t.id, 
+      'Tipe': t.type.toUpperCase(),
+      'Tanggal': new Date(t.date).toLocaleString(), 
+      'Supplier/PO': t.supplier || t.poNumber || '-',
+      'Barang': t.items.map(i => `${i.name} (${i.qty} ${i.uom || ''})`).join(', '),
+      'Total Nilai (Rp)': t.totalValue, 
+      'Catatan': t.notes || '-'
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -197,18 +105,15 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-            <div className="relative">
-                <select 
-                    className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 appearance-none pr-8 cursor-pointer dark:text-white"
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value)}
-                >
-                    <option value="all">Semua Tipe</option>
-                    <option value="inbound">Inbound</option>
-                    <option value="outbound">Outbound</option>
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
-            </div>
+            <select 
+                className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+            >
+                <option value="all">Semua Tipe</option>
+                <option value="inbound">Inbound</option>
+                <option value="outbound">Outbound</option>
+            </select>
 
             <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-400 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 px-3 py-2.5 rounded-xl">
                 <Calendar size={14} />
@@ -217,15 +122,14 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 <input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
             
-            <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm font-bold text-sm whitespace-nowrap"><LineChart size={16} /> Kartu Stok</button>
-            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-300 border border-ice-200 dark:border-gray-700 rounded-xl hover:bg-ice-50 dark:hover:bg-gray-700 transition-colors shadow-sm font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export</button>
+            <button onClick={exportToExcel} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
         </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left relative border-collapse">
-            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase sticky top-0 z-10 shadow-sm">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase sticky top-0 z-10">
               <tr>
                 <th className="p-4">ID Transaksi</th>
                 <th className="p-4">Tipe</th>
@@ -258,13 +162,13 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                       <td className="p-4 text-xs italic text-slate-400 truncate max-w-[150px]">{t.notes || '-'}</td>
                       <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => handleEditClick(t)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg"><Edit2 size={16} /></button>
-                              <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg"><Trash2 size={16} /></button>
+                              <button onClick={() => handleEditClick(t)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-all" title="Edit/Detail"><Edit2 size={16} /></button>
+                              <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-all" title="Hapus"><Trash2 size={16} /></button>
                           </div>
                       </td>
                   </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400">Tidak ada transaksi ditemukan.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} className="p-10 text-center text-slate-400 italic">Data transaksi tidak ditemukan.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -275,100 +179,35 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
              transaction={editingTransaction} 
              onClose={() => setIsEditModalOpen(false)}
              onSave={handleUpdate}
+             onPreview={(img) => setPreviewImage(img)}
+             onDownload={downloadImage}
           />
       )}
 
-      {isStockCardOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh] border border-white/50 dark:border-gray-700">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3>
-                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button>
-                </div>
-                <div className="p-6 bg-slate-50 dark:bg-gray-900 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div className="md:col-span-2 relative" ref={autocompleteRef}>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label>
-                        <input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white" placeholder="Nama atau SKU..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} onFocus={() => setIsAutocompleteOpen(true)} />
-                        {isAutocompleteOpen && scSearchItem && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-50 overflow-hidden">
-                                {filteredItems.map(it => (
-                                    <div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b last:border-0 dark:text-white">
-                                        <div className="font-bold text-sm">{it.name}</div>
-                                        <div className="text-[10px] text-slate-400">{it.sku}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Mulai</label>
-                        <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label>
-                        <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900">
-                    {scSelectedItem && stockCardData ? (
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-4 gap-4">
-                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-200 dark:border-gray-700 text-center">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Stok Awal</p>
-                                    <p className="text-xl font-black dark:text-white">{stockCardData.openingStock}</p>
-                                </div>
-                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800 text-center">
-                                    <p className="text-[10px] font-bold text-emerald-600 uppercase">Total In</p>
-                                    <p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p>
-                                </div>
-                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800 text-center">
-                                    <p className="text-[10px] font-bold text-rose-600 uppercase">Total Out</p>
-                                    <p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p>
-                                </div>
-                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 text-center">
-                                    <p className="text-[10px] font-bold text-indigo-600 uppercase">Stok Akhir</p>
-                                    <p className="text-xl font-black text-indigo-700 dark:text-indigo-400">{stockCardData.closingStock}</p>
-                                </div>
-                            </div>
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 dark:bg-gray-800 text-xs font-bold text-slate-500 uppercase">
-                                    <tr><th className="p-3">Tanggal</th><th className="p-3">ID & Ref</th><th className="p-3 text-center">In</th><th className="p-3 text-center">Out</th><th className="p-3 text-center">Saldo</th></tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-gray-700">
-                                    {stockCardData.rows.map((row, idx) => (
-                                        <tr key={idx} className="dark:text-gray-300">
-                                            <td className="p-3 whitespace-nowrap">{new Date(row.date).toLocaleDateString()}</td>
-                                            <td className="p-3 text-xs"><span className="font-bold">{row.id}</span> <br/> <span className="text-slate-400">{row.ref}</span></td>
-                                            <td className="p-3 text-center text-emerald-600 font-bold">{row.in || '-'}</td>
-                                            <td className="p-3 text-center text-rose-600 font-bold">{row.out || '-'}</td>
-                                            <td className="p-3 text-center font-bold bg-slate-50/50 dark:bg-gray-800/50">{row.balance}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="h-64 flex flex-col items-center justify-center text-slate-400 opacity-50">
-                            <Package size={48} className="mb-2" />
-                            <p>Cari barang untuk melihat analisa pergerakan stok</p>
-                        </div>
-                    )}
-                </div>
-                <div className="p-4 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
-                    <button onClick={() => handleAdvancedExport('single')} disabled={!scSelectedItem} className="px-5 py-2 bg-white dark:bg-gray-700 border border-ice-200 dark:border-gray-600 rounded-xl text-xs font-bold flex items-center gap-2"><FileText size={14}/> Export Item</button>
-                    <button onClick={() => handleAdvancedExport('all')} className="px-5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2"><Layers size={14}/> Export Semua Summary</button>
-                </div>
-            </div>
-        </div>
+      {/* Fullscreen Image Preview */}
+      {previewImage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 animate-in fade-in">
+              <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full"><X size={32}/></button>
+              <img src={previewImage} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl shadow-indigo-500/20" alt="Preview" />
+              <div className="absolute bottom-6 flex gap-4">
+                  <button onClick={() => downloadImage(previewImage, 'NEXUS_DOC.png')} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-xl"><DownloadCloud size={20}/> Download Foto</button>
+              </div>
+          </div>
       )}
     </div>
   );
 };
 
-const TransactionEditModal = ({ transaction, onClose, onSave }: { transaction: Transaction, onClose: () => void, onSave: (t: Transaction) => void }) => {
+const TransactionEditModal = ({ transaction, onClose, onSave, onPreview, onDownload }: { 
+    transaction: Transaction, 
+    onClose: () => void, 
+    onSave: (t: Transaction) => void,
+    onPreview: (img: string) => void,
+    onDownload: (img: string, name: string) => void
+}) => {
     const [data, setData] = useState<Transaction>(transaction);
 
-    const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setData(prev => ({ ...prev, [name]: value }));
     };
@@ -376,10 +215,10 @@ const TransactionEditModal = ({ transaction, onClose, onSave }: { transaction: T
     const handleItemChange = (index: number, newQty: number) => {
         const newItems = [...data.items];
         const item = newItems[index];
-        const updatedItem = { ...item, qty: newQty, total: newQty * item.unitPrice };
+        const updatedItem = { ...item, qty: newQty, total: Number((newQty * item.unitPrice).toFixed(2)) };
         newItems[index] = updatedItem;
         
-        const newTotalValue = newItems.reduce((acc, curr) => acc + curr.total, 0);
+        const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
         setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
     };
 
@@ -389,78 +228,110 @@ const TransactionEditModal = ({ transaction, onClose, onSave }: { transaction: T
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Edit Detail Transaksi</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X size={20}/></button>
+                    <div className="flex items-center gap-3">
+                        <FileText className="text-indigo-600" />
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white">Edit / Detail Transaksi</h3>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-colors"><X size={24} className="text-slate-400"/></button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6 flex-1 custom-scrollbar bg-white dark:bg-gray-900">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                
+                <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar bg-white dark:bg-gray-900">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         <div className="md:col-span-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">ID Transaksi</label>
-                            <input disabled value={data.id} className="w-full border p-3 rounded-xl bg-slate-50 dark:bg-gray-800 dark:border-gray-700 text-slate-400" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">ID Transaksi</label>
+                            <input disabled value={data.id} className="w-full border p-3 rounded-xl bg-slate-50 dark:bg-gray-800 dark:border-gray-700 text-slate-400 font-mono text-xs" />
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Tipe</label>
-                            <input disabled value={data.type.toUpperCase()} className="w-full border p-3 rounded-xl bg-slate-50 dark:bg-gray-800 dark:border-gray-700 text-slate-400 font-bold" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Tipe</label>
+                            <span className={`block w-full text-center py-3 rounded-xl font-bold uppercase text-xs ${data.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{data.type}</span>
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Tanggal</label>
-                            <input type="date" value={new Date(data.date).toISOString().split('T')[0]} onChange={e => setData({...data, date: e.target.value})} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Tanggal</label>
+                            <input type="datetime-local" value={data.date.replace(' ', 'T')} onChange={e => setData({...data, date: e.target.value.replace('T', ' ')})} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-xs" />
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Supplier / Client</label>
-                            <input name="supplier" value={data.supplier || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Supplier / Client</label>
+                            <input name="supplier" value={data.supplier || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="Nama perusahaan..." />
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Nomor PO</label>
-                            <input name="poNumber" value={data.poNumber || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Nomor PO / Reff</label>
+                            <input name="poNumber" value={data.poNumber || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="PO-XXXX" />
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Catatan</label>
-                            <input name="notes" value={data.notes || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block tracking-widest">Keterangan</label>
+                            <input name="notes" value={data.notes || ''} onChange={handleFieldChange} className="w-full border p-3 rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 text-sm" placeholder="Catatan transaksi..." />
                         </div>
                     </div>
 
-                    <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden">
+                    <div className="border border-ice-100 dark:border-gray-700 rounded-3xl overflow-hidden shadow-sm">
                         <table className="w-full text-left">
-                            <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase">
+                            <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                 <tr>
-                                    <th className="p-4">Item (SKU)</th>
-                                    <th className="p-4 w-32 text-center">Jumlah (Qty)</th>
+                                    <th className="p-4">Item Details</th>
+                                    <th className="p-4 w-32 text-center">Qty</th>
                                     <th className="p-4 text-center">Unit</th>
-                                    <th className="p-4 text-right">Harga</th>
-                                    <th className="p-4 text-right">Total</th>
+                                    <th className="p-4 text-right">Harga Per Unit</th>
+                                    <th className="p-4 text-right">Total Baris</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
                                 {data.items.map((it, idx) => (
-                                    <tr key={idx} className="text-sm dark:text-gray-300">
-                                        <td className="p-4"><span className="font-bold">{it.name}</span> <br/> <span className="text-[10px] text-slate-400">{it.sku}</span></td>
+                                    <tr key={idx} className="text-sm dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors">
+                                        <td className="p-4"><span className="font-bold">{it.name}</span> <br/> <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">{it.sku}</span></td>
                                         <td className="p-4">
-                                            <input type="number" value={it.qty} onChange={e => handleItemChange(idx, Number(e.target.value))} className="w-full text-center p-2 border rounded-lg font-bold bg-white dark:bg-gray-800" />
+                                            <input type="number" step="any" value={it.qty} onChange={e => handleItemChange(idx, Number(e.target.value))} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 focus:ring-2 focus:ring-indigo-300 outline-none" />
                                         </td>
-                                        <td className="p-4 text-center text-slate-400">{it.uom}</td>
-                                        <td className="p-4 text-right">Rp {it.unitPrice.toLocaleString()}</td>
-                                        <td className="p-4 text-right font-bold">Rp {it.total.toLocaleString()}</td>
+                                        <td className="p-4 text-center">
+                                            <span className="text-[10px] font-bold px-2 py-1 bg-ice-50 dark:bg-gray-700 text-ice-600 dark:text-ice-300 rounded-lg">{it.uom}</span>
+                                        </td>
+                                        <td className="p-4 text-right text-slate-500">Rp {it.unitPrice.toLocaleString()}</td>
+                                        <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {it.total.toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
 
-                    <div className="flex justify-between items-center p-6 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-ice-100 dark:border-gray-700">
-                         <span className="text-slate-500 font-bold uppercase text-[10px]">Total Nilai Transaksi</span>
-                         <span className="text-2xl font-black text-slate-800 dark:text-white">Rp {data.totalValue.toLocaleString()}</span>
+                    {/* Documents Section */}
+                    {data.documents && data.documents.length > 0 && (
+                        <div className="space-y-4">
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={14}/> Lampiran Foto / Dokumen</h4>
+                            <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
+                                {data.documents.map((doc, i) => (
+                                    <div key={i} className="group relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer">
+                                        <img src={doc} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Lampiran" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                            <button type="button" onClick={() => onPreview(doc)} className="p-2 bg-white/20 hover:bg-white text-white hover:text-indigo-600 rounded-full transition-all"><ExternalLink size={16}/></button>
+                                            <button type="button" onClick={() => onDownload(doc, `DOC_${data.id}_${i}.png`)} className="p-2 bg-white/20 hover:bg-white text-white hover:text-emerald-600 rounded-full transition-all"><Download size={16}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-center p-6 bg-slate-800 rounded-3xl border border-slate-700 text-white shadow-xl shadow-slate-200 dark:shadow-none">
+                         <div className="space-y-1">
+                             <span className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Ringkasan Nilai</span>
+                             <p className="text-xs text-slate-300">Total akumulasi dari {data.items.length} item dalam batch ini.</p>
+                         </div>
+                         <div className="text-right">
+                             <span className="text-3xl font-black tracking-tight">Rp {data.totalValue.toLocaleString()}</span>
+                         </div>
                     </div>
                 </form>
+
                 <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
-                    <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Batal</button>
-                    <button type="submit" onClick={handleSubmit} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95"><Save size={18} /> Simpan Perubahan</button>
+                    <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 dark:text-gray-400 font-bold hover:bg-white dark:hover:bg-gray-700 rounded-xl transition-all">Batal</button>
+                    <button type="submit" onClick={handleSubmit} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 group">
+                        <Save size={20} className="group-hover:rotate-12 transition-transform" /> Simpan Perubahan
+                    </button>
                 </div>
             </div>
         </div>

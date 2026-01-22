@@ -167,15 +167,18 @@ export const storageService = {
       if (isApiMode()) return apiCall(`transactions/${newTx.id}`, 'PUT', { oldTx, newTx });
       
       const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
+      // Revert stock from old transaction
       oldTx.items.forEach(tItem => {
         const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
         if (idx >= 0) items[idx].stock += (oldTx.type === 'outbound' ? tItem.qty : -tItem.qty);
       });
+      // Apply stock from new transaction
       newTx.items.forEach(tItem => {
         const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
         if (idx >= 0) items[idx].stock += (newTx.type === 'inbound' ? tItem.qty : -tItem.qty);
       });
       safeSet(KEYS.ITEMS, items);
+
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const idx = transactions.findIndex((t: Transaction) => t.id === oldTx.id);
       if (idx >= 0) transactions[idx] = newTx;
@@ -184,13 +187,18 @@ export const storageService = {
 
   deleteTransaction: async (id: string) => {
       if (isApiMode()) return apiCall(`transactions/${id}`, 'DELETE');
+      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const tx = transactions.find((t: Transaction) => t.id === id);
       if (!tx) return;
+      
       const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
       tx.items.forEach((tItem: any) => {
           const idx = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
-          if (idx >= 0) items[idx].stock += (tx.type === 'outbound' ? tItem.qty : -tItem.qty);
+          if (idx >= 0) {
+              // Revert stock logic: if it was an outbound, we ADD back. If it was an inbound, we REMOVE.
+              items[idx].stock += (tx.type === 'outbound' ? tItem.qty : -tItem.qty);
+          }
       });
       safeSet(KEYS.ITEMS, items);
       safeSet(KEYS.TRANSACTIONS, transactions.filter((t: Transaction) => t.id !== id));
