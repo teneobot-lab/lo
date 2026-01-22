@@ -79,8 +79,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
   // Helper to construct YouTube URL properly
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
+    // YouTube Embed requires certain parameters for reliable playback
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}autoplay=1&mute=0&rel=0`;
+    // Mute is often required by browsers to allow autoplay
+    return `${url}${separator}autoplay=1&mute=0&rel=0&enablejsapi=1`;
   };
 
   return (
@@ -212,7 +214,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                     src={getEmbedUrl(mediaUrl)}
                     title="Nexus Media Player" 
                     frameBorder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
                     allowFullScreen
                     className="w-full h-full"
                 ></iframe>

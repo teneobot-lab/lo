@@ -7,16 +7,11 @@ const DEFAULT_API_URL = '/api';
 
 const getApiUrl = () => {
     const stored = localStorage.getItem('nexus_api_url');
-    if (stored && (
-        stored.includes('178.128.106.33') || 
-        stored.includes('89.21.85.28') || 
-        stored.includes('IP_BARU_ANDA')
-    )) {
-        localStorage.removeItem('nexus_api_url');
-        return DEFAULT_API_URL;
-    }
+    // Jika tidak ada di localStorage, gunakan default proxy (/api)
+    if (!stored) return DEFAULT_API_URL;
+    // Jika diset 'local', berarti pakai localStorage browser (offline mode)
     if (stored === 'local') return '';
-    return stored || DEFAULT_API_URL;
+    return stored;
 };
 
 const isApiMode = () => {
@@ -25,8 +20,9 @@ const isApiMode = () => {
 
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
-    let url = baseUrl.endsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
-    url = url.replace('//api', '/api');
+    // Pastikan URL bersih dari double slash
+    let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    let url = `${cleanBase}/${endpoint.startsWith('/') ? endpoint.slice(1) : endpoint}`;
 
     try {
         const headers: any = { 'Content-Type': 'application/json' };
@@ -35,10 +31,15 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
             headers,
             body: body ? JSON.stringify(body) : undefined
         });
-        if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+        
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || `API Error: ${res.statusText}`);
+        }
+        
         return await res.json();
     } catch (e) {
-        console.error("API Fetch Failed", e);
+        console.error(`[NEXUS API ERROR] ${method} ${url}:`, e);
         throw e;
     }
 };

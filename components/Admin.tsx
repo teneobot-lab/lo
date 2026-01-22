@@ -79,19 +79,26 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         let videoId = '';
         const url = newMediaUrl.trim();
 
-        // YouTube Link Parsing Logic
-        if (url.includes('watch?v=')) {
-            videoId = url.split('v=')[1]?.split('&')[0];
-        } else if (url.includes('youtu.be/')) {
-            videoId = url.split('youtu.be/')[1]?.split('?')[0];
-        } else if (url.includes('/shorts/')) {
-            videoId = url.split('/shorts/')[1]?.split('?')[0];
-        } else if (url.includes('/embed/')) {
-            videoId = url.split('/embed/')[1]?.split('?')[0];
+        // YouTube Link Parsing Logic (Ultra Robust)
+        try {
+            if (url.includes('watch?v=')) {
+                videoId = url.split('v=')[1]?.split('&')[0];
+            } else if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            } else if (url.includes('/shorts/')) {
+                videoId = url.split('/shorts/')[1]?.split('?')[0];
+            } else if (url.includes('/embed/')) {
+                videoId = url.split('/embed/')[1]?.split('?')[0];
+            } else if (url.length === 11) {
+                // Asumsikan ini ID video langsung
+                videoId = url;
+            }
+        } catch (e) {
+            console.error("Link parsing failed", e);
         }
 
-        if (!videoId) {
-            alert("Link YouTube tidak valid! Gunakan link dari address bar atau menu share.");
+        if (!videoId || videoId.length !== 11) {
+            alert("Format link YouTube tidak dikenal. Pastikan ID video benar.");
             return;
         }
 
@@ -242,7 +249,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                         <div className="space-y-4 mb-8 p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-dashed border-ice-200 dark:border-gray-700">
                             <input value={newMediaTitle} onChange={e => setNewMediaTitle(e.target.value)} placeholder="Judul Video..." className="w-full p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-rose-300" />
                             <div className="flex gap-2">
-                                <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="URL YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none" />
+                                <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="ID Video atau URL YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none" />
                                 <button onClick={addToPlaylist} className="bg-rose-600 text-white p-3 rounded-xl hover:bg-rose-700 active:scale-95 transition-all shadow-lg"><Plus size={20}/></button>
                             </div>
                         </div>
@@ -254,7 +261,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                         <p className={`text-sm font-bold truncate ${currentMediaUrl === p.url ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-gray-300'}`}>{p.title}</p>
                                     </div>
                                     <div className="flex gap-1">
-                                        {onUpdateMedia && currentMediaUrl !== p.url && <button onClick={() => onUpdateMedia(p.url)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg"><Play size={16}/></button>}
+                                        {onUpdateMedia && <button onClick={() => onUpdateMedia(p.url)} className={`p-2 rounded-lg transition-all ${currentMediaUrl === p.url ? 'text-rose-600 bg-rose-100' : 'text-emerald-500 hover:bg-emerald-50'}`}><Play size={16}/></button>}
                                         <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><X size={16}/></button>
                                     </div>
                                 </div>
@@ -276,7 +283,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                             </div>
                             <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
                                 <Wifi size={16} className="text-emerald-500"/>
-                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Connection: Active (Online)</span>
+                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Status: Active</span>
                             </div>
                         </div>
                     </div>
