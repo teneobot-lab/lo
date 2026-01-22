@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -10,17 +10,13 @@ interface State {
   error: Error | null;
 }
 
-// Extend from Component directly to ensure generic parameters are correctly mapped and props are available.
-export class ErrorBoundary extends Component<Props, State> {
+// Fix: Use React.Component explicitly to ensure 'props' is correctly recognized by TypeScript on the class instance
+export class ErrorBoundary extends React.Component<Props, State> {
   // Define initial state for the error boundary.
   public state: State = {
     hasError: false,
     error: null,
   };
-
-  constructor(props: Props) {
-    super(props);
-  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -30,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("Uncaught error:", error, errorInfo);
   }
 
-  public render() {
+  public render(): ReactNode {
     // Check for errors in state.
     if (this.state.hasError) {
       return (
@@ -59,6 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     // Return the children props when no error is caught.
+    // Fix: access children via this.props which is now correctly typed from React.Component
     return this.props.children;
   }
 }

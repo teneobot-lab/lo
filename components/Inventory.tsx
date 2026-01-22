@@ -104,34 +104,53 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         
         let importedCount = 0;
         for (const row of data) {
-          if (row.SKU && row.Name && row.Price) {
-              const newItem: InventoryItem = {
-                  id: crypto.randomUUID(), 
-                  sku: String(row.SKU),
-                  name: String(row.Name),
-                  category: String(row.Category || 'General'),
-                  price: Number(row.Price),
-                  location: String(row.Location || 'Unassigned'),
-                  unit: String(row.Unit || 'Pcs'),
-                  stock: Number(row.Stock || 0),
-                  minLevel: Number(row.MinLevel || 5),
-                  active: true,
-                  unit2: row.Unit2 ? String(row.Unit2) : undefined,
-                  ratio2: row.Ratio2 ? Number(row.Ratio2) : undefined,
-                  op2: (row.Op2 === 'divide' || row.Op2 === 'multiply') ? row.Op2 : 'multiply',
-                  unit3: row.Unit3 ? String(row.Unit3) : undefined,
-                  ratio3: row.Ratio3 ? Number(row.Ratio3) : undefined,
-                  op3: (row.Op3 === 'divide' || row.Op3 === 'multiply') ? row.Op3 : 'multiply',
+          // SKU is mandatory for identification
+          if (row.SKU) {
+              const sku = String(row.SKU).trim();
+              const existing = items.find(i => i.sku === sku);
+
+              // Helper to parse numeric values flexibly
+              const parseNumber = (val: any, defaultVal: number = 0) => {
+                  if (val === undefined || val === null || val === '') return defaultVal;
+                  const strVal = String(val).trim();
+                  if (strVal === '-') return 0;
+                  const num = Number(strVal.replace(/[^0-9.-]+/g, ""));
+                  return isNaN(num) ? defaultVal : num;
               };
-              const existing = items.find(i => i.sku === newItem.sku);
-              if (existing) newItem.id = existing.id;
+
+              const newItem: InventoryItem = {
+                  id: existing ? existing.id : crypto.randomUUID(), 
+                  sku: sku,
+                  name: row.Name ? String(row.Name) : (existing?.name || 'Imported Item'),
+                  category: row.Category ? String(row.Category) : (existing?.category || 'General'),
+                  price: parseNumber(row.Price, existing?.price || 0),
+                  location: row.Location ? String(row.Location) : (existing?.location || 'Unassigned'),
+                  unit: row.Unit ? String(row.Unit) : (existing?.unit || 'Pcs'),
+                  stock: parseNumber(row.Stock, existing?.stock || 0),
+                  minLevel: parseNumber(row.MinLevel, existing?.minLevel || 0),
+                  active: existing ? existing.active : true,
+                  // Multi-unit fields mapping
+                  unit2: row.Unit2 ? String(row.Unit2) : existing?.unit2,
+                  ratio2: row.Ratio2 ? parseNumber(row.Ratio2, existing?.ratio2 || 0) : existing?.ratio2,
+                  op2: (row.Op2 === 'divide' || row.Op2 === 'multiply') ? row.Op2 : (existing?.op2 || 'multiply'),
+                  unit3: row.Unit3 ? String(row.Unit3) : existing?.unit3,
+                  ratio3: row.Ratio3 ? parseNumber(row.Ratio3, existing?.ratio3 || 0) : existing?.ratio3,
+                  op3: (row.Op3 === 'divide' || row.Op3 === 'multiply') ? row.Op3 : (existing?.op3 || 'multiply'),
+              };
+
               await storageService.saveItem(newItem);
               importedCount++;
           }
         }
-        if (importedCount > 0) { notify(`Successfully processed ${importedCount} items.`, 'success'); onRefresh(); } 
-        else { notify('No valid items found in file', 'warning'); }
-      } catch (e) { notify("Failed to process file.", 'error'); }
+        if (importedCount > 0) { 
+          notify(`Successfully processed ${importedCount} items.`, 'success'); 
+          onRefresh(); 
+        } else { 
+          notify('No valid SKU found in file', 'warning'); 
+        }
+      } catch (e) { 
+        notify("Failed to process file.", 'error'); 
+      }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
@@ -290,7 +309,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 };
 
 const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onClose: () => void, onSave: (i: InventoryItem) => void }) => {
-    // ... Logic kept same, just styling ...
     const [formData, setFormData] = useState<any>(() => {
         if (item) return { ...item, unit2: item.unit2 || item.conversionUnit || '', ratio2: item.ratio2 || item.conversionRatio, op2: item.op2 || 'multiply', unit3: item.unit3 || '', ratio3: item.ratio3, op3: item.op3 || 'multiply' };
         return { active: true, stock: '', minLevel: '', price: '', unit: 'Pcs', unit2: '', ratio2: undefined, op2: 'multiply', unit3: '', ratio3: undefined, op3: 'multiply' };
@@ -307,7 +325,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                     <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X size={20} className="text-slate-400"/></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-8 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
-                    {/* Inputs styled with Ice Blue borders */}
                     <div className="grid grid-cols-2 gap-5">
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">SKU</label>
@@ -318,7 +335,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                             <input required name="name" value={formData.name || ''} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-ice-300" />
                         </div>
                     </div>
-                    {/* ... (Other inputs similar style) ... */}
                     <div className="grid grid-cols-2 gap-5">
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Category</label>
@@ -343,10 +359,8 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                             <input required type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full border border-ice-200 dark:border-gray-700 p-3 rounded-xl bg-white dark:bg-gray-950 text-dark dark:text-white outline-none focus:ring-2 focus:ring-ice-300" />
                         </div>
                     </div>
-                    {/* Multi-Unit Section */}
                     <div className="p-5 bg-ice-50/50 dark:bg-gray-800/50 rounded-2xl border border-ice-100 dark:border-gray-700 space-y-4">
                         <h4 className="text-xs font-bold text-ice-600 uppercase flex items-center gap-2"><Layers size={14}/> Multi-Unit Settings</h4>
-                        {/* Level 2 */}
                         <div className="flex gap-4">
                              <div className="flex-1">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase">Unit 2</label>
@@ -357,7 +371,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                                 <input type="number" name="ratio2" value={formData.ratio2 ?? ''} onChange={handleChange} className="w-full border border-ice-200 p-2 rounded-lg text-sm" />
                              </div>
                         </div>
-                        {/* Logic Toggle 2 */}
                         {formData.unit2 && (
                              <div className="flex items-center gap-2 text-xs">
                                  <span className="font-bold text-slate-500">Logic:</span>
@@ -367,7 +380,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                                  </div>
                              </div>
                         )}
-                        {/* Level 3 */}
                         <div className="flex gap-4">
                              <div className="flex-1">
                                 <label className="text-[9px] font-bold text-slate-400 uppercase">Unit 3</label>
