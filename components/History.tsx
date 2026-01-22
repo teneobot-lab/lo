@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface HistoryProps {
@@ -76,7 +76,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       const start = new Date(startStr); start.setHours(0,0,0,0);
       const end = new Date(endStr); end.setHours(23,59,59,999);
       
-      // Hitung stok awal (revert semua transaksi setelah tanggal start)
       let openingStock = item.stock;
       const allItemTrans = transactions
         .filter(t => t.items.some(i => i.itemId === item.id))
@@ -131,6 +130,66 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       }
   };
 
+  // --- NEW: Export per Transaksi Sesuai Gambar ---
+  const handleExportSingleTransaction = (t: Transaction) => {
+    const wb = XLSX.utils.book_new();
+    
+    // Header Layout: ID di kiri atas (Cell B7)
+    // Table Headers di Row 7: No. Barang (C), Keterangan (E), Tanggal (F), User (G), Default (I), Kuantita (M), Satuan (O)
+    
+    const rows = [
+      [], [], [], [], [], // Empty rows
+      ['', 'ID TRANSAKSI:', t.id], // Row 6
+      ['', '', 'No. Barang', '', 'Keterangan Barang', 'Tanggal', 'Shift/User', '', 'Default', '', '', '', 'Kuantita', '', 'Satuan'] // Row 7 (Headers)
+    ];
+
+    t.items.forEach(it => {
+      const displayQty = getDisplayQty(it);
+      rows.push([
+        '', 
+        '', 
+        it.sku, 
+        '', 
+        it.name, 
+        new Date(t.date).toLocaleDateString('en-US'), 
+        t.userId.toUpperCase(), 
+        '', 
+        it.qty, // Base Qty (Default)
+        '', 
+        '', 
+        '', 
+        displayQty, // Actual Input Qty
+        '', 
+        it.uom // Unit
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Styling Simulation (Col Widths)
+    const wscols = [
+      { wch: 2 },  // A
+      { wch: 15 }, // B
+      { wch: 15 }, // C (No Barang)
+      { wch: 2 },  // D
+      { wch: 35 }, // E (Keterangan)
+      { wch: 15 }, // F (Tanggal)
+      { wch: 20 }, // G (User)
+      { wch: 2 },  // H
+      { wch: 10 }, // I (Default)
+      { wch: 2 },  // J
+      { wch: 2 },  // K
+      { wch: 2 },  // L
+      { wch: 10 }, // M (Kuantita)
+      { wch: 2 },  // N
+      { wch: 8 },  // O (Satuan)
+    ];
+    ws['!cols'] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Detail Transaksi");
+    XLSX.writeFile(wb, `Laporan_${t.id}.xlsx`);
+  };
+
   const handleEditClick = (t: Transaction) => { setEditingTransaction(JSON.parse(JSON.stringify(t))); setIsEditModalOpen(true); };
   const handleUpdate = async (updatedTx: Transaction) => {
      if (editingTransaction) {
@@ -161,7 +220,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       }
   };
 
-  // FIX: Implementation of handleAdvancedExport for Stock Card reporting
   const handleAdvancedExport = (mode: 'single') => {
       if (!scSelectedItem || !stockCardData) return;
 
@@ -182,10 +240,11 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           { 'Keterangan': 'SKU', 'Nilai': scSelectedItem.sku },
           { 'Keterangan': 'Periode', 'Nilai': `${scStartDate} s/d ${scEndDate}` },
           { 'Keterangan': 'Satuan Dasar', 'Nilai': scSelectedItem.unit },
-          { 'Keterangan': 'Stok Awal', 'Nilai': stockCardData.openingStock },
-          { 'Keterangan': 'Total Masuk', 'Nilai': stockCardData.totalIn },
-          { 'Keterangan': 'Total Keluar', 'Nilai': stockCardData.totalOut },
-          { 'Keterangan': 'Stok Akhir', 'Nilai': stockCardData.closingStock }
+          // Convert numeric values to strings to prevent "number is not assignable to string" errors during array type inference
+          { 'Keterangan': 'Stok Awal', 'Nilai': String(stockCardData.openingStock) },
+          { 'Keterangan': 'Total Masuk', 'Nilai': String(stockCardData.totalIn) },
+          { 'Keterangan': 'Total Keluar', 'Nilai': String(stockCardData.totalOut) },
+          { 'Keterangan': 'Stok Akhir', 'Nilai': String(stockCardData.closingStock) }
       ];
 
       const wb = XLSX.utils.book_new();
@@ -208,19 +267,19 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
             <select className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option></select>
             <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-400 bg-ice-50 dark:bg-gray-900 border border-ice-200 px-3 py-2.5 rounded-xl"><Calendar size={14} /><input type="date" className="bg-transparent focus:outline-none dark:invert" value={startDate} onChange={e => setStartDate(e.target.value)} /><span>sd</span><input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
             <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl hover:bg-indigo-100 font-bold text-sm"><LineChart size={16} /> Kartu Stok</button>
-            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Data</button>
+            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Ringkasan</button>
         </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
-        <div className="overflow-auto flex-1">
+        <div className="overflow-auto flex-1 custom-scrollbar">
           <table className="w-full text-left relative border-collapse">
             <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-200 dark:border-gray-700 text-[10px] font-bold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
               <tr><th className="p-4">ID Transaksi</th><th className="p-4">Tipe</th><th className="p-4">Tanggal</th><th className="p-4">Supplier / PO</th><th className="p-4">Ringkasan Barang</th><th className="p-4 text-right">Total Nilai</th><th className="p-4 text-right">Aksi</th></tr>
             </thead>
             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
               {filtered.map(t => (
-                  <tr key={t.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors text-sm">
+                  <tr key={t.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors text-sm group">
                       <td className="p-4 font-bold text-slate-800 dark:text-white">{t.id}</td>
                       <td className="p-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type}</span></td>
                       <td className="p-4 text-slate-600 dark:text-gray-400">{new Date(t.date).toLocaleString()}</td>
@@ -234,6 +293,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                       <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {t.totalValue.toLocaleString()}</td>
                       <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => handleExportSingleTransaction(t)} title="Export ke Excel" className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"><FileSpreadsheet size={16} /></button>
                               <button onClick={() => handleEditClick(t)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"><Edit2 size={16} /></button>
                               <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={16} /></button>
                           </div>
@@ -247,7 +307,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
       {isStockCardOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-screen-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400">
@@ -302,7 +362,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900">
                     {scSelectedItem && stockCardData ? (
                         <div className="flex flex-col h-full animate-in fade-in slide-in-from-top-4 duration-500">
-                            {/* Summary Boxes */}
                             <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white dark:bg-gray-900">
                                 <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700 shadow-sm">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOK AWAL</p>
@@ -328,7 +387,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                                 </div>
                             </div>
 
-                            {/* Table with Sticky Header and Proper Scroll */}
                             <div className="flex-1 overflow-auto custom-scrollbar px-6 pb-6">
                                 <table className="w-full text-left border-separate border-spacing-0">
                                     <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">
@@ -342,7 +400,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
-                                        {/* Awal Saldo baris virtual */}
                                         <tr className="bg-slate-50/30 dark:bg-gray-800/30 italic">
                                             <td className="p-4 text-xs text-slate-400">-</td>
                                             <td className="p-4 text-xs font-bold text-slate-400">SALDO AWAL PERIODE</td>
@@ -380,7 +437,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                                         )) : (
                                             <tr>
                                                 <td colSpan={6} className="p-12 text-center text-slate-400 italic text-sm">
-                                                    Tidak ada transaksi ditemukan pada periode ini untuk barang tersebut.
+                                                    Tidak ada transaksi ditemukan pada periode ini.
                                                 </td>
                                             </tr>
                                         )}
@@ -395,13 +452,13 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                             </div>
                             <div>
                                 <h4 className="text-xl font-bold text-slate-700 dark:text-white">Pilih Barang Dulu Bang</h4>
-                                <p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang yang ingin dianalisa riwayat stoknya.</p>
+                                <p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang.</p>
                             </div>
                         </div>
                     )}
                 </div>
                 
-                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50 dark:bg-gray-800 flex justify-between items-center">
+                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center">
                     <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div>
                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div>
@@ -411,7 +468,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                         disabled={!scSelectedItem || !stockCardData}
                         className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
                     >
-                        <DownloadCloud size={18} /> Export Laporan (.xlsx)
+                        <DownloadCloud size={18} /> Export Laporan Kartu Stok
                     </button>
                 </div>
             </div>
