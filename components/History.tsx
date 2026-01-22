@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet, Plus, Camera, Trash } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface HistoryProps {
@@ -130,62 +130,27 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       }
   };
 
-  // --- NEW: Export per Transaksi Sesuai Gambar ---
   const handleExportSingleTransaction = (t: Transaction) => {
     const wb = XLSX.utils.book_new();
-    
-    // Header Layout: ID di kiri atas (Cell B7)
-    // Table Headers di Row 7: No. Barang (C), Keterangan (E), Tanggal (F), User (G), Default (I), Kuantita (M), Satuan (O)
-    
-    const rows = [
-      [], [], [], [], [], // Empty rows
-      ['', 'ID TRANSAKSI:', t.id], // Row 6
-      ['', '', 'No. Barang', '', 'Keterangan Barang', 'Tanggal', 'Shift/User', '', 'Default', '', '', '', 'Kuantita', '', 'Satuan'] // Row 7 (Headers)
+    // Use any[][] for rows to prevent inferred type issues with numbers in the data rows
+    const rows: any[][] = [
+      [], [], [], [], [], 
+      ['', 'ID TRANSAKSI:', t.id], 
+      ['', '', 'No. Barang', '', 'Keterangan Barang', 'Tanggal', 'Shift/User', '', 'Default', '', '', '', 'Kuantita', '', 'Satuan'] 
     ];
 
     t.items.forEach(it => {
       const displayQty = getDisplayQty(it);
       rows.push([
-        '', 
-        '', 
-        it.sku, 
-        '', 
-        it.name, 
-        new Date(t.date).toLocaleDateString('en-US'), 
-        t.userId.toUpperCase(), 
-        '', 
-        it.qty, // Base Qty (Default)
-        '', 
-        '', 
-        '', 
-        displayQty, // Actual Input Qty
-        '', 
-        it.uom // Unit
+        '', '', it.sku, '', it.name, new Date(t.date).toLocaleDateString('en-US'), t.userId.toUpperCase(), '', it.qty, '', '', '', displayQty, '', it.uom 
       ]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
-
-    // Styling Simulation (Col Widths)
     const wscols = [
-      { wch: 2 },  // A
-      { wch: 15 }, // B
-      { wch: 15 }, // C (No Barang)
-      { wch: 2 },  // D
-      { wch: 35 }, // E (Keterangan)
-      { wch: 15 }, // F (Tanggal)
-      { wch: 20 }, // G (User)
-      { wch: 2 },  // H
-      { wch: 10 }, // I (Default)
-      { wch: 2 },  // J
-      { wch: 2 },  // K
-      { wch: 2 },  // L
-      { wch: 10 }, // M (Kuantita)
-      { wch: 2 },  // N
-      { wch: 8 },  // O (Satuan)
+      { wch: 2 }, { wch: 15 }, { wch: 15 }, { wch: 2 }, { wch: 35 }, { wch: 15 }, { wch: 20 }, { wch: 2 }, { wch: 10 }, { wch: 2 }, { wch: 2 }, { wch: 2 }, { wch: 10 }, { wch: 2 }, { wch: 8 },
     ];
     ws['!cols'] = wscols;
-
     XLSX.utils.book_append_sheet(wb, ws, "Detail Transaksi");
     XLSX.writeFile(wb, `Laporan_${t.id}.xlsx`);
   };
@@ -222,7 +187,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const handleAdvancedExport = (mode: 'single') => {
       if (!scSelectedItem || !stockCardData) return;
-
       const exportData = stockCardData.rows.map(row => ({
           'Tanggal': new Date(row.date).toLocaleString('id-ID'),
           'ID Transaksi': row.id,
@@ -234,26 +198,21 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           'Saldo': row.balance,
           'Satuan': row.uom
       }));
-
       const summary = [
           { 'Keterangan': 'Nama Barang', 'Nilai': scSelectedItem.name },
           { 'Keterangan': 'SKU', 'Nilai': scSelectedItem.sku },
           { 'Keterangan': 'Periode', 'Nilai': `${scStartDate} s/d ${scEndDate}` },
           { 'Keterangan': 'Satuan Dasar', 'Nilai': scSelectedItem.unit },
-          // Convert numeric values to strings to prevent "number is not assignable to string" errors during array type inference
           { 'Keterangan': 'Stok Awal', 'Nilai': String(stockCardData.openingStock) },
           { 'Keterangan': 'Total Masuk', 'Nilai': String(stockCardData.totalIn) },
           { 'Keterangan': 'Total Keluar', 'Nilai': String(stockCardData.totalOut) },
           { 'Keterangan': 'Stok Akhir', 'Nilai': String(stockCardData.closingStock) }
       ];
-
       const wb = XLSX.utils.book_new();
       const wsSummary = XLSX.utils.json_to_sheet(summary);
       const wsDetails = XLSX.utils.json_to_sheet(exportData);
-      
       XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan");
       XLSX.utils.book_append_sheet(wb, wsDetails, "Detail Pergerakan");
-      
       XLSX.writeFile(wb, `Kartu_Stok_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
   };
 
@@ -310,167 +269,36 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-screen-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400">
-                            <LineChart size={24} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-xl text-slate-800 dark:text-white">Analisa Kartu Stok</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Lacak pergerakan stok per barang secara detail</p>
-                        </div>
+                        <div className="p-2.5 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400"><LineChart size={24} /></div>
+                        <div><h3 className="font-bold text-xl text-slate-800 dark:text-white">Analisa Kartu Stok</h3><p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Lacak pergerakan stok per barang secara detail</p></div>
                     </div>
-                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all">
-                        <X className="text-slate-400" />
-                    </button>
+                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><X className="text-slate-400" /></button>
                 </div>
-                
                 <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
                     <div className="md:col-span-2 relative" ref={autocompleteRef}>
                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang Inventaris</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <input 
-                                type="text" 
-                                className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all shadow-sm" 
-                                placeholder="Ketik Nama atau SKU Barang..." 
-                                value={scSearchItem} 
-                                onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} 
-                                onFocus={() => setIsAutocompleteOpen(true)} 
-                                onKeyDown={handleSCKeyDown} 
-                            />
-                        </div>
-                        {isAutocompleteOpen && scSearchItem && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                                {filteredItemsForSC.length > 0 ? filteredItemsForSC.map((it, idx) => (
-                                    <div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-4 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}>
-                                        <div className="font-bold text-sm">{it.name}</div>
-                                        <div className="text-[10px] text-slate-400 font-mono tracking-wider">{it.sku} | Unit Dasar: {it.unit}</div>
-                                    </div>
-                                )) : <div className="p-4 text-xs text-slate-400 italic">Barang tidak ditemukan.</div>}
-                            </div>
-                        )}
+                        <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all shadow-sm" placeholder="Ketik Nama atau SKU Barang..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} onFocus={() => setIsAutocompleteOpen(true)} onKeyDown={handleSCKeyDown} /></div>
+                        {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">{filteredItemsForSC.length > 0 ? filteredItemsForSC.map((it, idx) => (<div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-4 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400 font-mono tracking-wider">{it.sku} | Unit Dasar: {it.unit}</div></div>)) : <div className="p-4 text-xs text-slate-400 italic">Barang tidak ditemukan.</div>}</div>)}
                     </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Periode Dari</label>
-                        <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai Dengan</label>
-                        <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" />
-                    </div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Periode Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai Dengan</label><input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" /></div>
                 </div>
-
                 <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900">
                     {scSelectedItem && stockCardData ? (
                         <div className="flex flex-col h-full animate-in fade-in slide-in-from-top-4 duration-500">
                             <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white dark:bg-gray-900">
-                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700 shadow-sm">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOK AWAL</p>
-                                    <p className="text-2xl font-black text-slate-700 dark:text-white tracking-tight">{stockCardData.openingStock} <span className="text-xs font-bold text-slate-400 uppercase">{scSelectedItem.unit}</span></p>
-                                </div>
-                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 shadow-sm">
-                                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">TOTAL MASUK</p>
-                                    <div className="flex items-center gap-2">
-                                        <ArrowDownLeft size={16} className="text-emerald-500"/>
-                                        <p className="text-2xl font-black text-emerald-600">+{stockCardData.totalIn}</p>
-                                    </div>
-                                </div>
-                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800/30 shadow-sm">
-                                    <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1">TOTAL KELUAR</p>
-                                    <div className="flex items-center gap-2">
-                                        <ArrowUpRight size={16} className="text-rose-500"/>
-                                        <p className="text-2xl font-black text-rose-600">-{stockCardData.totalOut}</p>
-                                    </div>
-                                </div>
-                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 shadow-sm">
-                                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">STOK AKHIR</p>
-                                    <p className="text-2xl font-black text-indigo-700 dark:text-indigo-300 tracking-tight">{stockCardData.closingStock} <span className="text-xs font-bold text-indigo-400 uppercase">{scSelectedItem.unit}</span></p>
-                                </div>
+                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700 shadow-sm"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOK AWAL</p><p className="text-2xl font-black text-slate-700 dark:text-white tracking-tight">{stockCardData.openingStock} <span className="text-xs font-bold text-slate-400 uppercase">{scSelectedItem.unit}</span></p></div>
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 shadow-sm"><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">TOTAL MASUK</p><div className="flex items-center gap-2"><ArrowDownLeft size={16} className="text-emerald-500"/><p className="text-2xl font-black text-emerald-600">+{stockCardData.totalIn}</p></div></div>
+                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800/30 shadow-sm"><p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1">TOTAL KELUAR</p><div className="flex items-center gap-2"><ArrowUpRight size={16} className="text-rose-500"/><p className="text-2xl font-black text-rose-600">-{stockCardData.totalOut}</p></div></div>
+                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 shadow-sm"><p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">STOK AKHIR</p><p className="text-2xl font-black text-indigo-700 dark:text-indigo-300 tracking-tight">{stockCardData.closingStock} <span className="text-xs font-bold text-indigo-400 uppercase">{scSelectedItem.unit}</span></p></div>
                             </div>
-
-                            <div className="flex-1 overflow-auto custom-scrollbar px-6 pb-6">
-                                <table className="w-full text-left border-separate border-spacing-0">
-                                    <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">
-                                        <tr className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 rounded-tl-xl">Tanggal & Waktu</th>
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">ID Transaksi / Ref</th>
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">Supplier / Client</th>
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Masuk</th>
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Keluar</th>
-                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center rounded-tr-xl">Saldo Running</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
-                                        <tr className="bg-slate-50/30 dark:bg-gray-800/30 italic">
-                                            <td className="p-4 text-xs text-slate-400">-</td>
-                                            <td className="p-4 text-xs font-bold text-slate-400">SALDO AWAL PERIODE</td>
-                                            <td className="p-4 text-xs text-slate-400">-</td>
-                                            <td className="p-4 text-center text-slate-400">-</td>
-                                            <td className="p-4 text-center text-slate-400">-</td>
-                                            <td className="p-4 text-center font-bold text-slate-500">{stockCardData.openingStock} {scSelectedItem.unit}</td>
-                                        </tr>
-                                        {stockCardData.rows.length > 0 ? stockCardData.rows.map((row, idx) => (
-                                            <tr key={idx} className="dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                                                <td className="p-4 text-sm font-medium">{new Date(row.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                                                <td className="p-4">
-                                                    <div className="text-xs font-mono font-bold text-slate-700 dark:text-indigo-400">{row.id}</div>
-                                                    <div className="text-[9px] text-slate-400 tracking-wider">REF: {row.ref}</div>
-                                                </td>
-                                                <td className="p-4 text-xs text-slate-600 dark:text-gray-400 truncate max-w-[150px]">{row.supplier}</td>
-                                                <td className="p-4 text-center">
-                                                    {row.in > 0 ? (
-                                                        <span className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-lg text-xs font-bold">
-                                                            +{row.in}
-                                                        </span>
-                                                    ) : '-'}
-                                                </td>
-                                                <td className="p-4 text-center">
-                                                    {row.out > 0 ? (
-                                                        <span className="px-2 py-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 rounded-lg text-xs font-bold">
-                                                            -{row.out}
-                                                        </span>
-                                                    ) : '-'}
-                                                </td>
-                                                <td className="p-4 text-center font-bold bg-slate-50/20 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300 border-l border-slate-100 dark:border-gray-800">
-                                                    {row.balance} <span className="text-[9px] font-bold uppercase">{scSelectedItem.unit}</span>
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan={6} className="p-12 text-center text-slate-400 italic text-sm">
-                                                    Tidak ada transaksi ditemukan pada periode ini.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <div className="flex-1 overflow-auto custom-scrollbar px-6 pb-6"><table className="w-full text-left border-separate border-spacing-0"><thead className="sticky top-0 z-20 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700"><tr className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest"><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 rounded-tl-xl">Tanggal & Waktu</th><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">ID Transaksi / Ref</th><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">Supplier / Client</th><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Masuk</th><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Keluar</th><th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center rounded-tr-xl">Saldo Running</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-gray-800"><tr className="bg-slate-50/30 dark:bg-gray-800/30 italic"><td className="p-4 text-xs text-slate-400">-</td><td className="p-4 text-xs font-bold text-slate-400">SALDO AWAL PERIODE</td><td className="p-4 text-xs text-slate-400">-</td><td className="p-4 text-center text-slate-400">-</td><td className="p-4 text-center text-slate-400">-</td><td className="p-4 text-center font-bold text-slate-500">{stockCardData.openingStock} {scSelectedItem.unit}</td></tr>{stockCardData.rows.length > 0 ? stockCardData.rows.map((row, idx) => (<tr key={idx} className="dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors"><td className="p-4 text-sm font-medium">{new Date(row.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td><td className="p-4"><div className="text-xs font-mono font-bold text-slate-700 dark:text-indigo-400">{row.id}</div><div className="text-[9px] text-slate-400 tracking-wider">REF: {row.ref}</div></td><td className="p-4 text-xs text-slate-600 dark:text-gray-400 truncate max-w-[150px]">{row.supplier}</td><td className="p-4 text-center">{row.in > 0 ? (<span className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-lg text-xs font-bold">+{row.in}</span>) : '-'}</td><td className="p-4 text-center">{row.out > 0 ? (<span className="px-2 py-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 rounded-lg text-xs font-bold">-{row.out}</span>) : '-'}</td><td className="p-4 text-center font-bold bg-slate-50/20 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300 border-l border-slate-100 dark:border-gray-800">{row.balance} <span className="text-[9px] font-bold uppercase">{scSelectedItem.unit}</span></td></tr>)) : (<tr><td colSpan={6} className="p-12 text-center text-slate-400 italic text-sm">Tidak ada transaksi ditemukan pada periode ini.</td></tr>)}</tbody></table></div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-12 space-y-4">
-                            <div className="w-24 h-24 bg-slate-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-slate-200 dark:text-slate-700">
-                                <Package size={48} />
-                            </div>
-                            <div>
-                                <h4 className="text-xl font-bold text-slate-700 dark:text-white">Pilih Barang Dulu Bang</h4>
-                                <p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang.</p>
-                            </div>
-                        </div>
+                        <div className="flex flex-col items-center justify-center h-full text-center p-12 space-y-4"><div className="w-24 h-24 bg-slate-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-slate-200 dark:text-slate-700"><Package size={48} /></div><div><h4 className="text-xl font-bold text-slate-700 dark:text-white">Pilih Barang Dulu Bang</h4><p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang.</p></div></div>
                     )}
                 </div>
-                
-                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center">
-                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div>
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div>
-                    </div>
-                    <button 
-                        onClick={() => handleAdvancedExport('single')}
-                        disabled={!scSelectedItem || !stockCardData}
-                        className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
-                    >
-                        <DownloadCloud size={18} /> Export Laporan Kartu Stok
-                    </button>
-                </div>
+                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center"><div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div></div><button onClick={() => handleAdvancedExport('single')} disabled={!scSelectedItem || !stockCardData} className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"><DownloadCloud size={18} /> Export Laporan Kartu Stok</button></div>
             </div>
         </div>
       )}
@@ -482,8 +310,17 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   );
 };
 
-const TransactionEditModal = ({ transaction, items, onClose, onSave }: { transaction: Transaction, items: InventoryItem[], onClose: () => void, onSave: (t: Transaction) => void }) => {
+const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave }: { transaction: Transaction, items: InventoryItem[], onClose: () => void, onSave: (t: Transaction) => void }) => {
     const [data, setData] = useState<Transaction>(JSON.parse(JSON.stringify(transaction)));
+    
+    // Autocomplete State
+    const [itemSearch, setItemSearch] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const filteredItems = masterItems.filter(i => 
+      i.active && (i.name.toLowerCase().includes(itemSearch.toLowerCase()) || i.sku.toLowerCase().includes(itemSearch.toLowerCase()))
+    ).slice(0, 10);
 
     const getConversionFactor = (item: InventoryItem, uom: string) => {
         if (!item || uom === item.unit) return 1;
@@ -492,50 +329,178 @@ const TransactionEditModal = ({ transaction, items, onClose, onSave }: { transac
         return 1;
     };
 
-    const handleItemChange = (index: number, newDisplayQty: number) => {
-        const newItems = [...data.items];
-        const tItem = newItems[index];
-        const master = items.find(i => i.id === tItem.itemId);
-        if (!master) return;
-        
-        const ratio = getConversionFactor(master, tItem.uom);
-        const baseQty = parseFloat((newDisplayQty * ratio).toFixed(2));
-        
-        newItems[index] = { ...tItem, qty: baseQty, total: Number((baseQty * tItem.unitPrice).toFixed(2)) };
-        const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
-        setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
-    };
-
     const getDisplayQty = (tItem: TransactionItem) => {
-        const master = items.find(i => i.id === tItem.itemId);
+        const master = masterItems.find(i => i.id === tItem.itemId);
         if (!master) return tItem.qty;
         const ratio = getConversionFactor(master, tItem.uom);
         return parseFloat((tItem.qty / ratio).toFixed(2));
     };
 
+    // Use any for updates to allow displayQty as a temporary property
+    const handleItemUpdate = (index: number, updates: any) => {
+        const newItems = [...data.items];
+        const tItem = { ...newItems[index], ...updates };
+        const master = masterItems.find(i => i.id === tItem.itemId);
+        if (!master) return;
+        
+        // If UOM changed, we need to recalculate base qty based on the OLD display qty but NEW UOM factor
+        // BUT logic simpler: if user changes DISPLAY QTY, calculate BASE QTY
+        if ('displayQty' in updates) {
+            const ratio = getConversionFactor(master, tItem.uom);
+            // Safely access displayQty from the any-typed updates object
+            tItem.qty = parseFloat((Number(updates.displayQty) * ratio).toFixed(2));
+        } else if ('uom' in updates) {
+            const currentDisplay = getDisplayQty(newItems[index]);
+            const ratio = getConversionFactor(master, updates.uom);
+            tItem.qty = parseFloat((currentDisplay * ratio).toFixed(2));
+        }
+
+        tItem.total = Number((tItem.qty * tItem.unitPrice).toFixed(2));
+        newItems[index] = tItem;
+        const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
+        setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
+    };
+
+    const removeItem = (index: number) => {
+        const newItems = data.items.filter((_, i) => i !== index);
+        const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
+        setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
+    };
+
+    const addNewItem = (master: InventoryItem) => {
+        const newItem: TransactionItem = {
+            itemId: master.id,
+            sku: master.sku,
+            name: master.name,
+            qty: 1, // Default 1 base unit
+            uom: master.unit,
+            unitPrice: master.price,
+            total: master.price
+        };
+        const newItems = [...data.items, newItem];
+        const newTotalValue = Number(newItems.reduce((acc, curr) => acc + curr.total, 0).toFixed(2));
+        setData(prev => ({ ...prev, items: newItems, totalValue: newTotalValue }));
+        setItemSearch('');
+        setShowDropdown(false);
+    };
+
+    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files) return;
+        Array.from(files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (evt) => setData(prev => ({ ...prev, documents: [...(prev.documents || []), evt.target?.result as string] }));
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const downloadPhoto = (base64: string, idx: number) => {
+        const link = document.createElement('a');
+        link.href = base64;
+        link.download = `DOC_${data.id}_${idx}.png`;
+        link.click();
+    };
+
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><h3 className="font-bold text-xl text-slate-800 dark:text-white">Detail Transaksi</h3><button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors"><X className="text-slate-400"/></button></div>
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
+                {/* Header */}
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600"><Edit2 size={20}/></div>
+                        <h3 className="font-bold text-xl text-slate-800 dark:text-white">Edit Transaksi <span className="text-indigo-600">#{data.id}</span></h3>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors"><X className="text-slate-400"/></button>
+                </div>
+
                 <div className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar">
+                    {/* General Info Edit */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-ice-100 dark:border-gray-700">
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Supplier / Client</label><input value={data.supplier || ''} onChange={e => setData({...data, supplier: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nomor PO / Ref</label><input value={data.poNumber || ''} onChange={e => setData({...data, poNumber: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tanggal Transaksi</label><input type="datetime-local" value={new Date(data.date).toISOString().slice(0, 16)} onChange={e => setData({...data, date: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Catatan</label><input value={data.notes || ''} onChange={e => setData({...data, notes: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
+                    </div>
+
+                    {/* Items Table */}
                     <div className="border border-ice-100 dark:border-gray-700 rounded-3xl overflow-hidden shadow-sm">
-                        <table className="w-full text-left"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase"><tr><th className="p-4">Item Details</th><th className="p-4 w-32 text-center">Qty</th><th className="p-4 text-center">Unit</th><th className="p-4 text-right">Total Baris</th></tr></thead>
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase">
+                                <tr><th className="p-4">Item Details</th><th className="p-4 w-32">Qty</th><th className="p-4 w-32 text-center">Unit</th><th className="p-4 text-right">Total</th><th className="p-4 w-10"></th></tr>
+                            </thead>
                             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
-                                {data.items.map((it, idx) => (
-                                    <tr key={idx} className="text-sm dark:text-gray-300">
-                                        <td className="p-4 font-bold">{it.name}</td>
-                                        <td className="p-4"><input type="number" step="any" value={getDisplayQty(it)} onChange={e => handleItemChange(idx, Number(e.target.value))} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 outline-none" /></td>
-                                        <td className="p-4 text-center"><span className="text-[10px] font-bold px-2 py-1 bg-ice-50 dark:bg-gray-700 rounded-lg">{it.uom}</span></td>
-                                        <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {it.total.toLocaleString()}</td>
-                                    </tr>
-                                ))}
+                                {data.items.map((it, idx) => {
+                                    const master = masterItems.find(m => m.id === it.itemId);
+                                    return (
+                                        <tr key={idx} className="text-sm dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                                            <td className="p-4"><div className="font-bold">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></td>
+                                            {/* Fix displayQty update call with valid object literal syntax */}
+                                            <td className="p-4"><input type="number" step="any" value={getDisplayQty(it)} onChange={e => handleItemUpdate(idx, { displayQty: Number(e.target.value) })} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 outline-none" /></td>
+                                            <td className="p-4 text-center">
+                                                <select value={it.uom} onChange={e => handleItemUpdate(idx, { uom: e.target.value })} className="w-full p-2 bg-transparent border-none text-xs font-bold focus:ring-0">
+                                                    {master && (
+                                                        <>
+                                                            <option value={master.unit}>{master.unit}</option>
+                                                            {master.unit2 && <option value={master.unit2}>{master.unit2}</option>}
+                                                            {master.unit3 && <option value={master.unit3}>{master.unit3}</option>}
+                                                        </>
+                                                    )}
+                                                </select>
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-slate-800 dark:text-gray-200">Rp {it.total.toLocaleString()}</td>
+                                            <td className="p-4"><button onClick={() => removeItem(idx)} className="text-slate-300 hover:text-rose-500 p-1"><Trash2 size={16}/></button></td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
+                        
+                        {/* Add Row Feature */}
+                        <div className="p-4 bg-slate-50/50 dark:bg-gray-800/20 border-t border-ice-100 dark:border-gray-700 relative">
+                            <div className="flex items-center gap-3" ref={dropdownRef}>
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                    <input type="text" placeholder="Tambah Barang Baru ke Transaksi Ini..." className="w-full pl-10 pr-4 py-3 border border-dashed rounded-xl bg-white dark:bg-gray-800 dark:border-gray-600 text-sm outline-none focus:ring-2 focus:ring-indigo-300" value={itemSearch} onChange={e => { setItemSearch(e.target.value); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} />
+                                    {showDropdown && itemSearch && (
+                                        <div className="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-gray-800 border border-ice-200 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">
+                                            {filteredItems.map(m => (
+                                                <div key={m.id} onClick={() => addNewItem(m)} className="p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 cursor-pointer border-b last:border-0 dark:border-gray-700">
+                                                    <p className="font-bold text-sm dark:text-white">{m.name}</p>
+                                                    <p className="text-[10px] text-slate-400">{m.sku} | Harga: Rp {m.price.toLocaleString()}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest px-4">BATCH EDITING</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Photo Management Section */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between"><h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={14}/> Lampiran Dokumen</h4><label className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition-all flex items-center gap-1.5"><Camera size={12}/> Tambah Foto Baru<input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label></div>
+                        <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+                            {data.documents?.map((doc, dIdx) => (
+                                <div key={dIdx} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border-2 border-white shadow-sm transition-transform hover:scale-105">
+                                    <img src={doc} className="w-full h-full object-cover cursor-zoom-in" onClick={() => window.open(doc)} />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                        <button onClick={() => downloadPhoto(doc, dIdx)} className="p-1.5 bg-white text-indigo-600 rounded-lg" title="Unduh"><Download size={12}/></button>
+                                        <button onClick={() => setData(prev => ({...prev, documents: prev.documents?.filter((_, i) => i !== dIdx)}))} className="p-1.5 bg-white text-rose-600 rounded-lg" title="Hapus"><Trash size={12}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {(!data.documents || data.documents.length === 0) && <div className="col-span-full py-8 text-center border-2 border-dashed border-ice-100 rounded-3xl text-slate-400 text-xs italic">Belum ada lampiran dokumen untuk transaksi ini.</div>}
+                        </div>
                     </div>
                 </div>
-                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Batal</button>
-                    <button onClick={() => onSave(data)} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg">Simpan Perubahan</button>
+
+                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center">
+                    <div className="flex flex-col"><span className="text-[10px] font-bold text-slate-400 uppercase">Rekapitulasi Total</span><span className="font-black text-2xl text-slate-800 dark:text-white">Rp {data.totalValue.toLocaleString()}</span></div>
+                    <div className="flex gap-3">
+                        <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Batal</button>
+                        <button onClick={() => onSave(data)} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xl transition-all active:scale-95 flex items-center gap-2"><Save size={18}/> Simpan Perubahan & Update Stok</button>
+                    </div>
                 </div>
             </div>
         </div>
