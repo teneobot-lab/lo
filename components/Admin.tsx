@@ -6,7 +6,39 @@ import {
   Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
   Database, Wifi, Play, Globe, Download, Upload, RefreshCcw, 
   ShieldCheck, Youtube, ListMusic, Terminal, AlertCircle, FileJson, 
-  Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor, ChevronDown
+  Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor, ChevronDown,
+  RotateCcw
+} from 'lucide-center';
+import { 
+  Settings as SettingsIcon, 
+  Music as MusicIcon, 
+  Users as UsersIcon, 
+  Server as ServerIcon, 
+  Plus as PlusIcon, 
+  Edit2 as Edit2Icon, 
+  Trash2 as Trash2Icon, 
+  X as XIcon, 
+  Save as SaveIcon, 
+  Database as DatabaseIcon, 
+  Wifi as WifiIcon, 
+  Play as PlayIcon, 
+  Globe as GlobeIcon, 
+  Download as DownloadIcon, 
+  Upload as UploadIcon, 
+  RefreshCcw as RefreshCcwIcon, 
+  ShieldCheck as ShieldCheckIcon, 
+  Youtube as YoutubeIcon, 
+  ListMusic as ListMusicIcon, 
+  Terminal as TerminalIcon, 
+  AlertCircle as AlertCircleIcon, 
+  FileJson as FileJsonIcon, 
+  Copy as CopyIcon, 
+  CheckCircle2 as CheckCircle2Icon, 
+  Search as SearchIcon, 
+  ArrowRight as ArrowRightIcon, 
+  FileText as FileTextIcon, 
+  Monitor as MonitorIcon, 
+  ChevronDown as ChevronDownIcon
 } from 'lucide-react';
 
 interface AdminProps {
@@ -53,13 +85,20 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
     };
 
     const handleSaveConfig = () => {
-        if (!apiUrl || apiUrl === PROXY_PATH) {
+        if (!apiUrl || apiUrl.trim() === '' || apiUrl === PROXY_PATH) {
             localStorage.removeItem('nexus_api_url');
         } else {
-            localStorage.setItem('nexus_api_url', apiUrl);
+            localStorage.setItem('nexus_api_url', apiUrl.trim());
         }
-        alert("Konfigurasi API diperbarui. Halaman akan dimuat ulang.");
+        alert("Konfigurasi API diperbarui. Halaman akan dimuat ulang untuk sinkronisasi.");
         window.location.reload();
+    };
+
+    const handleResetToProxy = () => {
+        if (window.confirm("Kembalikan ke settingan standar (Proxy Vercel)?")) {
+            localStorage.setItem('nexus_api_url', PROXY_PATH);
+            window.location.reload();
+        }
     };
 
     const handleDeleteUser = async (id: string) => {
@@ -90,7 +129,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
             } else if (url.includes('/embed/')) {
                 videoId = url.split('/embed/')[1]?.split('?')[0];
             } else if (url.length === 11) {
-                // Asumsikan ini ID video langsung
                 videoId = url;
             }
         } catch (e) {
@@ -135,13 +173,13 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="space-y-1">
                         <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-3">
-                            Management Hub <Settings className="text-indigo-600 animate-spin-slow" size={32} />
+                            Management Hub <SettingsIcon className="text-indigo-600 animate-spin-slow" size={32} />
                         </h2>
                         <p className="text-slate-500 dark:text-gray-400 font-medium italic">Konfigurasi infrastruktur dan personil Nexus WMS.</p>
                     </div>
                     <div className="flex gap-2">
                         <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
-                            <Plus size={18}/> Rekrut Staff
+                            <PlusIcon size={18}/> Rekrut Staff
                         </button>
                     </div>
                 </div>
@@ -154,14 +192,14 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-8">
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Users size={28}/></div>
+                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><UsersIcon size={28}/></div>
                                 <div>
                                     <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Akses Staff</h3>
                                     <p className="text-xs text-slate-400 font-black uppercase tracking-widest">{users.length} Akun Terdaftar</p>
                                 </div>
                             </div>
                             <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Cari staff..." className="pl-10 pr-4 py-2 bg-slate-50 dark:bg-gray-900 border border-ice-100 dark:border-gray-700 rounded-xl text-sm outline-none" />
                             </div>
                         </div>
@@ -178,8 +216,8 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                         </div>
                                     </div>
                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Edit2 size={16}/></button>
-                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all" title="Hapus Staff"><Trash2 size={18}/></button>
+                                        <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2 text-indigo-500 hover:bg-white dark:hover:bg-gray-800 rounded-lg"><Edit2Icon size={16}/></button>
+                                        <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-rose-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all" title="Hapus Staff"><Trash2Icon size={18}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -189,7 +227,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                     {/* NEWBIE-FRIENDLY MIGRATION GUIDE */}
                     <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-700 text-white space-y-8 overflow-hidden">
                         <div className="flex items-center gap-4">
-                            <div className="p-4 bg-emerald-600 rounded-2xl text-white shadow-lg"><Monitor size={28}/></div>
+                            <div className="p-4 bg-emerald-600 rounded-2xl text-white shadow-lg"><MonitorIcon size={28}/></div>
                             <div>
                                 <h3 className="font-bold text-2xl">Panduan Pindah Server (Migrasi)</h3>
                                 <p className="text-xs text-emerald-300 font-black uppercase tracking-[0.2em]">Khusus Newbie / Pemula</p>
@@ -205,7 +243,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                     <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
                                         mysqldump -u root -p nexus_wms {'>'} backup_nexus.sql
                                     </code>
-                                    <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
+                                    <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><CopyIcon size={14}/></button>
                                 </div>
                             </div>
 
@@ -223,13 +261,13 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                     <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
                                         mysql -u root -p nexus_wms {'<'} backup_nexus.sql
                                     </code>
-                                    <button onClick={() => copyToClipboard(`mysql -u root -p nexus_wms < backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
+                                    <button onClick={() => copyToClipboard(`mysql -u root -p nexus_wms < backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><CopyIcon size={14}/></button>
                                 </div>
                             </div>
                         </div>
 
                         <div className="p-5 bg-amber-900/20 rounded-3xl border border-amber-800/30 flex items-start gap-4">
-                            <AlertCircle className="text-amber-500 flex-shrink-0 mt-1" size={20}/>
+                            <AlertCircleIcon className="text-amber-500 flex-shrink-0 mt-1" size={20}/>
                             <div>
                                 <p className="text-[11px] font-bold text-amber-200">Catatan Penting:</p>
                                 <p className="text-[11px] text-amber-100/70 leading-relaxed italic">"Jika server baru belum punya database, ketik: <b>mysql -u root -p -e 'CREATE DATABASE nexus_wms;'</b> terlebih dahulu di terminal sebelum langkah nomor 3."</p>
@@ -243,26 +281,26 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                     {/* Media Manager */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-8">
-                            <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={28}/></div>
+                            <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><YoutubeIcon size={28}/></div>
                             <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Media Hub</h3>
                         </div>
                         <div className="space-y-4 mb-8 p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-dashed border-ice-200 dark:border-gray-700">
                             <input value={newMediaTitle} onChange={e => setNewMediaTitle(e.target.value)} placeholder="Judul Video..." className="w-full p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none focus:ring-2 focus:ring-rose-300" />
                             <div className="flex gap-2">
                                 <input value={newMediaUrl} onChange={e => setNewMediaUrl(e.target.value)} placeholder="ID Video atau URL YouTube..." className="flex-1 p-3 border border-ice-100 dark:border-gray-800 rounded-xl text-sm bg-white dark:bg-gray-800 outline-none" />
-                                <button onClick={addToPlaylist} className="bg-rose-600 text-white p-3 rounded-xl hover:bg-rose-700 active:scale-95 transition-all shadow-lg"><Plus size={20}/></button>
+                                <button onClick={addToPlaylist} className="bg-rose-600 text-white p-3 rounded-xl hover:bg-rose-700 active:scale-95 transition-all shadow-lg"><PlusIcon size={20}/></button>
                             </div>
                         </div>
                         <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
                             {playlist.map(p => (
                                 <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20' : 'bg-white dark:bg-gray-800 border-ice-50 dark:border-gray-700'}`}>
                                     <div className="flex items-center gap-3 truncate">
-                                        <Music size={16} className={currentMediaUrl === p.url ? 'text-rose-600' : 'text-slate-300'}/>
+                                        <MusicIcon size={16} className={currentMediaUrl === p.url ? 'text-rose-600' : 'text-slate-300'}/>
                                         <p className={`text-sm font-bold truncate ${currentMediaUrl === p.url ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-gray-300'}`}>{p.title}</p>
                                     </div>
                                     <div className="flex gap-1">
-                                        {onUpdateMedia && <button onClick={() => onUpdateMedia(p.url)} className={`p-2 rounded-lg transition-all ${currentMediaUrl === p.url ? 'text-rose-600 bg-rose-100' : 'text-emerald-500 hover:bg-emerald-50'}`}><Play size={16}/></button>}
-                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><X size={16}/></button>
+                                        {onUpdateMedia && <button onClick={() => onUpdateMedia(p.url)} className={`p-2 rounded-lg transition-all ${currentMediaUrl === p.url ? 'text-rose-600 bg-rose-100' : 'text-emerald-500 hover:bg-emerald-50'}`}><PlayIcon size={16}/></button>}
+                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><XIcon size={16}/></button>
                                     </div>
                                 </div>
                             ))}
@@ -272,18 +310,23 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                     {/* API Connection */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Server size={28}/></div>
+                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><ServerIcon size={28}/></div>
                             <h3 className="font-bold text-2xl text-slate-800 dark:text-white">API Config</h3>
                         </div>
                         <div className="space-y-4">
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Vercel Proxy / VPS URL</label>
                             <div className="flex gap-2">
                                 <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl font-mono text-xs bg-indigo-50/20 dark:bg-gray-900 dark:text-indigo-400 outline-none" />
-                                <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 active:scale-95 transition-all shadow-lg"><Save size={18}/></button>
+                                <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 active:scale-95 transition-all shadow-lg" title="Simpan Config"><SaveIcon size={18}/></button>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={handleResetToProxy} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-[10px] border border-rose-100 dark:border-rose-800 uppercase tracking-wider hover:bg-rose-100 transition-all">
+                                    <RefreshCcwIcon size={14} /> Reset ke Proxy Vercel
+                                </button>
                             </div>
                             <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
-                                <Wifi size={16} className="text-emerald-500"/>
-                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Status: Active</span>
+                                <WifiIcon size={16} className="text-emerald-500"/>
+                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Status API: Aktif</span>
                             </div>
                         </div>
                     </div>
@@ -323,8 +366,8 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden border border-white/10">
                 <div className="p-8 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3"><ShieldCheck size={20} className="text-indigo-600"/> {user ? 'Edit Profil Staff' : 'Rekrut Staff Baru'}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><X size={24}/></button>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3"><ShieldCheckIcon size={20} className="text-indigo-600"/> {user ? 'Edit Profil Staff' : 'Rekrut Staff Baru'}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><XIcon size={24}/></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
                     <div className="space-y-1">
@@ -343,7 +386,7 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                                 <option value="admin">Administrator</option>
                                 <option value="viewer">Viewer Only</option>
                             </select>
-                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16}/>
+                            <ChevronDownIcon className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16}/>
                         </div>
                     </div>
                     <div className="space-y-1">
@@ -353,7 +396,7 @@ const UserModal = ({ user, onClose, onSave }: { user: User | null, onClose: () =
                     <div className="pt-4 flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all">Batal</button>
                         <button type="submit" disabled={isSaving} className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50">
-                            {isSaving ? <RefreshCcw size={18} className="animate-spin" /> : <Save size={18} />} 
+                            {isSaving ? <RefreshCcwIcon size={18} className="animate-spin" /> : <SaveIcon size={18} />} 
                             {isSaving ? 'Menyimpan...' : 'Simpan Profil Staff'}
                         </button>
                     </div>

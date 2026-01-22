@@ -3,14 +3,18 @@ import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
-const DEFAULT_API_URL = '/api';
+const DEFAULT_API_URL = '/api'; // Gunakan proxy Vercel sebagai standar
 
 const getApiUrl = () => {
-    const stored = localStorage.getItem('nexus_api_url');
-    // Jika tidak ada di localStorage, gunakan default proxy (/api)
-    if (!stored) return DEFAULT_API_URL;
-    // Jika diset 'local', berarti pakai localStorage browser (offline mode)
+    let stored = localStorage.getItem('nexus_api_url');
+    if (!stored || stored.trim() === '') return DEFAULT_API_URL;
     if (stored === 'local') return '';
+    
+    // Validasi & Auto-fix URL jika user input IP tanpa http
+    stored = stored.trim();
+    if (!stored.startsWith('http') && !stored.startsWith('/')) {
+        stored = `http://${stored}`;
+    }
     return stored;
 };
 
@@ -20,16 +24,27 @@ const isApiMode = () => {
 
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
-    // Pastikan URL bersih dari double slash
+    
+    // Pembersihan URL agar tidak ada double slash atau malformed path
     let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    let url = `${cleanBase}/${endpoint.startsWith('/') ? endpoint.slice(1) : endpoint}`;
+    let cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+    
+    // Pastikan jika pakai IP langsung, tetap menyertakan prefix /api sesuai struktur backend
+    // Kecuali jika user sudah menyertakannya di input Admin
+    if (cleanBase.startsWith('http') && !cleanBase.includes('/api') && !cleanEndpoint.startsWith('api/')) {
+        cleanEndpoint = `api/${cleanEndpoint}`;
+    }
+
+    const url = `${cleanBase}/${cleanEndpoint}`;
 
     try {
         const headers: any = { 'Content-Type': 'application/json' };
         const res = await fetch(url, {
             method,
             headers,
-            body: body ? JSON.stringify(body) : undefined
+            body: body ? JSON.stringify(body) : undefined,
+            // Penting agar tidak kena blokir browser jika IP HTTP
+            mode: 'cors' 
         });
         
         if (!res.ok) {
@@ -39,7 +54,7 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
         
         return await res.json();
     } catch (e) {
-        console.error(`[NEXUS API ERROR] ${method} ${url}:`, e);
+        console.error(`[NEXUS CONNECTION FAILED] ${method} ${url}:`, e);
         throw e;
     }
 };
@@ -236,12 +251,16 @@ export const storageService = {
   },
 
   getStats: async (): Promise<DashboardStats> => {
-      const items = await storageService.getItems();
-      return {
-        totalValue: items.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
-        totalUnits: items.reduce((acc, curr) => acc + curr.stock, 0),
-        lowStockCount: items.filter(i => i.stock <= i.minLevel).length,
-        skuCount: items.length
-      };
+      try {
+          const items = await storageService.getItems();
+          return {
+            totalValue: items.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
+            totalUnits: items.reduce((acc, curr) => acc + curr.stock, 0),
+            lowStockCount: items.filter(i => i.stock <= i.minLevel).length,
+            skuCount: items.length
+          };
+      } catch (e) {
+          return { totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0 };
+      }
   }
 };
