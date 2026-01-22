@@ -122,7 +122,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // FIX: Use currentTarget for better type narrowing and access to files
     const file = e.currentTarget.files?.[0];
     if (!file) return;
 
@@ -138,13 +137,18 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const rawData = XLSX.utils.sheet_to_json(ws) as any[];
 
         if (rawData.length === 0) {
-            notify("File Excel kosong atau tidak terbaca!", "warning");
+            notify("File Excel kosong!", "warning");
             return;
         }
 
         setIsImporting(true);
 
-        // Helper cari kolom (case-insensitive & trim)
+        // Alias kolom lebih komprehensif (Indo & Eng)
+        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code', 'no part'];
+        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar', 'pcs'];
+        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi', 'nama item'];
+        const unitAliases = ['unit', 'satuan', 'uom', 'sat'];
+
         const getVal = (row: any, targets: string[]) => {
             const keys = Object.keys(row);
             const foundKey = keys.find(k => {
@@ -154,100 +158,86 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             return foundKey ? row[foundKey] : null;
         };
 
-        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code', 'no part'];
-        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar', 'pcs'];
-        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi', 'nama item'];
-        const unitAliases = ['unit', 'satuan', 'uom', 'sat'];
+        const newItemsInCart: TransactionItem[] = [];
+        let createdCount = 0;
 
-        const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
-
-        rawData.forEach((row, index) => {
+        for (const row of rawData) {
             const rawSku = getVal(row, skuAliases);
             const rawQty = getVal(row, qtyAliases);
-            
-            if (!rawSku || rawQty === null || rawQty === undefined) {
-                console.warn(`Baris ${index + 2} dilewati: SKU atau QTY kosong.`);
-                return;
-            }
-            
+            const rawName = getVal(row, nameAliases);
+            const rawUnit = getVal(row, unitAliases);
+
+            if (!rawSku || rawQty === null || rawQty === undefined) continue;
+
             const sku = String(rawSku).trim().toUpperCase();
             const qty = isNaN(Number(rawQty)) ? 0 : Number(rawQty);
-            const name = String(getVal(row, nameAliases) || sku);
-            const unit = String(getVal(row, unitAliases) || 'Pcs');
+            const name = rawName ? String(rawName).trim() : sku;
+            const unit = rawUnit ? String(rawUnit).trim() : 'Pcs';
 
-            if (aggregated[sku]) {
-                aggregated[sku].qty += qty;
-            } else {
-                aggregated[sku] = { sku, name, qty, unit };
-            }
-        });
+            // 1. Cek apakah barang ada di inventory lokal (memory)
+            let inventoryItem = items.find(i => i.sku.toUpperCase() === sku);
 
-        const skusToProcess = Object.values(aggregated);
-        if (skusToProcess.length === 0) {
-            notify("Gagal: SKU/Qty tidak ditemukan. Cek header Excel.", "error");
-            setIsImporting(false);
-            return;
-        }
-
-        const newItemsInCart: TransactionItem[] = [];
-
-        for (const item of skusToProcess) {
-            // Cari apakah barang sudah ada di Inventory
-            let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
-
+            // 2. Jika TIDAK ADA, paksa buat baru di Database (Auto-Create)
             if (!inventoryItem) {
-                console.log(`Auto-creating item: ${item.sku}`);
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
                     id: newId,
-                    sku: item.sku,
-                    name: item.name,
-                    category: 'Imported',
-                    price: 0,
-                    location: 'A-01',
-                    unit: item.unit,
-                    stock: 0, // Master stok mulai dari 0, nanti diupdate lewat submit transaksi
+                    sku: sku,
+                    name: name,
+                    category: 'Imported', // Default
+                    price: 0,             // Default
+                    location: 'UNSET',    // Default
+                    unit: unit,
+                    stock: 0,             // Mulai dari 0, bertambah saat transaksi submit
                     minLevel: 0,
                     active: true
                 };
+
                 try {
                     await storageService.saveItem(newItem);
                     inventoryItem = newItem;
+                    createdCount++;
+                    console.log(`Auto-created master item: ${sku}`);
                 } catch (err) {
-                    console.error("Gagal save item baru:", item.sku, err);
-                    continue; // Lewati jika gagal simpan master
+                    console.error("Gagal auto-create master item:", sku, err);
+                    // Jika gagal simpan master, tetap masukkan ke cart dengan ID sementara (risk) 
+                    // atau lewati. Di sini kita lewati agar data tetap konsisten.
+                    continue; 
                 }
             }
 
+            // 3. Masukkan ke list cart
             if (inventoryItem) {
-                const unitPrice = inventoryItem.price || 0;
                 newItemsInCart.push({
                     itemId: inventoryItem.id,
                     sku: inventoryItem.sku,
                     name: inventoryItem.name,
-                    qty: item.qty,
-                    uom: item.unit,
-                    unitPrice: unitPrice,
-                    total: item.qty * unitPrice
+                    qty: qty,
+                    uom: unit,
+                    unitPrice: inventoryItem.price || 0,
+                    total: qty * (inventoryItem.price || 0)
                 });
             }
         }
 
         if (newItemsInCart.length > 0) {
             setCart(prev => [...prev, ...newItemsInCart]);
-            notify(`${newItemsInCart.length} item dimuat ke Cart.`, 'success');
-            onSuccess(); // Refresh list inventory biar item barunya kelihatan
+            
+            let msg = `${newItemsInCart.length} item berhasil masuk cart.`;
+            if (createdCount > 0) msg += ` (${createdCount} barang baru dibuat di Master)`;
+            
+            notify(msg, 'success');
+            onSuccess(); // Refresh inventory global agar barang baru tadi muncul di pencarian
         } else {
-            notify("Tidak ada item valid yang bisa ditambahkan.", "warning");
+            notify("Tidak ada data valid (Cek kolom SKU/Qty)!", "error");
         }
       } catch (err) {
         console.error("Import Error:", err);
-        notify("Terjadi kesalahan sistem saat membaca file.", "error");
+        notify("Format file bermasalah!", "error");
       } finally {
         setIsImporting(false);
       }
     };
-    // FIX: Cast to any to avoid 'unknown' type error in some TS configurations
     reader.readAsArrayBuffer(file as any);
     e.currentTarget.value = '';
   };
