@@ -23,12 +23,11 @@ function App() {
       totalValue: 0, totalUnits: 0, lowStockCount: 0, skuCount: 0
   });
 
-  // Persistent Media Player State
   const [mediaUrl, setMediaUrl] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('nexus_media_url') || 'https://www.youtube.com/embed/jfKfPfyJRdk?si=relaxing-music';
+      return localStorage.getItem('nexus_media_url') || 'https://www.youtube.com/embed/jfKfPfyJRdk';
     }
-    return 'https://www.youtube.com/embed/jfKfPfyJRdk?si=relaxing-music';
+    return 'https://www.youtube.com/embed/jfKfPfyJRdk';
   });
 
   const handleUpdateMedia = (url: string) => {
@@ -77,27 +76,35 @@ function App() {
 
   const refreshData = async () => {
     try {
-      const [fetchedItems, fetchedTransactions, fetchedRejectMaster, fetchedRejectLogs] = await Promise.all([
+      // Menggunakan pendekatan yang lebih aman agar jika satu modul error (misal Reject),
+      // Dashboard dan Inventory tetap bisa tampil.
+      const [fItems, fTransactions, fRejectMaster, fRejectLogs] = await Promise.allSettled([
         storageService.getItems(),
         storageService.getTransactions(),
         storageService.getRejectMaster(),
         storageService.getRejectLogs()
       ]);
       
-      setItems(fetchedItems);
-      setTransactions(fetchedTransactions);
-      setRejectMaster(fetchedRejectMaster);
-      setRejectLogs(fetchedRejectLogs);
+      if (fItems.status === 'fulfilled') {
+          const fetchedItems = fItems.value;
+          setItems(fetchedItems);
+          setStats({
+            totalValue: fetchedItems.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
+            totalUnits: fetchedItems.reduce((acc, curr) => acc + curr.stock, 0),
+            lowStockCount: fetchedItems.filter(i => i.stock <= i.minLevel).length,
+            skuCount: fetchedItems.length
+          });
+      } else {
+          console.error("Gagal load Items:", fItems.reason);
+          notify("Gagal load data Inventory", 'error');
+      }
 
-      // Calc stats locally to ensure sync
-      setStats({
-        totalValue: fetchedItems.reduce((acc, curr) => acc + (curr.price * curr.stock), 0),
-        totalUnits: fetchedItems.reduce((acc, curr) => acc + curr.stock, 0),
-        lowStockCount: fetchedItems.filter(i => i.stock <= i.minLevel).length,
-        skuCount: fetchedItems.length
-      });
+      if (fTransactions.status === 'fulfilled') setTransactions(fTransactions.value);
+      if (fRejectMaster.status === 'fulfilled') setRejectMaster(fRejectMaster.value);
+      if (fRejectLogs.status === 'fulfilled') setRejectLogs(fRejectLogs.value);
+
     } catch (e) {
-      notify("Failed to load data from server", 'error');
+      notify("Fatal: Gagal sinkronisasi server", 'error');
     }
   };
 
@@ -112,7 +119,6 @@ function App() {
     notify('Logged out successfully', 'info');
   };
 
-  // Async Handlers for Reject Manager
   const handleUpdateRejectMaster = async (newItems: RejectItem[]) => {
       try {
         await storageService.saveRejectMaster(newItems);

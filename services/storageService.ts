@@ -3,7 +3,7 @@ import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog
 import CryptoJS from 'crypto-js';
 
 // --- CONFIGURATION ---
-const DEFAULT_API_URL = '/api'; // Proxy standar Vercel
+const DEFAULT_API_URL = '/api'; 
 
 const getApiUrl = () => {
     let stored = localStorage.getItem('nexus_api_url');
@@ -11,7 +11,6 @@ const getApiUrl = () => {
     if (stored === 'local') return '';
     
     stored = stored.trim();
-    // Jika input cuma IP (misal 165.245...) tambahkan http://
     if (!stored.startsWith('http') && !stored.startsWith('/')) {
         stored = `http://${stored}`;
     }
@@ -25,11 +24,10 @@ const isApiMode = () => {
 const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => {
     const baseUrl = getApiUrl();
     
-    // Bersihkan slash di awal dan akhir
     let cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     let cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
     
-    // LOGIKA KRUSIAL: Jika pakai IP langsung, pastikan menyertakan /api jika belum ada
+    // Jika menggunakan IP langsung (HTTP), pastikan prefix /api ada
     if (cleanBase.startsWith('http')) {
         if (!cleanBase.includes('/api') && !cleanEndpoint.startsWith('api/')) {
             cleanEndpoint = `api/${cleanEndpoint}`;
@@ -44,18 +42,19 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
             method,
             headers,
             body: body ? JSON.stringify(body) : undefined,
-            mode: 'cors' // Izinkan request lintas domain (CORS)
+            mode: 'cors' 
         });
         
         if (!res.ok) {
             const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData.error || `API Error: ${res.statusText}`);
+            throw new Error(errorData.error || `API Error: ${res.statusText} (${res.status})`);
         }
         
         return await res.json();
-    } catch (e) {
+    } catch (e: any) {
         console.error(`[NEXUS CONNECTION ERROR] ${method} ${url}:`, e);
-        throw e;
+        // Berikan pesan yang lebih informatif untuk debugging user
+        throw new Error(e.message || "Network Error");
     }
 };
 

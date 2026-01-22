@@ -27,15 +27,13 @@ async function query(sql, params) {
     return rows;
 }
 
-// Helper untuk hash password di server
 const hashPassword = (password) => {
     return crypto.createHash('sha256').update(password).digest('hex');
 };
 
 app.get('/api/health', (req, res) => res.json({ status: 'OK', time: new Date() }));
 
-/* ================= USERS (STAFF) API ================= */
-// Ambil semua staff
+/* ================= USERS API ================= */
 app.get('/api/users', async (req, res) => {
     try {
         const rows = await query('SELECT id, username, role, name FROM users');
@@ -43,7 +41,6 @@ app.get('/api/users', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Simpan atau Update staff
 app.post('/api/users', async (req, res) => {
     const { id, username, name, role, password } = req.body;
     try {
@@ -56,7 +53,6 @@ app.post('/api/users', async (req, res) => {
                 [id, username, name, role, pwdHash, username, name, role, pwdHash]
             );
         } else {
-            // Update tanpa ganti password
             await query(
                 `UPDATE users SET username=?, name=?, role=? WHERE id=?`,
                 [username, name, role, id]
@@ -66,7 +62,6 @@ app.post('/api/users', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Hapus staff
 app.delete('/api/users/:id', async (req, res) => {
     try {
         if (req.params.id === 'admin') return res.status(403).json({ error: "Cannot delete super admin" });
@@ -171,8 +166,74 @@ app.post('/api/transactions', async (req, res) => {
     }
 });
 
-/* (Endpoints lainnya tetap sama) */
+/* ================= REJECT API ================= */
+app.get('/api/reject_master', async (req, res) => {
+    try {
+        const rows = await query('SELECT * FROM reject_master');
+        res.json(rows.map(r => ({
+            ...r,
+            ratio2: r.ratio2 ? Number(r.ratio2) : null,
+            ratio3: r.ratio3 ? Number(r.ratio3) : null,
+            baseUnit: r.base_unit
+        })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
+app.post('/api/reject_master', async (req, res) => {
+    const items = req.body;
+    try {
+        await query('DELETE FROM reject_master');
+        for (const i of items) {
+            await query(
+                `INSERT INTO reject_master (id, sku, name, base_unit, unit2, ratio2, op2, unit3, ratio3, op3, last_updated)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [i.id, i.sku, i.name, i.baseUnit, i.unit2, i.ratio2, i.op2, i.unit3, i.ratio3, i.op3, i.lastUpdated]
+            );
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/reject_logs', async (req, res) => {
+    try {
+        const rows = await query('SELECT * FROM reject_logs ORDER BY timestamp DESC');
+        res.json(rows.map(r => ({
+            ...r,
+            items: typeof r.items_json === 'string' ? JSON.parse(r.items_json) : r.items_json
+        })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/reject_logs', async (req, res) => {
+    const l = req.body;
+    try {
+        await query(
+            `INSERT INTO reject_logs (id, date, notes, timestamp, items_json) VALUES (?, ?, ?, ?, ?)`,
+            [l.id, l.date, l.notes, l.timestamp, JSON.stringify(l.items)]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/reject_logs/:id', async (req, res) => {
+    const l = req.body;
+    try {
+        await query(
+            `UPDATE reject_logs SET date=?, notes=?, timestamp=?, items_json=? WHERE id=?`,
+            [l.date, l.notes, l.timestamp, JSON.stringify(l.items), req.params.id]
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/reject_logs/:id', async (req, res) => {
+    try {
+        await query('DELETE FROM reject_logs WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ================= AUTH API ================= */
 app.post('/api/login', async (req, res) => {
     const { username, hash } = req.body;
     try {
