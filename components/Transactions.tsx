@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -128,37 +127,50 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        // Fix: Explicitly cast result to ensure it is treated as a string/buffer for XLSX
-        const bstr = (evt.target as FileReader).result;
-        // Fix: Cast bstr to any to avoid "unknown" to "Blob" overload mismatch in XLSX.read
-        const wb = XLSX.read(bstr as any, { type: 'binary' });
+        // Fix: Explicitly cast result to ArrayBuffer to satisfy XLSX.read
+        const dataBuffer = evt.target?.result as ArrayBuffer;
+        if (!dataBuffer) return;
+        
+        // Gunakan array buffer untuk kompatibilitas lebih baik
+        const wb = XLSX.read(dataBuffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws) as any[];
+        const rawData = XLSX.utils.sheet_to_json(ws) as any[];
 
-        if (data.length === 0) {
-            notify("File kosong!", "warning");
+        if (rawData.length === 0) {
+            notify("File Excel kosong atau tidak terbaca!", "warning");
             return;
         }
 
         setIsImporting(true);
 
+        // Helper untuk mencocokkan kolom dengan berbagai variasi nama
         const getVal = (row: any, targets: string[]) => {
-            const key = Object.keys(row).find(k => targets.includes(k.trim().toLowerCase()) || targets.includes(k.trim()));
-            return key ? row[key] : null;
+            const keys = Object.keys(row);
+            const foundKey = keys.find(k => {
+                const cleanK = k.trim().toLowerCase();
+                return targets.some(t => t.toLowerCase() === cleanK);
+            });
+            return foundKey ? row[foundKey] : null;
         };
 
         const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
         
-        data.forEach(row => {
-            const skuVal = getVal(row, ['sku', 'sku barang', 'kode barang']);
-            if (!skuVal) return;
+        // Target aliases untuk SKU, QTY, Nama, dan Unit
+        const skuAliases = ['sku', 'sku barang', 'kode barang', 'kode', 'part number', 'pn', 'item code'];
+        const qtyAliases = ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'qty masuk', 'qty keluar'];
+        const nameAliases = ['nama barang', 'name', 'nama', 'item name', 'description', 'deskripsi'];
+        const unitAliases = ['unit', 'satuan', 'uom', 'sat'];
+
+        rawData.forEach(row => {
+            const rawSku = getVal(row, skuAliases);
+            if (!rawSku) return;
             
-            const sku = String(skuVal).trim().toUpperCase();
-            let rawQty = getVal(row, ['qty', 'jumlah', 'kuantitas']);
+            const sku = String(rawSku).trim().toUpperCase();
+            const rawQty = getVal(row, qtyAliases);
             const qty = isNaN(Number(rawQty)) ? 0 : Number(rawQty);
-            const name = String(getVal(row, ['nama barang', 'name', 'nama']) || sku);
-            const unit = String(getVal(row, ['unit', 'satuan']) || 'Pcs');
+            const name = String(getVal(row, nameAliases) || sku);
+            const unit = String(getVal(row, unitAliases) || 'Pcs');
 
             if (aggregated[sku]) {
                 aggregated[sku].qty += qty;
@@ -167,13 +179,21 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             }
         });
 
-        const newItemsInCart: TransactionItem[] = [];
-        const uniqueSkus = Object.values(aggregated);
+        const skusToProcess = Object.values(aggregated);
+        if (skusToProcess.length === 0) {
+            notify("Format kolom Excel tidak dikenali (Pastikan ada kolom SKU/Kuantitas)", "error");
+            setIsImporting(false);
+            return;
+        }
 
-        for (const item of uniqueSkus) {
+        const newItemsInCart: TransactionItem[] = [];
+
+        for (const item of skusToProcess) {
+            // Cari di memori dulu
             let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
 
             if (!inventoryItem) {
+                // Jika tidak ada di memori, buat item baru otomatis di Database
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
                     id: newId,
@@ -187,32 +207,45 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     minLevel: 0,
                     active: true
                 };
-                await storageService.saveItem(newItem);
-                inventoryItem = newItem;
+                try {
+                    await storageService.saveItem(newItem);
+                    inventoryItem = newItem;
+                } catch (err) {
+                    console.error("Gagal auto-save item baru:", item.sku);
+                    // Lanjut saja, nanti mungkin gagal di proses transaksi tapi tidak mematikan UI
+                }
             }
 
-            const unitPrice = inventoryItem.price || 0;
-            newItemsInCart.push({
-                itemId: inventoryItem.id,
-                sku: inventoryItem.sku,
-                name: inventoryItem.name,
-                qty: isNaN(item.qty) ? 0 : item.qty,
-                uom: item.unit,
-                unitPrice: isNaN(unitPrice) ? 0 : unitPrice,
-                total: isNaN(item.qty * unitPrice) ? 0 : (item.qty * unitPrice)
-            });
+            if (inventoryItem) {
+                const unitPrice = inventoryItem.price || 0;
+                newItemsInCart.push({
+                    itemId: inventoryItem.id,
+                    sku: inventoryItem.sku,
+                    name: inventoryItem.name,
+                    qty: item.qty,
+                    uom: item.unit,
+                    unitPrice: unitPrice,
+                    total: item.qty * unitPrice
+                });
+            }
         }
 
-        setCart(prev => [...prev, ...newItemsInCart]);
-        notify(`${uniqueSkus.length} tipe barang dimuat ke Cart.`, 'success');
-        onSuccess();
+        if (newItemsInCart.length > 0) {
+            setCart(prev => [...prev, ...newItemsInCart]);
+            notify(`${newItemsInCart.length} item berhasil masuk ke Cart.`, 'success');
+            onSuccess(); // Refresh data utama agar item baru muncul di inventory
+        } else {
+            notify("Tidak ada item valid untuk dimasukkan ke Cart.", "warning");
+        }
       } catch (err) {
-        notify("Gagal memproses file Excel", "error");
+        console.error("Import Error:", err);
+        notify("Gagal memproses file Excel. Pastikan format benar.", "error");
       } finally {
         setIsImporting(false);
       }
     };
-    reader.readAsBinaryString(file);
+    // Fix: Explicitly cast file to Blob to satisfy readAsArrayBuffer
+    reader.readAsArrayBuffer(file as Blob);
     e.target.value = '';
   };
 
@@ -237,7 +270,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const handleSubmit = async () => {
     if (cart.length === 0) return;
     
-    // Format tanggal agar ramah MySQL: YYYY-MM-DD HH:MM:SS
     const now = new Date();
     const timePart = now.toTimeString().split(' ')[0];
     const mysqlDate = `${customDate} ${timePart}`;
@@ -245,14 +277,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     const transaction: Transaction = {
       id: storageService.generateTransactionId(),
       type,
-      date: mysqlDate, // Gunakan format MySQL
-      items: cart.map(it => ({
-          ...it,
-          qty: isNaN(it.qty) ? 0 : it.qty,
-          unitPrice: isNaN(it.unitPrice) ? 0 : it.unitPrice,
-          total: isNaN(it.total) ? 0 : it.total
-      })),
-      totalValue: isNaN(cart.reduce((acc, curr) => acc + curr.total, 0)) ? 0 : cart.reduce((acc, curr) => acc + curr.total, 0),
+      date: mysqlDate,
+      items: cart,
+      totalValue: cart.reduce((acc, curr) => acc + curr.total, 0),
       userId: user.id || 'admin',
       supplier: supplier || '', 
       poNumber: poNumber || '', 
