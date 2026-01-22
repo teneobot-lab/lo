@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet } from 'lucide-react';
+// Fixed missing import for 'Layers' icon used on line 395
+import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet, Download, Layers } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface RejectManagerProps {
@@ -44,9 +45,41 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   };
 
   const handleDeleteMasterItem = (id: string) => {
-      if (window.confirm("Delete this item from Master Data?")) {
+      if (window.confirm("Hapus item ini dari Master Data?")) {
           onUpdateMaster(rejectMasterData.filter(i => i.id !== id));
       }
+  };
+
+  // --- Template Download ---
+  const downloadTemplate = () => {
+      const template = [
+          { 
+            SKU: 'SKU-001', 
+            Name: 'Nama Barang Contoh', 
+            Unit: 'Pcs', 
+            Unit2: 'Box', 
+            Ratio2: 10, 
+            Op2: 'multiply', 
+            Unit3: 'Ctn', 
+            Ratio3: 100, 
+            Op3: 'multiply' 
+          },
+          { 
+            SKU: 'SKU-002', 
+            Name: 'Barang Cair', 
+            Unit: 'Ml', 
+            Unit2: 'Liter', 
+            Ratio2: 1000, 
+            Op2: 'divide', 
+            Unit3: '', 
+            Ratio3: '', 
+            Op3: '' 
+          }
+      ];
+      const ws = XLSX.utils.json_to_sheet(template);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template Master Reject");
+      XLSX.writeFile(wb, "Nexus_Template_Master_Reject.xlsx");
   };
 
   // --- Bulk Import Master Data ---
@@ -63,14 +96,12 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
               const ws = wb.Sheets[wsname];
               const data = XLSX.utils.sheet_to_json(ws) as any[];
 
-              const newItems: RejectItem[] = [];
               const updatedMaster = [...rejectMasterData];
 
               data.forEach(row => {
                   const sku = String(row.SKU || '').trim();
                   if (!sku) return;
 
-                  // Check existing
                   const existingIdx = updatedMaster.findIndex(m => m.sku === sku);
                   
                   const item: RejectItem = {
@@ -78,10 +109,10 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                       sku: sku,
                       name: String(row.Name || row.Nama || 'Unnamed'),
                       baseUnit: String(row.Unit || row.Satuan || 'Pcs'),
-                      unit2: row.Unit2,
+                      unit2: row.Unit2 || undefined,
                       ratio2: row.Ratio2 ? Number(row.Ratio2) : undefined,
                       op2: row.Op2 === 'divide' ? 'divide' : 'multiply',
-                      unit3: row.Unit3,
+                      unit3: row.Unit3 || undefined,
                       ratio3: row.Ratio3 ? Number(row.Ratio3) : undefined,
                       op3: row.Op3 === 'divide' ? 'divide' : 'multiply',
                       lastUpdated: new Date().toISOString()
@@ -95,14 +126,14 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
               });
 
               onUpdateMaster(updatedMaster);
-              alert(`Successfully processed ${data.length} items from Excel.`);
+              alert(`Berhasil memproses ${data.length} item dari Excel.`);
           } catch (error) {
               console.error(error);
-              alert("Failed to import Excel. Please ensure correct format.");
+              alert("Gagal import Excel. Pastikan format kolom benar.");
           }
       };
       reader.readAsBinaryString(file);
-      e.target.value = ''; // Reset input
+      e.target.value = ''; 
   };
 
   // --- Log Handlers ---
@@ -124,22 +155,22 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                   onClick={() => setActiveTab('logs')}
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'logs' ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-gray-400'}`}
                >
-                   Reject Logs
+                   Log Reject
                </button>
                <button 
                   onClick={() => setActiveTab('master')}
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'master' ? 'bg-white dark:bg-gray-700 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-gray-400'}`}
                >
-                   Master Data
+                   Master Data Reject
                </button>
            </div>
            
-           <div className="flex gap-3 w-full md:w-auto">
-               <div className="relative flex-1 md:w-64">
+           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+               <div className="relative flex-1 md:w-64 min-w-[200px]">
                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                    <input 
                        type="text" 
-                       placeholder="Search..." 
+                       placeholder="Cari SKU, Nama, atau ID..." 
                        value={searchTerm}
                        onChange={e => setSearchTerm(e.target.value)}
                        className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white"
@@ -147,17 +178,25 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                </div>
                
                {activeTab === 'master' && (
-                  <div className="relative">
-                      <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm whitespace-nowrap">
-                          <FileSpreadsheet size={18} /> Import XLSX
+                  <div className="flex items-center gap-2">
+                      <button 
+                        onClick={downloadTemplate}
+                        className="p-2.5 bg-ice-100 dark:bg-gray-700 text-ice-600 dark:text-ice-400 rounded-xl hover:bg-ice-200 transition-all border border-ice-200 dark:border-gray-600"
+                        title="Download Template Master"
+                      >
+                          <Download size={18} />
                       </button>
-                      <input 
-                          type="file" 
-                          accept=".xlsx, .xls" 
-                          onChange={handleBulkImport} 
-                          className="absolute inset-0 opacity-0 cursor-pointer" 
-                          title="Import columns: SKU, Name, Unit, Unit2, Ratio2, etc."
-                      />
+                      <div className="relative">
+                          <button className="flex items-center gap-2 bg-white dark:bg-gray-800 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 hover:bg-ice-50 dark:hover:bg-gray-700 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm whitespace-nowrap">
+                              <FileSpreadsheet size={18} /> Import Excel
+                          </button>
+                          <input 
+                              type="file" 
+                              accept=".xlsx, .xls" 
+                              onChange={handleBulkImport} 
+                              className="absolute inset-0 opacity-0 cursor-pointer" 
+                          />
+                      </div>
                   </div>
                )}
 
@@ -171,29 +210,31 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                            setIsMasterModalOpen(true);
                        }
                    }}
-                   className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg whitespace-nowrap"
+                   className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg whitespace-nowrap transition-all active:scale-95"
                >
-                   <Plus size={18} /> {activeTab === 'logs' ? 'New Reject Log' : 'Add Master Item'}
+                   <Plus size={18} /> {activeTab === 'logs' ? 'Input Reject Baru' : 'Tambah Master Item'}
                </button>
            </div>
        </div>
 
        {/* Content */}
-       {activeTab === 'master' && (
-           <MasterDataList 
-                items={rejectMasterData.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase()))} 
-                onEdit={(i) => { setEditingMasterItem(i); setIsMasterModalOpen(true); }}
-                onDelete={handleDeleteMasterItem}
-           />
-       )}
+       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+           {activeTab === 'master' && (
+               <MasterDataList 
+                    items={rejectMasterData.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase()))} 
+                    onEdit={(i) => { setEditingMasterItem(i); setIsMasterModalOpen(true); }}
+                    onDelete={handleDeleteMasterItem}
+               />
+           )}
 
-       {activeTab === 'logs' && (
-           <RejectLogsList 
-                logs={rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase())))}
-                onEdit={(l) => { setEditingLog(l); setIsLogModalOpen(true); }}
-                onDelete={onDeleteLog}
-           />
-       )}
+           {activeTab === 'logs' && (
+               <RejectLogsList 
+                    logs={rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase())))}
+                    onEdit={(l) => { setEditingLog(l); setIsLogModalOpen(true); }}
+                    onDelete={onDeleteLog}
+               />
+           )}
+       </div>
 
        {/* Modals */}
        {isMasterModalOpen && (
@@ -221,12 +262,12 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
 const MasterDataList: React.FC<{ items: RejectItem[], onEdit: (i: RejectItem) => void, onDelete: (id: string) => void }> = ({ items, onEdit, onDelete }) => (
     <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wider">
                 <tr>
-                    <th className="p-4">SKU / Name</th>
-                    <th className="p-4">Base Unit</th>
-                    <th className="p-4">Conversions</th>
-                    <th className="p-4 text-right">Actions</th>
+                    <th className="p-4">SKU / Nama Barang</th>
+                    <th className="p-4">Satuan Dasar</th>
+                    <th className="p-4">Konversi Satuan</th>
+                    <th className="p-4 text-right">Aksi</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
@@ -234,22 +275,27 @@ const MasterDataList: React.FC<{ items: RejectItem[], onEdit: (i: RejectItem) =>
                     <tr key={item.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="p-4">
                             <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
-                            <div className="text-xs text-slate-400">{item.sku}</div>
+                            <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">{item.sku}</div>
                         </td>
-                        <td className="p-4 text-sm text-slate-600 dark:text-gray-300">{item.baseUnit}</td>
+                        <td className="p-4">
+                            <span className="px-2 py-1 bg-ice-50 dark:bg-gray-700 text-ice-600 dark:text-ice-400 rounded-lg text-xs font-bold">{item.baseUnit}</span>
+                        </td>
                         <td className="p-4 text-xs text-slate-500 dark:text-gray-400">
-                            {item.unit2 && <div className="mb-0.5"><span className="font-bold">{item.unit2}:</span> {item.op2 === 'divide' ? '/' : 'x'} {item.ratio2}</div>}
-                            {item.unit3 && <div><span className="font-bold">{item.unit3}:</span> {item.op3 === 'divide' ? '/' : 'x'} {item.ratio3}</div>}
+                            <div className="flex flex-col gap-1">
+                                {item.unit2 && <div className="flex items-center gap-1"><span className="font-bold bg-slate-100 dark:bg-gray-700 px-1.5 rounded">{item.unit2}</span> <ChevronRight size={10}/> {item.op2 === 'divide' ? '/' : 'x'} {item.ratio2} {item.baseUnit}</div>}
+                                {item.unit3 && <div className="flex items-center gap-1"><span className="font-bold bg-slate-100 dark:bg-gray-700 px-1.5 rounded">{item.unit3}</span> <ChevronRight size={10}/> {item.op3 === 'divide' ? '/' : 'x'} {item.ratio3} {item.baseUnit}</div>}
+                                {!item.unit2 && !item.unit3 && <span className="italic opacity-50">Tidak ada konversi</span>}
+                            </div>
                         </td>
                         <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => onEdit(item)} className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit2 size={16}/></button>
-                                <button onClick={() => onDelete(item.id)} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg"><Trash2 size={16}/></button>
+                            <div className="flex justify-end gap-1">
+                                <button onClick={() => onEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"><Edit2 size={16}/></button>
+                                <button onClick={() => onDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"><Trash2 size={16}/></button>
                             </div>
                         </td>
                     </tr>
                 )) : (
-                    <tr><td colSpan={4} className="p-8 text-center text-slate-400">No Master Items Found</td></tr>
+                    <tr><td colSpan={4} className="p-12 text-center text-slate-400 italic">Data Master Belum Tersedia. Silakan tambah atau import Excel.</td></tr>
                 )}
             </tbody>
         </table>
@@ -259,40 +305,40 @@ const MasterDataList: React.FC<{ items: RejectItem[], onEdit: (i: RejectItem) =>
 const RejectLogsList: React.FC<{ logs: RejectLog[], onEdit: (l: RejectLog) => void, onDelete: (id: string) => void }> = ({ logs, onEdit, onDelete }) => (
     <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden">
         <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 dark:text-gray-400 uppercase tracking-wider">
                 <tr>
-                    <th className="p-4">Log ID</th>
-                    <th className="p-4">Date</th>
-                    <th className="p-4">Items</th>
-                    <th className="p-4">Notes</th>
-                    <th className="p-4 text-right">Actions</th>
+                    <th className="p-4">ID Log</th>
+                    <th className="p-4">Tanggal Reject</th>
+                    <th className="p-4">Ringkasan Barang</th>
+                    <th className="p-4">Keterangan</th>
+                    <th className="p-4 text-right">Aksi</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
                 {logs.length > 0 ? logs.map(log => (
                     <tr key={log.id} className="hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="p-4 font-bold text-sm text-slate-800 dark:text-white">{log.id}</td>
-                        <td className="p-4 text-sm text-slate-600 dark:text-gray-300">{new Date(log.date).toLocaleDateString()}</td>
+                        <td className="p-4 text-sm text-slate-600 dark:text-gray-300">{new Date(log.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
                         <td className="p-4 text-sm">
                             <div className="flex flex-col gap-1">
                                 {log.items.slice(0, 2).map((item, idx) => (
-                                    <span key={idx} className="text-slate-600 dark:text-gray-400 flex items-center gap-1">
-                                        <Package size={12}/> {item.itemName} ({item.quantity} {item.unit})
+                                    <span key={idx} className="text-slate-600 dark:text-gray-400 flex items-center gap-1 text-[11px]">
+                                        <Package size={12} className="text-rose-400"/> {item.itemName} ({item.quantity} {item.unit})
                                     </span>
                                 ))}
-                                {log.items.length > 2 && <span className="text-xs text-slate-400">+{log.items.length - 2} more...</span>}
+                                {log.items.length > 2 && <span className="text-[10px] text-slate-400 pl-4">+{log.items.length - 2} item lainnya...</span>}
                             </div>
                         </td>
                         <td className="p-4 text-sm text-slate-500 italic truncate max-w-xs">{log.notes || '-'}</td>
                         <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => onEdit(log)} className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Settings size={16}/></button>
-                                <button onClick={() => onDelete(log.id)} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg"><Trash2 size={16}/></button>
+                            <div className="flex justify-end gap-1">
+                                <button onClick={() => onEdit(log)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"><Settings size={16}/></button>
+                                <button onClick={() => onDelete(log.id)} className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"><Trash2 size={16}/></button>
                             </div>
                         </td>
                     </tr>
                 )) : (
-                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">No Reject Logs Found</td></tr>
+                    <tr><td colSpan={5} className="p-12 text-center text-slate-400 italic">Belum ada catatan reject. Klik tombol di atas untuk menginput.</td></tr>
                 )}
             </tbody>
         </table>
@@ -324,54 +370,82 @@ const MasterItemModal: React.FC<{ item: RejectItem | null, onClose: () => void, 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-bold text-xl text-slate-800 dark:text-white">{item ? 'Edit Master Item' : 'New Master Item'}</h3>
-                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-800" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-white/10">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
+                    <h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-2"><Settings size={20}/> {item ? 'Edit Master Item' : 'Tambah Master Item'}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X className="text-slate-400" /></button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase">SKU</label>
-                            <input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                <form id="master-form" onSubmit={handleSubmit} className="p-8 overflow-y-auto flex-1 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">SKU Produk</label>
+                            <input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value.toUpperCase()})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all" placeholder="Misal: ELEC-001" />
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
-                            <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nama Barang</label>
+                            <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all" placeholder="Nama lengkap produk..." />
                         </div>
                     </div>
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase">Base Unit</label>
-                        <input required value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Satuan Dasar (Inventory)</label>
+                        <input required value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all" placeholder="Contoh: Pcs, Kg, Meter" />
                     </div>
                     
-                    <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-xl space-y-4 border border-ice-100 dark:border-gray-700">
-                        <h4 className="font-bold text-sm text-slate-700 dark:text-gray-300">Conversions (Optional)</h4>
+                    <div className="p-6 bg-slate-50 dark:bg-gray-800 rounded-2xl space-y-6 border border-ice-100 dark:border-gray-700">
+                        <h4 className="font-bold text-xs text-slate-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                             <Layers size={14}/> Pengaturan Konversi Satuan
+                        </h4>
+                        
                         {/* Unit 2 */}
-                        <div className="flex gap-2">
-                            <input placeholder="Unit 2 (e.g. Box)" value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} className="flex-1 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                            <select value={formData.op2} onChange={(e: any) => setFormData({...formData, op2: e.target.value})} className="p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                <option value="multiply">Multiply by</option>
-                                <option value="divide">Divide by</option>
-                            </select>
-                            <input type="number" placeholder="Ratio" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} className="w-24 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        <div className="space-y-3">
+                            <div className="flex flex-col md:flex-row gap-3">
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Satuan 2</label>
+                                    <input placeholder="Misal: Box" value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} className="w-full p-3 border rounded-xl text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                </div>
+                                <div className="w-full md:w-32">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Rasio</label>
+                                    <input type="number" step="any" placeholder="Isi" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} className="w-full p-3 border rounded-xl text-sm font-bold dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                </div>
+                                <div className="w-full md:w-40">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Operasi</label>
+                                    <select value={formData.op2} onChange={(e: any) => setFormData({...formData, op2: e.target.value})} className="w-full p-3 border rounded-xl text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white appearance-none">
+                                        <option value="multiply">Kali (x)</option>
+                                        <option value="divide">Bagi (/)</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                         {/* Unit 3 */}
-                         <div className="flex gap-2">
-                            <input placeholder="Unit 3 (e.g. Ctn)" value={formData.unit3 || ''} onChange={e => setFormData({...formData, unit3: e.target.value})} className="flex-1 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                            <select value={formData.op3} onChange={(e: any) => setFormData({...formData, op3: e.target.value})} className="p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                                <option value="multiply">Multiply by</option>
-                                <option value="divide">Divide by</option>
-                            </select>
-                            <input type="number" placeholder="Ratio" value={formData.ratio3 || ''} onChange={e => setFormData({...formData, ratio3: Number(e.target.value)})} className="w-24 p-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                        </div>
-                    </div>
 
-                    <div className="flex justify-end pt-4">
-                        <button type="submit" className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900">Save Item</button>
+                        <div className="h-px bg-slate-200 dark:bg-gray-700"></div>
+
+                        {/* Unit 3 */}
+                        <div className="space-y-3">
+                            <div className="flex flex-col md:flex-row gap-3">
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Satuan 3</label>
+                                    <input placeholder="Misal: Ctn" value={formData.unit3 || ''} onChange={e => setFormData({...formData, unit3: e.target.value})} className="w-full p-3 border rounded-xl text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                </div>
+                                <div className="w-full md:w-32">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Rasio</label>
+                                    <input type="number" step="any" placeholder="Isi" value={formData.ratio3 || ''} onChange={e => setFormData({...formData, ratio3: Number(e.target.value)})} className="w-full p-3 border rounded-xl text-sm font-bold dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                </div>
+                                <div className="w-full md:w-40">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Operasi</label>
+                                    <select value={formData.op3} onChange={(e: any) => setFormData({...formData, op3: e.target.value})} className="w-full p-3 border rounded-xl text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white appearance-none">
+                                        <option value="multiply">Kali (x)</option>
+                                        <option value="divide">Bagi (/)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
+                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
+                    <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl transition-all">Batal</button>
+                    <button type="submit" form="master-form" className="px-10 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 shadow-lg transition-all active:scale-95">Simpan Data</button>
+                </div>
             </div>
         </div>
     );
@@ -384,7 +458,7 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
 
     // Item Entry State
     const [selectedItemId, setSelectedItemId] = useState('');
-    const [itemSearch, setItemSearch] = useState(''); // for Autocomplete
+    const [itemSearch, setItemSearch] = useState(''); 
     const [showDropdown, setShowDropdown] = useState(false);
     
     const [selectedUnit, setSelectedUnit] = useState('');
@@ -396,7 +470,6 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
     const dropdownRef = useRef<HTMLDivElement>(null);
     const qtyInputRef = useRef<HTMLInputElement>(null);
 
-    // Filter master data for autocomplete
     const filteredMaster = useMemo(() => {
         if (!itemSearch) return [];
         return masterData.filter(m => m.name.toLowerCase().includes(itemSearch.toLowerCase()) || m.sku.toLowerCase().includes(itemSearch.toLowerCase())).slice(0, 10);
@@ -416,9 +489,9 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
 
     const handleSelectItem = (item: RejectItem) => {
         setSelectedItemId(item.id);
-        setItemSearch(item.name); // Set input to name
+        setItemSearch(item.name); 
         setShowDropdown(false);
-        handleUnitChange(item.baseUnit, item); // Default to base unit
+        handleUnitChange(item.baseUnit, item); 
         setSelectedUnit(item.baseUnit);
         setTimeout(() => qtyInputRef.current?.focus(), 100);
     };
@@ -473,7 +546,6 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
         };
 
         setItems([...items, newItem]);
-        // Reset entry
         setQuantityInput('');
         setReason('');
         setItemSearch('');
@@ -498,87 +570,81 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
     const handleCopyToClipboard = () => {
         try {
             const d = new Date(date);
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = String(d.getFullYear()).slice(-2); // YY format
-            const dateStr = `${day}${month}${year}`; // ddmmyy
+            const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '');
             
             let text = `Data Reject KKL ${dateStr}\n`;
             items.forEach(item => {
-                text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'No Reason'})\n`;
+                text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'Sesuai Fisik'})\n`;
             });
             
             navigator.clipboard.writeText(text);
-            alert("Copied to clipboard!");
+            alert("Format teks berhasil disalin ke clipboard!");
         } catch (e) {
-            alert("Failed to copy");
+            alert("Gagal menyalin teks.");
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex justify-between items-center">
-                    <h3 className="font-bold text-xl text-slate-800 dark:text-white">{log ? 'Edit Reject Log' : 'New Reject Log'}</h3>
-                    <button onClick={onClose}><X className="text-slate-400 hover:text-slate-800" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl border border-white/10">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex justify-between items-center bg-rose-50 dark:bg-gray-800">
+                    <h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-2"><AlertTriangle size={20} className="text-rose-500"/> {log ? 'Edit Log Reject' : 'Input Reject Barang'}</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full"><X className="text-slate-400" /></button>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Header Fields */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase">Date</label>
-                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+                <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tanggal Kejadian</label>
+                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" />
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 uppercase">Notes</label>
-                            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white" placeholder="Optional notes..." />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Catatan Umum</label>
+                            <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" placeholder="Keterangan tambahan..." />
                         </div>
                     </div>
 
-                    {/* Entry Form */}
-                    <div className="bg-slate-50 dark:bg-gray-800 p-5 rounded-2xl border border-ice-100 dark:border-gray-700 space-y-4 relative">
+                    <div className="bg-slate-50 dark:bg-gray-950 p-6 rounded-2xl border border-ice-100 dark:border-gray-800 space-y-6">
                         <div className="flex flex-col md:flex-row gap-4">
-                            {/* Autocomplete Item Selection */}
                             <div className="flex-1 relative" ref={dropdownRef}>
-                                <label className="text-xs font-bold text-slate-400 uppercase">Select Item (Autocomplete)</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Cari Produk Master</label>
                                 <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                     <input 
                                         type="text"
-                                        className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white outline-none focus:ring-2 focus:ring-ice-300"
-                                        placeholder="Type Name or SKU..."
+                                        className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300"
+                                        placeholder="Ketik Nama atau SKU..."
                                         value={itemSearch}
                                         onChange={(e) => {
                                             setItemSearch(e.target.value);
                                             setShowDropdown(true);
-                                            setSelectedItemId(''); // clear selection if typing
+                                            setSelectedItemId('');
                                         }}
                                         onFocus={() => setShowDropdown(true)}
                                     />
                                 </div>
                                 {showDropdown && itemSearch && (
-                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-700 border border-ice-200 dark:border-gray-600 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-ice-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">
                                         {filteredMaster.length > 0 ? filteredMaster.map(m => (
                                             <div 
                                                 key={m.id} 
                                                 onClick={() => handleSelectItem(m)}
-                                                className="p-3 hover:bg-ice-50 dark:hover:bg-gray-600 cursor-pointer border-b border-ice-50 dark:border-gray-600 last:border-0"
+                                                className="p-3 hover:bg-ice-50 dark:hover:bg-gray-700 cursor-pointer border-b border-ice-50 dark:border-gray-700 last:border-0"
                                             >
                                                 <div className="font-bold text-sm text-slate-800 dark:text-white">{m.name}</div>
-                                                <div className="text-xs text-slate-500 dark:text-gray-300">{m.sku}</div>
+                                                <div className="text-[10px] text-slate-500 font-mono">{m.sku}</div>
                                             </div>
-                                        )) : <div className="p-3 text-xs text-slate-400">No items found</div>}
+                                        )) : <div className="p-4 text-xs text-slate-400 italic">Produk tidak terdaftar di Master Reject</div>}
                                     </div>
                                 )}
                             </div>
                             
                             <div className="w-full md:w-32">
-                                <label className="text-xs font-bold text-slate-400 uppercase">Unit</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Satuan</label>
                                 <select 
                                     value={selectedUnit} 
                                     onChange={(e) => handleUnitChange(e.target.value)}
-                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white appearance-none"
                                     disabled={!selectedItem}
                                 >
                                     {selectedItem && (
@@ -591,92 +657,92 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
                                 </select>
                             </div>
                             <div className="w-full md:w-32">
-                                <label className="text-xs font-bold text-slate-400 uppercase">Qty</label>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Qty</label>
                                 <input 
                                     ref={qtyInputRef}
                                     type="number" 
+                                    step="any"
                                     value={quantityInput} 
-                                    onChange={e => setQuantityInput(Number(e.target.value))} 
-                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
+                                    onChange={e => setQuantityInput(e.target.value === '' ? '' : Number(e.target.value))} 
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white font-bold" 
                                     placeholder="0" 
                                     onKeyDown={e => e.key === 'Enter' && handleAddItem()}
                                 />
                             </div>
                         </div>
-                        <div className="flex gap-4">
-                            <div className="flex-1">
-                                <label className="text-xs font-bold text-slate-400 uppercase">Reason</label>
+                        <div className="flex flex-col md:flex-row gap-4 items-end">
+                            <div className="flex-1 w-full">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Alasan Reject</label>
                                 <input 
                                     value={reason} 
                                     onChange={e => setReason(e.target.value)} 
-                                    className="w-full p-3 border rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-                                    placeholder="e.g. Expired, Damaged..." 
+                                    className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" 
+                                    placeholder="Contoh: Expired, Segel Rusak, Penyok..." 
                                     onKeyDown={e => e.key === 'Enter' && handleAddItem()}
                                 />
                             </div>
                             <button 
                                 onClick={handleAddItem}
                                 disabled={!selectedItem || !quantityInput}
-                                className="self-end px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 disabled:shadow-none transition-all"
+                                className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2"
                             >
-                                <Plus size={18} /> Add
+                                <Plus size={18} /> Tambah
                             </button>
                         </div>
                     </div>
 
-                    {/* Items List */}
-                    <div className="border border-ice-100 dark:border-gray-700 rounded-2xl overflow-hidden relative">
-                        <div className="flex justify-between items-center bg-slate-50 dark:bg-gray-800 px-4 py-2 border-b border-ice-100 dark:border-gray-700">
-                             <h4 className="text-xs font-bold text-slate-500 uppercase">Reject List</h4>
+                    <div className="border border-ice-100 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm">
+                        <div className="flex justify-between items-center bg-slate-50 dark:bg-gray-800 px-6 py-3 border-b border-ice-100 dark:border-gray-800">
+                             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Package size={14}/> Daftar Item Terpilih</h4>
                              <button 
                                 onClick={handleCopyToClipboard}
                                 disabled={items.length === 0}
-                                className="text-xs flex items-center gap-1 text-slate-600 dark:text-gray-300 hover:text-indigo-600 bg-white dark:bg-gray-700 border border-ice-200 dark:border-gray-600 px-3 py-1.5 rounded-lg shadow-sm"
+                                className="text-[10px] font-bold flex items-center gap-1.5 text-slate-600 dark:text-gray-300 hover:text-indigo-600 transition-all"
                              >
-                                 <Copy size={12} /> Copy Format
+                                 <Copy size={14} /> Salin Format Teks
                              </button>
                         </div>
                         <table className="w-full text-left">
-                            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-xs font-bold text-slate-500 uppercase">
+                            <thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-50 dark:border-gray-800 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                 <tr>
-                                    <th className="p-3">Item</th>
-                                    <th className="p-3 text-center">Qty Input</th>
-                                    <th className="p-3 text-center">Base Qty</th>
-                                    <th className="p-3">Reason</th>
-                                    <th className="p-3 w-10"></th>
+                                    <th className="p-4">Item Details</th>
+                                    <th className="p-4 text-center">Qty Input</th>
+                                    <th className="p-4 text-center">Konversi Dasar</th>
+                                    <th className="p-4">Alasan</th>
+                                    <th className="p-4 w-10"></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-ice-50 dark:divide-gray-700">
+                            <tbody className="divide-y divide-ice-50 dark:divide-gray-800">
                                 {items.length > 0 ? items.map((item, idx) => (
-                                    <tr key={idx}>
-                                        <td className="p-3">
+                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-gray-800/50">
+                                        <td className="p-4">
                                             <div className="font-bold text-sm text-slate-800 dark:text-white">{item.itemName}</div>
-                                            <div className="text-xs text-slate-400">{item.sku}</div>
+                                            <div className="text-[10px] font-mono text-slate-400">{item.sku}</div>
                                         </td>
-                                        <td className="p-3 text-center text-sm dark:text-gray-300">
-                                            {item.quantity} {item.unit}
+                                        <td className="p-4 text-center">
+                                            <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold">{item.quantity} {item.unit}</span>
                                         </td>
-                                        <td className="p-3 text-center text-sm font-bold text-slate-700 dark:text-gray-200">
-                                            {item.totalBaseQuantity} {item.baseUnit}
+                                        <td className="p-4 text-center">
+                                            <span className="text-xs font-bold text-slate-700 dark:text-gray-200">{item.totalBaseQuantity} {item.baseUnit}</span>
                                         </td>
-                                        <td className="p-3 text-sm text-rose-500 italic">
-                                            {item.reason}
+                                        <td className="p-4 text-sm text-rose-500 italic">
+                                            {item.reason || '-'}
                                         </td>
-                                        <td className="p-3">
-                                            <button onClick={() => handleRemoveItem(idx)} className="text-slate-400 hover:text-rose-500"><X size={16}/></button>
+                                        <td className="p-4">
+                                            <button onClick={() => handleRemoveItem(idx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><X size={16}/></button>
                                         </td>
                                     </tr>
                                 )) : (
-                                    <tr><td colSpan={5} className="p-4 text-center text-xs text-slate-400">No items added to this log yet.</td></tr>
+                                    <tr><td colSpan={5} className="p-12 text-center text-xs text-slate-400 italic">Belum ada item yang ditambahkan ke log ini.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl">Cancel</button>
-                    <button onClick={handleSave} disabled={items.length === 0} className="px-8 py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-lg disabled:opacity-50">Save Log</button>
+                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50 dark:bg-gray-800 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-white rounded-xl transition-all">Batal</button>
+                    <button onClick={handleSave} disabled={items.length === 0} className="px-10 py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-xl transition-all active:scale-95 disabled:opacity-50">Simpan Log Reject</button>
                 </div>
             </div>
         </div>
