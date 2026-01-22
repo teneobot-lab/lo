@@ -54,6 +54,7 @@ export const geminiService = {
         config: {
           systemInstruction: systemInstruction,
           // SPEED OPTIMIZATION: Disable thinking budget for instant responses
+          // Fix: Wrap thinkingBudget within thinkingConfig as per the latest SDK requirements
           thinkingConfig: { thinkingBudget: 0 }, 
           temperature: 0.7, // Balance between creativity and accuracy
         }
@@ -94,6 +95,7 @@ export const geminiService = {
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
+            // Correct implementation of thinkingConfig for disabling reasoning overhead
             thinkingConfig: { thinkingBudget: 0 }
         }
       });

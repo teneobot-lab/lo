@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -91,10 +90,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       itemId: selectedItemData.id,
       sku: selectedItemData.sku,
       name: selectedItemData.name,
-      qty: actualQtyToDeduct,
+      qty: isNaN(actualQtyToDeduct) ? 0 : actualQtyToDeduct,
       uom: selectedUOM,
-      unitPrice: unitPricePerUOM,
-      total: qty * unitPricePerUOM
+      unitPrice: isNaN(unitPricePerUOM) ? 0 : unitPricePerUOM,
+      total: isNaN(qty * unitPricePerUOM) ? 0 : (qty * unitPricePerUOM)
     }]);
 
     setQty('');
@@ -109,7 +108,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     setCart(cart.filter((_, i) => i !== index));
   };
 
-  // --- LOGIKA TEMPLATE & IMPORT REFINED ---
   const downloadTransactionTemplate = () => {
       const template = [
           { 'SKU': 'SKU-001', 'Nama Barang': 'Contoh Barang A', 'QTY': 10, 'Unit': 'Pcs' },
@@ -142,7 +140,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         setIsImporting(true);
 
-        // Helper untuk cari value berdasarkan key yang mirip
         const getVal = (row: any, targets: string[]) => {
             const key = Object.keys(row).find(k => targets.includes(k.trim().toLowerCase()) || targets.includes(k.trim()));
             return key ? row[key] : null;
@@ -155,7 +152,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             if (!skuVal) return;
             
             const sku = String(skuVal).trim().toUpperCase();
-            const qty = Number(getVal(row, ['qty', 'jumlah', 'kuantitas']) || 0);
+            let rawQty = getVal(row, ['qty', 'jumlah', 'kuantitas']);
+            const qty = isNaN(Number(rawQty)) ? 0 : Number(rawQty);
             const name = String(getVal(row, ['nama barang', 'name', 'nama']) || sku);
             const unit = String(getVal(row, ['unit', 'satuan']) || 'Pcs');
 
@@ -172,7 +170,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         for (const item of uniqueSkus) {
             let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
 
-            // Jika item belum ada, buat otomatis dengan data default (Price/Category/Location kosong/default)
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
@@ -196,19 +193,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 itemId: inventoryItem.id,
                 sku: inventoryItem.sku,
                 name: inventoryItem.name,
-                qty: item.qty,
+                qty: isNaN(item.qty) ? 0 : item.qty,
                 uom: item.unit,
-                unitPrice: unitPrice,
-                total: item.qty * unitPrice
+                unitPrice: isNaN(unitPrice) ? 0 : unitPrice,
+                total: isNaN(item.qty * unitPrice) ? 0 : (item.qty * unitPrice)
             });
         }
 
         setCart(prev => [...prev, ...newItemsInCart]);
         notify(`${uniqueSkus.length} tipe barang dimuat ke Cart.`, 'success');
-        onSuccess(); // Refresh inventory list
+        // Fix: Changed onRefresh() to onSuccess() as defined in the TransactionsProps interface.
+        onSuccess();
       } catch (err) {
-        console.error("Import Error:", err);
-        notify("Gagal memproses file Excel. Cek format kolom.", "error");
+        notify("Gagal memproses file Excel", "error");
       } finally {
         setIsImporting(false);
       }
@@ -242,13 +239,18 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       id: storageService.generateTransactionId(),
       type,
       date: new Date(customDate).toISOString(),
-      items: cart,
-      totalValue: cart.reduce((acc, curr) => acc + curr.total, 0),
-      userId: user.id,
-      supplier, 
-      poNumber, 
-      deliveryNote,
-      notes,
+      items: cart.map(it => ({
+          ...it,
+          qty: isNaN(it.qty) ? 0 : it.qty,
+          unitPrice: isNaN(it.unitPrice) ? 0 : it.unitPrice,
+          total: isNaN(it.total) ? 0 : it.total
+      })),
+      totalValue: isNaN(cart.reduce((acc, curr) => acc + curr.total, 0)) ? 0 : cart.reduce((acc, curr) => acc + curr.total, 0),
+      userId: user.id || 'admin',
+      supplier: supplier || '', 
+      poNumber: poNumber || '', 
+      deliveryNote: deliveryNote || '',
+      notes: notes || '',
       documents: documentImages
     };
 
@@ -259,7 +261,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         setSupplier(''); setPoNumber(''); setDeliveryNote(''); setNotes('');
         setDocumentImages([]);
         notify(`Transaksi ${transaction.id} berhasil`, 'success');
-    } catch (e) { notify("Gagal menyimpan transaksi", 'error'); }
+    } catch (e) { 
+        console.error("Submit error:", e);
+        notify("Gagal menyimpan transaksi ke database", 'error'); 
+    }
   };
 
   return (
@@ -347,7 +352,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     </button>
                     <div className="relative flex-1">
                         <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                        <button disabled={isImporting} className="w-full h-full bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-600 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
+                        <button disabled={isImporting} className="w-full h-full bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-700 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
                             {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel
                         </button>
                     </div>
@@ -356,7 +361,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           </div>
         </div>
 
-        {/* Extra Information */}
         <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 space-y-8">
             <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
                 <FileText size={16} className="text-indigo-500"/> Informasi Detail
@@ -392,7 +396,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                         </div>
                     </div>
                     
-                    {/* Multi Photo Upload Section */}
                     {type === 'inbound' && (
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Dokumentasi (Multi-Photo)</label>
