@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface HistoryProps {
@@ -69,24 +69,34 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const filteredItemsForSC = useMemo(() => {
       if (!scSearchItem) return [];
-      return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 5);
+      return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 10);
   }, [scSearchItem, items]);
 
   const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string) => {
       const start = new Date(startStr); start.setHours(0,0,0,0);
       const end = new Date(endStr); end.setHours(23,59,59,999);
+      
+      // Hitung stok awal (revert semua transaksi setelah tanggal start)
       let openingStock = item.stock;
       const allItemTrans = transactions
         .filter(t => t.items.some(i => i.itemId === item.id))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
+      
       allItemTrans.forEach(t => {
           const tDate = new Date(t.date);
           if (tDate >= start) {
               const it = t.items.find(i => i.itemId === item.id);
-              if (it) { if (t.type === 'inbound') openingStock -= it.qty; else openingStock += it.qty; }
+              if (it) { 
+                if (t.type === 'inbound') openingStock -= it.qty; 
+                else openingStock += it.qty; 
+              }
           }
       });
-      const periodTrans = allItemTrans.filter(t => { const d = new Date(t.date); return d >= start && d <= end; }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+
+      const periodTrans = allItemTrans
+        .filter(t => { const d = new Date(t.date); return d >= start && d <= end; })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+      
       let runningBalance = openingStock;
       let totalIn = 0; let totalOut = 0;
       const rows = periodTrans.map(t => {
@@ -95,7 +105,17 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           let inQty = 0; let outQty = 0;
           if (t.type === 'inbound') { inQty = qty; totalIn += qty; runningBalance += qty; }
           else { outQty = qty; totalOut += qty; runningBalance -= qty; }
-          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, balance: runningBalance, uom: it?.uom || item.unit };
+          return { 
+            date: t.date, 
+            id: t.id, 
+            type: t.type, 
+            ref: t.poNumber || t.deliveryNote || '-', 
+            in: inQty, 
+            out: outQty, 
+            balance: runningBalance, 
+            uom: it?.uom || item.unit,
+            supplier: t.supplier || '-'
+          };
       });
       return { openingStock, closingStock: runningBalance, totalIn, totalOut, rows };
   };
@@ -139,6 +159,43 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       } else if (e.key === 'Escape') {
           setIsAutocompleteOpen(false);
       }
+  };
+
+  // FIX: Implementation of handleAdvancedExport for Stock Card reporting
+  const handleAdvancedExport = (mode: 'single') => {
+      if (!scSelectedItem || !stockCardData) return;
+
+      const exportData = stockCardData.rows.map(row => ({
+          'Tanggal': new Date(row.date).toLocaleString('id-ID'),
+          'ID Transaksi': row.id,
+          'Tipe': row.type.toUpperCase(),
+          'Referensi': row.ref,
+          'Supplier/Client': row.supplier,
+          'Masuk': row.in || 0,
+          'Keluar': row.out || 0,
+          'Saldo': row.balance,
+          'Satuan': row.uom
+      }));
+
+      const summary = [
+          { 'Keterangan': 'Nama Barang', 'Nilai': scSelectedItem.name },
+          { 'Keterangan': 'SKU', 'Nilai': scSelectedItem.sku },
+          { 'Keterangan': 'Periode', 'Nilai': `${scStartDate} s/d ${scEndDate}` },
+          { 'Keterangan': 'Satuan Dasar', 'Nilai': scSelectedItem.unit },
+          { 'Keterangan': 'Stok Awal', 'Nilai': stockCardData.openingStock },
+          { 'Keterangan': 'Total Masuk', 'Nilai': stockCardData.totalIn },
+          { 'Keterangan': 'Total Keluar', 'Nilai': stockCardData.totalOut },
+          { 'Keterangan': 'Stok Akhir', 'Nilai': stockCardData.closingStock }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const wsSummary = XLSX.utils.json_to_sheet(summary);
+      const wsDetails = XLSX.utils.json_to_sheet(exportData);
+      
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan");
+      XLSX.utils.book_append_sheet(wb, wsDetails, "Detail Pergerakan");
+      
+      XLSX.writeFile(wb, `Kartu_Stok_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
   };
 
   return (
@@ -190,17 +247,172 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
       {isStockCardOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20">
-                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3><button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button></div>
-                <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
-                    <div className="md:col-span-2 relative" ref={autocompleteRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label><input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Nama..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} onFocus={() => setIsAutocompleteOpen(true)} onKeyDown={handleSCKeyDown} />
-                        {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">{filteredItemsForSC.map((it, idx) => (<div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-3 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></div>))}</div>)}
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
+                <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400">
+                            <LineChart size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-xl text-slate-800 dark:text-white">Analisa Kartu Stok</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Lacak pergerakan stok per barang secara detail</p>
+                        </div>
                     </div>
-                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
-                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label><input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
+                    <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all">
+                        <X className="text-slate-400" />
+                    </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900 custom-scrollbar">
-                    {scSelectedItem && stockCardData && (<div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300"><div className="grid grid-cols-4 gap-4"><div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border text-center"><p className="text-[10px] font-bold text-slate-400">STOK AWAL</p><p className="text-xl font-black dark:text-white">{stockCardData.openingStock} {scSelectedItem.unit}</p></div><div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border text-center border-emerald-100/30"><p className="text-[10px] font-bold text-emerald-600">MASUK</p><p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p></div><div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border text-center border-rose-100/30"><p className="text-[10px] font-bold text-rose-600">KELUAR</p><p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p></div><div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border text-center border-indigo-100/30"><p className="text-[10px] font-bold text-indigo-600">STOK AKHIR</p><p className="text-xl font-black text-indigo-700">{stockCardData.closingStock} {scSelectedItem.unit}</p></div></div><table className="w-full text-left text-sm"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-4">Tanggal</th><th className="p-4">ID Transaksi</th><th className="p-4 text-center">Masuk</th><th className="p-4 text-center">Keluar</th><th className="p-4 text-center">Saldo Running</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-gray-700">{stockCardData.rows.map((row, idx) => (<tr key={idx} className="dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30"><td className="p-4">{new Date(row.date).toLocaleString('id-ID')}</td><td className="p-4 text-xs font-mono">{row.id}</td><td className="p-4 text-center text-emerald-600 font-bold">{row.in || '-'}</td><td className="p-4 text-center text-rose-600 font-bold">{row.out || '-'}</td><td className="p-4 text-center font-bold bg-slate-50/30 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300">{row.balance} {scSelectedItem.unit}</td></tr>))}</tbody></table></div>)}
+                
+                <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
+                    <div className="md:col-span-2 relative" ref={autocompleteRef}>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang Inventaris</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input 
+                                type="text" 
+                                className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all shadow-sm" 
+                                placeholder="Ketik Nama atau SKU Barang..." 
+                                value={scSearchItem} 
+                                onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} 
+                                onFocus={() => setIsAutocompleteOpen(true)} 
+                                onKeyDown={handleSCKeyDown} 
+                            />
+                        </div>
+                        {isAutocompleteOpen && scSearchItem && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                {filteredItemsForSC.length > 0 ? filteredItemsForSC.map((it, idx) => (
+                                    <div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-4 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}>
+                                        <div className="font-bold text-sm">{it.name}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono tracking-wider">{it.sku} | Unit Dasar: {it.unit}</div>
+                                    </div>
+                                )) : <div className="p-4 text-xs text-slate-400 italic">Barang tidak ditemukan.</div>}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Periode Dari</label>
+                        <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai Dengan</label>
+                        <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm" />
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900">
+                    {scSelectedItem && stockCardData ? (
+                        <div className="flex flex-col h-full animate-in fade-in slide-in-from-top-4 duration-500">
+                            {/* Summary Boxes */}
+                            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white dark:bg-gray-900">
+                                <div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700 shadow-sm">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">STOK AWAL</p>
+                                    <p className="text-2xl font-black text-slate-700 dark:text-white tracking-tight">{stockCardData.openingStock} <span className="text-xs font-bold text-slate-400 uppercase">{scSelectedItem.unit}</span></p>
+                                </div>
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 shadow-sm">
+                                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">TOTAL MASUK</p>
+                                    <div className="flex items-center gap-2">
+                                        <ArrowDownLeft size={16} className="text-emerald-500"/>
+                                        <p className="text-2xl font-black text-emerald-600">+{stockCardData.totalIn}</p>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border border-rose-100 dark:border-rose-800/30 shadow-sm">
+                                    <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest mb-1">TOTAL KELUAR</p>
+                                    <div className="flex items-center gap-2">
+                                        <ArrowUpRight size={16} className="text-rose-500"/>
+                                        <p className="text-2xl font-black text-rose-600">-{stockCardData.totalOut}</p>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 shadow-sm">
+                                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">STOK AKHIR</p>
+                                    <p className="text-2xl font-black text-indigo-700 dark:text-indigo-300 tracking-tight">{stockCardData.closingStock} <span className="text-xs font-bold text-indigo-400 uppercase">{scSelectedItem.unit}</span></p>
+                                </div>
+                            </div>
+
+                            {/* Table with Sticky Header and Proper Scroll */}
+                            <div className="flex-1 overflow-auto custom-scrollbar px-6 pb-6">
+                                <table className="w-full text-left border-separate border-spacing-0">
+                                    <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">
+                                        <tr className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 rounded-tl-xl">Tanggal & Waktu</th>
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">ID Transaksi / Ref</th>
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700">Supplier / Client</th>
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Masuk</th>
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center">Keluar</th>
+                                            <th className="p-4 bg-slate-50 dark:bg-gray-800 border-b border-ice-100 dark:border-gray-700 text-center rounded-tr-xl">Saldo Running</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
+                                        {/* Awal Saldo baris virtual */}
+                                        <tr className="bg-slate-50/30 dark:bg-gray-800/30 italic">
+                                            <td className="p-4 text-xs text-slate-400">-</td>
+                                            <td className="p-4 text-xs font-bold text-slate-400">SALDO AWAL PERIODE</td>
+                                            <td className="p-4 text-xs text-slate-400">-</td>
+                                            <td className="p-4 text-center text-slate-400">-</td>
+                                            <td className="p-4 text-center text-slate-400">-</td>
+                                            <td className="p-4 text-center font-bold text-slate-500">{stockCardData.openingStock} {scSelectedItem.unit}</td>
+                                        </tr>
+                                        {stockCardData.rows.length > 0 ? stockCardData.rows.map((row, idx) => (
+                                            <tr key={idx} className="dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                                                <td className="p-4 text-sm font-medium">{new Date(row.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                                                <td className="p-4">
+                                                    <div className="text-xs font-mono font-bold text-slate-700 dark:text-indigo-400">{row.id}</div>
+                                                    <div className="text-[9px] text-slate-400 tracking-wider">REF: {row.ref}</div>
+                                                </td>
+                                                <td className="p-4 text-xs text-slate-600 dark:text-gray-400 truncate max-w-[150px]">{row.supplier}</td>
+                                                <td className="p-4 text-center">
+                                                    {row.in > 0 ? (
+                                                        <span className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-lg text-xs font-bold">
+                                                            +{row.in}
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    {row.out > 0 ? (
+                                                        <span className="px-2 py-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 rounded-lg text-xs font-bold">
+                                                            -{row.out}
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="p-4 text-center font-bold bg-slate-50/20 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300 border-l border-slate-100 dark:border-gray-800">
+                                                    {row.balance} <span className="text-[9px] font-bold uppercase">{scSelectedItem.unit}</span>
+                                                </td>
+                                            </tr>
+                                        )) : (
+                                            <tr>
+                                                <td colSpan={6} className="p-12 text-center text-slate-400 italic text-sm">
+                                                    Tidak ada transaksi ditemukan pada periode ini untuk barang tersebut.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center p-12 space-y-4">
+                            <div className="w-24 h-24 bg-slate-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-slate-200 dark:text-slate-700">
+                                <Package size={48} />
+                            </div>
+                            <div>
+                                <h4 className="text-xl font-bold text-slate-700 dark:text-white">Pilih Barang Dulu Bang</h4>
+                                <p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang yang ingin dianalisa riwayat stoknya.</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                
+                <div className="p-6 border-t border-ice-100 dark:border-gray-700 bg-slate-50 dark:bg-gray-800 flex justify-between items-center">
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div>
+                    </div>
+                    <button 
+                        onClick={() => handleAdvancedExport('single')}
+                        disabled={!scSelectedItem || !stockCardData}
+                        className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                    >
+                        <DownloadCloud size={18} /> Export Laporan (.xlsx)
+                    </button>
                 </div>
             </div>
         </div>
