@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -122,151 +123,143 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       notify("Template terbaru diunduh", "success");
   };
 
-  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const dataBuffer = evt.target?.result as ArrayBuffer;
+        if (!dataBuffer) return;
+        
+        const wb = XLSX.read(dataBuffer, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
 
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
-
-      if (rows.length < 2) {
-        notify("File Excel kosong / tidak valid", "error");
-        setIsImporting(false);
-        return;
-      }
-
-      /* ================= HEADER DETECTION ================= */
-      const keywords = {
-        sku: ['sku', 'kode', 'part', 'pn'],
-        name: ['nama', 'name', 'barang', 'item'],
-        qty: ['qty', 'jumlah', 'quantity'],
-        unit: ['unit', 'uom', 'satuan']
-      };
-
-      let headerRow = 0;
-      let map = { sku: 0, name: 1, qty: 2, unit: 3 };
-
-      for (let i = 0; i < Math.min(10, rows.length); i++) {
-        const r = rows[i].map(c => String(c).toLowerCase());
-        if (keywords.sku.some(k => r.some(c => c.includes(k)))) {
-          headerRow = i;
-          map.sku = r.findIndex(c => keywords.sku.some(k => c.includes(k)));
-          map.name = r.findIndex(c => keywords.name.some(k => c.includes(k)));
-          map.qty = r.findIndex(c => keywords.qty.some(k => c.includes(k)));
-          map.unit = r.findIndex(c => keywords.unit.some(k => c.includes(k)));
-          break;
-        }
-      }
-
-      /* ================= GROUP DATA ================= */
-      const grouped: Record<string, {
-        sku: string;
-        name: string;
-        qty: number;
-        unit: string;
-      }> = {};
-
-      for (let i = headerRow + 1; i < rows.length; i++) {
-        const r = rows[i];
-
-        const sku = String(r[map.sku] || '').trim().toUpperCase();
-        if (!sku) continue;
-
-        let rawQty = r[map.qty];
-        if (typeof rawQty === 'string') rawQty = rawQty.replace(/[^0-9.-]+/g, '');
-        const qty = Number(rawQty);
-        if (isNaN(qty) || qty <= 0) continue;
-
-        const name = String(r[map.name] || sku).trim();
-        const unit = String(r[map.unit] || 'Pcs').trim();
-
-        if (!grouped[sku]) {
-          grouped[sku] = { sku, name, qty: 0, unit };
-        }
-        grouped[sku].qty += qty;
-      }
-
-      /* ================= BUILD CART + AUTO CREATE ================= */
-      const newCart: TransactionItem[] = [...cart];
-      let createdCount = 0;
-      let importedCount = 0;
-
-      for (const sku in grouped) {
-        const row = grouped[sku];
-        let item = items.find(i => i.sku.toUpperCase() === sku);
-
-        // 🔥 AUTO CREATE ITEM
-        if (!item) {
-          item = {
-            id: crypto.randomUUID(),
-            sku,
-            name: row.name || sku,
-            category: 'Imported',
-            price: 0,
-            location: 'UNSET',
-            unit: row.unit || 'Pcs',
-            stock: 0,
-            minLevel: 0,
-            active: true
-          };
-
-          await storageService.saveItem(item);
-          createdCount++;
+        if (rawRows.length === 0) {
+            notify("File Excel kosong!", "warning");
+            return;
         }
 
-        const factor = getConversionFactor(item, row.unit || item.unit);
-        const baseQty = Number((row.qty * factor).toFixed(2));
+        setIsImporting(true);
 
-        if (type === 'outbound' && baseQty > item.stock) {
-          notify(`Stok tidak cukup: ${item.sku}`, 'error');
-          continue;
+        const keywords = {
+            sku: ['sku', 'kode', 'part', 'pn', 'kd', 'no'],
+            name: ['nama', 'name', 'item', 'deskripsi', 'desc', 'keterangan'],
+            qty: ['qty', 'jumlah', 'kuantitas', 'quantity', 'stok', 'pcs', 'jml'],
+            unit: ['unit', 'satuan', 'uom', 'sat', 'pack']
+        };
+
+        let headerIdx = -1;
+        let mapping = { sku: 0, name: 1, qty: 2, unit: 3 }; 
+
+        // Scan header lebih agresif
+        for (let i = 0; i < Math.min(rawRows.length, 15); i++) {
+            const row = rawRows[i].map(c => String(c).toLowerCase().trim());
+            const hasSku = row.some(c => keywords.sku.some(k => c.includes(k)));
+            const hasQty = row.some(c => keywords.qty.some(k => c.includes(k)));
+            
+            if (hasSku || hasQty) {
+                headerIdx = i;
+                const skuCol = row.findIndex(c => keywords.sku.some(k => c.includes(k)));
+                const nameCol = row.findIndex(c => keywords.name.some(k => c.includes(k)));
+                const qtyCol = row.findIndex(c => keywords.qty.some(k => c.includes(k)));
+                const unitCol = row.findIndex(c => keywords.unit.some(k => c.includes(k)));
+                
+                if (skuCol !== -1) mapping.sku = skuCol;
+                if (nameCol !== -1) mapping.name = nameCol;
+                if (qtyCol !== -1) mapping.qty = qtyCol;
+                if (unitCol !== -1) mapping.unit = unitCol;
+                break;
+            }
         }
 
-        const existing = newCart.find(c => c.itemId === item!.id);
-        if (existing) {
-          existing.qty += baseQty;
-          existing.total += baseQty * item.price;
+        const dataStartIdx = headerIdx + 1;
+        const newItemsInCart: TransactionItem[] = [];
+        let createdCount = 0;
+        
+        const currentItems = await storageService.getItems();
+        const sessionItems: InventoryItem[] = [...currentItems];
+
+        for (let i = dataStartIdx; i < rawRows.length; i++) {
+            const row = rawRows[i];
+            if (!row || row.length === 0) continue;
+
+            const sku = String(row[mapping.sku] || '').trim().toUpperCase();
+            if (!sku || sku === "SKU") continue; // Lewati header yang mungkin terbaca lagi
+
+            let rawQtyVal = row[mapping.qty];
+            // Bersihkan format angka jika ada (misal: "1.000" jadi 1000)
+            if (typeof rawQtyVal === 'string') {
+                rawQtyVal = rawQtyVal.replace(/[^0-9.-]+/g, "");
+            }
+            const qty = Number(rawQtyVal);
+            
+            const name = String(row[mapping.name] || sku).trim();
+            const unit = String(row[mapping.unit] || 'Pcs').trim();
+
+            if (isNaN(qty)) continue;
+
+            let inventoryItem = sessionItems.find(item => item.sku.toUpperCase() === sku);
+
+            if (!inventoryItem) {
+                const newId = crypto.randomUUID();
+                const newItem: InventoryItem = {
+                    id: newId,
+                    sku: sku,
+                    name: name || sku,
+                    category: 'Imported',
+                    price: 0,
+                    location: 'UNSET',
+                    unit: unit || 'Pcs',
+                    stock: 0, 
+                    minLevel: 0,
+                    active: true
+                };
+
+                try {
+                    await storageService.saveItem(newItem);
+                    inventoryItem = newItem;
+                    sessionItems.push(newItem);
+                    createdCount++;
+                } catch (err) {
+                    continue; 
+                }
+            }
+
+            if (inventoryItem) {
+                newItemsInCart.push({
+                    itemId: inventoryItem.id,
+                    sku: inventoryItem.sku,
+                    name: inventoryItem.name,
+                    qty: qty,
+                    uom: unit || inventoryItem.unit,
+                    unitPrice: inventoryItem.price || 0,
+                    total: qty * (inventoryItem.price || 0)
+                });
+            }
+        }
+
+        if (newItemsInCart.length > 0) {
+            setCart(prev => [...prev, ...newItemsInCart]);
+            onSuccess();
+            let msg = `${newItemsInCart.length} item masuk batch.`;
+            if (createdCount > 0) msg += ` (${createdCount} barang baru terdaftar)`;
+            notify(msg, 'success');
         } else {
-          newCart.push({
-            itemId: item.id,
-            sku: item.sku,
-            name: item.name,
-            qty: baseQty,
-            uom: row.unit || item.unit,
-            unitPrice: item.price || 0,
-            total: baseQty * (item.price || 0)
-          });
+            notify("Data tidak ditemukan! Gunakan format: SKU, Nama, Qty, Unit.", "error");
         }
-
-        importedCount++;
-      }
-
-      if (importedCount === 0) {
-        notify("Tidak ada data valid untuk di-import", "error");
+      } catch (err) {
+        notify("Gagal membaca Excel!", "error");
+      } finally {
         setIsImporting(false);
-        return;
       }
-
-      setCart(newCart);
-
-      // Refresh master items list so the new cart items reference valid IDs if created
-      onSuccess();
-
-      let msg = `${importedCount} item berhasil di-import`;
-      if (createdCount > 0) msg += ` (${createdCount} item baru dibuat)`;
-      notify(msg, 'success');
-
-    } catch (err) {
-      notify("Gagal membaca file Excel", "error");
-    } finally {
-      setIsImporting(false);
-      e.currentTarget.value = '';
-    }
+    };
+    reader.readAsArrayBuffer(file as any);
+    e.currentTarget.value = '';
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -518,4 +511,4 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       </div>
     </div>
   );
-};
+};  MASUKAN LOGIKA BULK IMPORT NYA KESINI BANG 
