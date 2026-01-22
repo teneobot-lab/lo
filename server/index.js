@@ -190,17 +190,27 @@ app.get('/api/reject_master', async (req, res) => {
 
 app.post('/api/reject_master', async (req, res) => {
     const items = req.body;
+    const conn = await pool.getConnection();
     try {
-        await query('DELETE FROM reject_master');
+        await conn.beginTransaction();
+        await conn.execute('DELETE FROM reject_master');
         for (let i of items) {
-            await query(
+            // Normalisasi Tanggal jika formatnya ISO
+            const lastUpdated = i.lastUpdated ? i.lastUpdated.replace('T', ' ').slice(0, 19) : null;
+            await conn.execute(
                 `INSERT INTO reject_master (id, sku, name, base_unit, unit2, ratio2, op2, unit3, ratio3, op3, last_updated)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [i.id, i.sku, i.name, i.baseUnit, i.unit2 || null, i.ratio2 || null, i.op2 || 'multiply', i.unit3 || null, i.ratio3 || null, i.op3 || 'multiply', i.lastUpdated]
+                [i.id, i.sku, i.name, i.baseUnit, i.unit2 || null, i.ratio2 || null, i.op2 || 'multiply', i.unit3 || null, i.ratio3 || null, i.op3 || 'multiply', lastUpdated]
             );
         }
+        await conn.commit();
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) {
+        await conn.rollback();
+        res.status(500).json({ error: e.message });
+    } finally {
+        conn.release();
+    }
 });
 
 app.get('/api/reject_logs', async (req, res) => {
