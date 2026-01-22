@@ -23,10 +23,12 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   // State untuk Progress Import & Delete
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [actionProgress, setActionProgress] = useState({ current: 0, total: 0 });
+  // Fix: Explicitly type actionProgress state to avoid "unknown" in functional updates
+  const [actionProgress, setActionProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   // State untuk Multi-Select
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Fix: Explicitly type selectedIds to ensure Set operations remain typed
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>());
 
   const categories = useMemo(() => {
     const cats = new Set(items.map(i => i.category));
@@ -53,7 +55,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   // Handlers for selection
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredItems.length) {
-      setSelectedIds(new Set());
+      setSelectedIds(new Set<string>());
     } else {
       setSelectedIds(new Set(filteredItems.map(i => i.id)));
     }
@@ -90,11 +92,13 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       const chunkSize = 5;
       for (let i = 0; i < idsArray.length; i += chunkSize) {
         const chunk = idsArray.slice(i, i + chunkSize);
-        await Promise.all(chunk.map(id => storageService.deleteItem(id)));
-        setActionProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, idsArray.length) }));
+        // Fix: Explicitly type id as string to avoid "unknown" argument error
+        await Promise.all(chunk.map((id: string) => storageService.deleteItem(id)));
+        // Fix: Explicitly type prev in functional update to avoid "unknown" error
+        setActionProgress((prev: { current: number; total: number }) => ({ ...prev, current: Math.min(i + chunkSize, idsArray.length) }));
       }
       
-      setSelectedIds(new Set());
+      setSelectedIds(new Set<string>());
       notify(`${idsArray.length} item berhasil dihapus secara massal.`, 'success');
       onRefresh();
     } catch (e) {
@@ -185,7 +189,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                 return storageService.saveItem(newItem);
             }));
 
-            setActionProgress(prev => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
+            // Fix: Explicitly type prev in functional update to avoid "unknown" error
+            setActionProgress((prev: { current: number; total: number }) => ({ ...prev, current: Math.min(i + chunkSize, validRows.length) }));
         }
 
         notify(`${validRows.length} item berhasil di-import/update.`, 'success');

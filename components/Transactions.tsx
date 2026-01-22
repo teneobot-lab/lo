@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
@@ -127,8 +128,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        // Fix: Explicitly cast result to ensure it is treated as a string/buffer for XLSX
+        const bstr = (evt.target as FileReader).result;
+        // Fix: Cast bstr to any to avoid "unknown" to "Blob" overload mismatch in XLSX.read
+        const wb = XLSX.read(bstr as any, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws) as any[];
@@ -202,7 +205,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
         setCart(prev => [...prev, ...newItemsInCart]);
         notify(`${uniqueSkus.length} tipe barang dimuat ke Cart.`, 'success');
-        // Fix: Changed onRefresh() to onSuccess() as defined in the TransactionsProps interface.
         onSuccess();
       } catch (err) {
         notify("Gagal memproses file Excel", "error");
@@ -235,10 +237,15 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const handleSubmit = async () => {
     if (cart.length === 0) return;
     
+    // Format tanggal agar ramah MySQL: YYYY-MM-DD HH:MM:SS
+    const now = new Date();
+    const timePart = now.toTimeString().split(' ')[0];
+    const mysqlDate = `${customDate} ${timePart}`;
+
     const transaction: Transaction = {
       id: storageService.generateTransactionId(),
       type,
-      date: new Date(customDate).toISOString(),
+      date: mysqlDate, // Gunakan format MySQL
       items: cart.map(it => ({
           ...it,
           qty: isNaN(it.qty) ? 0 : it.qty,

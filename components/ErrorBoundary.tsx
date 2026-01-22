@@ -1,3 +1,4 @@
+
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -10,17 +11,18 @@ interface State {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary class definition to ensure 'props' is correctly recognized 
-// by TypeScript by explicitly extending React.Component and using a constructor.
-export class ErrorBoundary extends React.Component<Props, State> {
-  // Define initial state for the error boundary in the constructor to ensure 
-  // correct inheritance and property recognition by the TypeScript compiler.
+// Fix: Explicitly extend Component from react and use property initializers 
+// to ensure state and props are correctly recognized by the TypeScript compiler.
+export class ErrorBoundary extends Component<Props, State> {
+  // Fix: Move state initialization to property for better compatibility with strict TS.
+  public state: State = {
+    hasError: false,
+    error: null,
+  };
+
+  // The constructor is optional when using property initializers.
   constructor(props: Props) {
     super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
   }
 
   public static getDerivedStateFromError(error: Error): State {
