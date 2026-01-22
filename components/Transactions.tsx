@@ -20,6 +20,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [itemSearch, setItemSearch] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
@@ -53,9 +54,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
       i.sku.toLowerCase().includes(itemSearch.toLowerCase())
     )
-  );
+  ).slice(0, 10);
 
-  // Helper untuk mendapatkan rasio konversi berdasarkan UOM yang dipilih
   const getConversionFactor = (item: InventoryItem, uom: string) => {
       if (!item || uom === item.unit) return 1;
       if (item.unit2 && uom === item.unit2 && item.ratio2) {
@@ -72,7 +72,24 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setItemSearch(item.name);
       setSelectedUOM(item.unit);
       setShowDropdown(false);
+      setActiveIndex(-1);
       setTimeout(() => qtyInputRef.current?.focus(), 100);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+      if (!showDropdown || filteredItems.length === 0) return;
+      if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setActiveIndex(prev => (prev + 1) % filteredItems.length);
+      } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setActiveIndex(prev => (prev - 1 + filteredItems.length) % filteredItems.length);
+      } else if (e.key === 'Enter' && activeIndex >= 0) {
+          e.preventDefault();
+          handleSelectItem(filteredItems[activeIndex]);
+      } else if (e.key === 'Escape') {
+          setShowDropdown(false);
+      }
   };
 
   const addToCart = () => {
@@ -86,7 +103,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       return;
     }
     
-    // Simpan Base Price agar perhitungan total tetap konsisten di DB
     const basePrice = selectedItemData.price;
     const totalRow = parseFloat((actualQtyToDeduct * basePrice).toFixed(2));
     
@@ -94,7 +110,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       itemId: selectedItemData.id,
       sku: selectedItemData.sku,
       name: selectedItemData.name,
-      qty: actualQtyToDeduct, // Disimpan dalam Base Unit (Pcs/Btl) agar stok otomatis
+      qty: actualQtyToDeduct,
       uom: selectedUOM,
       unitPrice: basePrice,
       total: totalRow
@@ -104,6 +120,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     setSelectedItemId('');
     setItemSearch('');
     setSelectedUOM('');
+    setActiveIndex(-1);
     notify('Item ditambahkan ke batch', 'info');
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
@@ -243,7 +260,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     } catch (e) { notify("Gagal menyimpan transaksi", 'error'); }
   };
 
-  // Helper untuk menampilkan Qty yang sesuai dengan UOM di Cart UI
   const getDisplayQty = (tItem: TransactionItem) => {
       const master = items.find(i => i.id === tItem.itemId);
       if (!master) return tItem.qty;
@@ -276,14 +292,14 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                         type="text"
                         className="w-full pl-4 pr-4 py-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                         value={itemSearch}
-                        onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); }}
+                        onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); setActiveIndex(-1); }}
                         onFocus={() => setShowDropdown(true)}
+                        onKeyDown={handleSearchKeyDown}
                         placeholder="Cari Nama/SKU..."
                       />
                       {showDropdown && itemSearch && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto border border-ice-100 dark:border-gray-700">
-                            {filteredItems.map(item => (
-                                <div key={item.id} onClick={() => handleSelectItem(item)} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b border-ice-50 dark:border-gray-700 last:border-0">
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto border border-ice-100 dark:border-gray-700">{filteredItems.map((item, idx) => (
+                                <div key={item.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => handleSelectItem(item)} className={`p-3 cursor-pointer border-b last:border-0 dark:border-gray-700 transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-indigo-50/50 dark:hover:bg-gray-700'}`}>
                                     <p className="font-bold text-sm dark:text-white">{item.name}</p>
                                     <p className="text-xs text-slate-400">{item.sku} | Stok: {item.stock} {item.unit}</p>
                                 </div>

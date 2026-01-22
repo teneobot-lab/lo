@@ -19,14 +19,14 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-
+  
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [scStartDate, setScStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [scEndDate, setScEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [scSearchItem, setScSearchItem] = useState('');
   const [scSelectedItem, setScSelectedItem] = useState<InventoryItem | null>(null);
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +39,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper untuk mendapatkan rasio konversi berdasarkan UOM
   const getConversionFactor = (item: InventoryItem, uom: string) => {
       if (!item || uom === item.unit) return 1;
       if (item.unit2 && uom === item.unit2 && item.ratio2) {
@@ -106,15 +105,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return calculateItemMovement(scSelectedItem, scStartDate, scEndDate);
   }, [scSelectedItem, scStartDate, scEndDate, transactions]);
 
-  const handleAdvancedExport = (mode: 'single' | 'all') => {
-      if (mode === 'single' && scSelectedItem && stockCardData) {
-          const exportData: any[][] = [['LAPORAN KARTU STOK'], [`Item: ${scSelectedItem.name}`], [`Periode: ${scStartDate} s/d ${scEndDate}`], [], ['Tanggal', 'ID Transaksi', 'Tipe', 'Masuk', 'Keluar', 'Saldo', 'Unit']];
-          exportData.push(['-', 'STOK AWAL', '-', '-', '-', stockCardData.openingStock, scSelectedItem.unit]);
-          stockCardData.rows.forEach(r => exportData.push([new Date(r.date).toLocaleString(), r.id, r.type.toUpperCase(), r.in || '-', r.out || '-', r.balance, r.uom]));
-          const ws = XLSX.utils.aoa_to_sheet(exportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok"); XLSX.writeFile(wb, `KartuStok_${scSelectedItem.sku}.xlsx`);
-      }
-  };
-
   const handleDelete = async (id: string) => {
       if (window.confirm("Hapus transaksi ini?")) {
           try { await storageService.deleteTransaction(id); onRefresh(); } catch (err) { alert("Error deleting"); }
@@ -126,6 +116,29 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
      if (editingTransaction) {
          try { await storageService.updateTransaction(editingTransaction, updatedTx); setIsEditModalOpen(false); onRefresh(); } catch (err) { alert("Error updating"); }
      }
+  };
+
+  const selectSCItem = (it: InventoryItem) => {
+      setScSelectedItem(it);
+      setScSearchItem(it.name);
+      setIsAutocompleteOpen(false);
+      setActiveIndex(-1);
+  };
+
+  const handleSCKeyDown = (e: React.KeyboardEvent) => {
+      if (!isAutocompleteOpen || filteredItemsForSC.length === 0) return;
+      if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setActiveIndex(prev => (prev + 1) % filteredItemsForSC.length);
+      } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setActiveIndex(prev => (prev - 1 + filteredItemsForSC.length) % filteredItemsForSC.length);
+      } else if (e.key === 'Enter' && activeIndex >= 0) {
+          e.preventDefault();
+          selectSCItem(filteredItemsForSC[activeIndex]);
+      } else if (e.key === 'Escape') {
+          setIsAutocompleteOpen(false);
+      }
   };
 
   return (
@@ -176,18 +189,18 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       </div>
 
       {isStockCardOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20">
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-2"><LineChart /> Analisa Kartu Stok</h3><button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white rounded-full"><X /></button></div>
                 <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
-                    <div className="md:col-span-2 relative" ref={autocompleteRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label><input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white" placeholder="Nama..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} onFocus={() => setIsAutocompleteOpen(true)} />
-                        {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-50 overflow-hidden">{filteredItemsForSC.map(it => (<div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b dark:text-white"><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></div>))}</div>)}
+                    <div className="md:col-span-2 relative" ref={autocompleteRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Cari Barang</label><input type="text" className="w-full p-2.5 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Nama..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} onFocus={() => setIsAutocompleteOpen(true)} onKeyDown={handleSCKeyDown} />
+                        {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">{filteredItemsForSC.map((it, idx) => (<div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-3 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></div>))}</div>)}
                     </div>
                     <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
                     <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label><input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:text-white" /></div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900">
-                    {scSelectedItem && stockCardData && (<div className="space-y-6"><div className="grid grid-cols-4 gap-4"><div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border text-center"><p className="text-[10px] font-bold text-slate-400">STOK AWAL</p><p className="text-xl font-black dark:text-white">{stockCardData.openingStock} {scSelectedItem.unit}</p></div><div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-emerald-600">MASUK</p><p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p></div><div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-rose-600">KELUAR</p><p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p></div><div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border text-center"><p className="text-[10px] font-bold text-indigo-600">STOK AKHIR</p><p className="text-xl font-black text-indigo-700">{stockCardData.closingStock} {scSelectedItem.unit}</p></div></div><table className="w-full text-left text-sm"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase"><tr><th className="p-3">Tanggal</th><th className="p-3">Ref</th><th className="p-3 text-center">In</th><th className="p-3 text-center">Out</th><th className="p-3 text-center">Saldo</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-gray-700">{stockCardData.rows.map((row, idx) => (<tr key={idx} className="dark:text-gray-300"><td className="p-3">{new Date(row.date).toLocaleString()}</td><td className="p-3 text-xs">{row.id}</td><td className="p-3 text-center text-emerald-600 font-bold">{row.in || '-'}</td><td className="p-3 text-center text-rose-600 font-bold">{row.out || '-'}</td><td className="p-3 text-center font-bold bg-slate-50/50 dark:bg-gray-800/50">{row.balance} {row.uom}</td></tr>))}</tbody></table></div>)}
+                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900 custom-scrollbar">
+                    {scSelectedItem && stockCardData && (<div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300"><div className="grid grid-cols-4 gap-4"><div className="p-4 bg-slate-50 dark:bg-gray-800 rounded-2xl border text-center"><p className="text-[10px] font-bold text-slate-400">STOK AWAL</p><p className="text-xl font-black dark:text-white">{stockCardData.openingStock} {scSelectedItem.unit}</p></div><div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border text-center border-emerald-100/30"><p className="text-[10px] font-bold text-emerald-600">MASUK</p><p className="text-xl font-black text-emerald-600">+{stockCardData.totalIn}</p></div><div className="p-4 bg-rose-50 dark:bg-rose-900/20 rounded-2xl border text-center border-rose-100/30"><p className="text-[10px] font-bold text-rose-600">KELUAR</p><p className="text-xl font-black text-rose-600">-{stockCardData.totalOut}</p></div><div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border text-center border-indigo-100/30"><p className="text-[10px] font-bold text-indigo-600">STOK AKHIR</p><p className="text-xl font-black text-indigo-700">{stockCardData.closingStock} {scSelectedItem.unit}</p></div></div><table className="w-full text-left text-sm"><thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase sticky top-0"><tr><th className="p-4">Tanggal</th><th className="p-4">ID Transaksi</th><th className="p-4 text-center">Masuk</th><th className="p-4 text-center">Keluar</th><th className="p-4 text-center">Saldo Running</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-gray-700">{stockCardData.rows.map((row, idx) => (<tr key={idx} className="dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30"><td className="p-4">{new Date(row.date).toLocaleString('id-ID')}</td><td className="p-4 text-xs font-mono">{row.id}</td><td className="p-4 text-center text-emerald-600 font-bold">{row.in || '-'}</td><td className="p-4 text-center text-rose-600 font-bold">{row.out || '-'}</td><td className="p-4 text-center font-bold bg-slate-50/30 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300">{row.balance} {scSelectedItem.unit}</td></tr>))}</tbody></table></div>)}
                 </div>
             </div>
         </div>
@@ -203,7 +216,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 const TransactionEditModal = ({ transaction, items, onClose, onSave }: { transaction: Transaction, items: InventoryItem[], onClose: () => void, onSave: (t: Transaction) => void }) => {
     const [data, setData] = useState<Transaction>(JSON.parse(JSON.stringify(transaction)));
 
-    // Helper untuk modal edit
     const getConversionFactor = (item: InventoryItem, uom: string) => {
         if (!item || uom === item.unit) return 1;
         if (item.unit2 && uom === item.unit2 && item.ratio2) return item.op2 === 'divide' ? (1 / item.ratio2) : item.ratio2;

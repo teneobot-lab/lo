@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
 import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet, Download, Layers } from 'lucide-react';
@@ -29,12 +30,10 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Helper untuk format tanggal MySQL (YYYY-MM-DD HH:mm:ss)
   const formatMySQLDateTime = (date: Date) => {
       return date.toISOString().slice(0, 19).replace('T', ' ');
   };
 
-  // --- Master Data Handlers ---
   const handleSaveMasterItem = (item: RejectItem) => {
     let newItems = [...rejectMasterData];
     const idx = newItems.findIndex(i => i.id === item.id);
@@ -243,8 +242,6 @@ const RejectLogsList: React.FC<{ logs: RejectLog[], onEdit: (l: RejectLog) => vo
     </div>
 );
 
-// --- Modals ---
-
 const MasterItemModal: React.FC<{ item: RejectItem | null, onClose: () => void, onSave: (i: RejectItem) => void }> = ({ item, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<RejectItem>>(item || { sku: '', name: '', baseUnit: 'Pcs', op2: 'multiply', op3: 'multiply' });
 
@@ -297,6 +294,7 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
     const [reason, setReason] = useState('');
     const [conversionRatio, setConversionRatio] = useState(1);
     const [conversionOp, setConversionOp] = useState<'multiply'|'divide'>('multiply');
+    const [activeIndex, setActiveIndex] = useState(-1);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const qtyInputRef = useRef<HTMLInputElement>(null);
 
@@ -305,7 +303,7 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
 
     useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) { setShowDropdown(false); } }; document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside); }, []);
 
-    const handleSelectItem = (item: RejectItem) => { setSelectedItemId(item.id); setItemSearch(item.name); setShowDropdown(false); handleUnitChange(item.baseUnit, item); setSelectedUnit(item.baseUnit); setTimeout(() => qtyInputRef.current?.focus(), 100); };
+    const handleSelectItem = (item: RejectItem) => { setSelectedItemId(item.id); setItemSearch(item.name); setShowDropdown(false); setActiveIndex(-1); handleUnitChange(item.baseUnit, item); setSelectedUnit(item.baseUnit); setTimeout(() => qtyInputRef.current?.focus(), 100); };
     const handleUnitChange = (unitName: string, itemOverride?: RejectItem) => { const item = itemOverride || selectedItem; setSelectedUnit(unitName); if (!item) return; if (item.baseUnit === unitName) { setConversionRatio(1); setConversionOp('divide'); } else if (item.unit2 === unitName) { setConversionRatio(item.ratio2 || 1); setConversionOp(item.op2 || 'divide'); } else if (item.unit3 === unitName) { setConversionRatio(item.ratio3 || 1); setConversionOp(item.op3 || 'divide'); } };
     const calculateBaseQuantity = (qty: number, ratio: number, op: 'multiply' | 'divide') => { if (!ratio || ratio === 0) return 0; let result = 0; if (op === 'multiply') result = qty * ratio; else result = qty / ratio; return parseFloat(result.toFixed(1)); };
 
@@ -314,34 +312,35 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
     
     const handleSave = () => { 
         const now = new Date();
-        // MySQL DATETIME: YYYY-MM-DD HH:mm:ss
         const mysqlTimestamp = now.toISOString().slice(0, 19).replace('T', ' ');
-        
-        onSave({ 
-            id: log?.id || `RJ-${Date.now()}`, 
-            date, 
-            items, 
-            notes, 
-            timestamp: mysqlTimestamp 
-        }); 
+        onSave({ id: log?.id || `RJ-${Date.now()}`, date, items, notes, timestamp: mysqlTimestamp }); 
     };
 
     const handleCopyToClipboard = () => { 
         try { 
-            // Format ddmmyy dari date (YYYY-MM-DD)
             const [y, m, d] = date.split('-');
             const ddmmyy = `${d}${m}${y.slice(2)}`;
-            
             let text = `Data Reject KKL ${ddmmyy}\n`; 
-            items.forEach(item => { 
-                text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'Sesuai Fisik'})\n`; 
-            }); 
-            
+            items.forEach(item => { text += `• ${item.itemName} - ${item.quantity} ${item.unit} (${item.reason || 'Sesuai Fisik'})\n`; }); 
             navigator.clipboard.writeText(text); 
             alert("Format teks berhasil disalin ke clipboard!"); 
-        } catch (e) { 
-            alert("Gagal menyalin teks."); 
-        } 
+        } catch (e) { alert("Gagal menyalin teks."); } 
+    };
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+        if (!showDropdown || filteredMaster.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActiveIndex(prev => (prev + 1) % filteredMaster.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIndex(prev => (prev - 1 + filteredMaster.length) % filteredMaster.length);
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            handleSelectItem(filteredMaster[activeIndex]);
+        } else if (e.key === 'Escape') {
+            setShowDropdown(false);
+        }
     };
 
     return (
@@ -351,7 +350,7 @@ const RejectLogModal: React.FC<{ log: RejectLog | null, masterData: RejectItem[]
                 <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tanggal Kejadian</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Catatan Umum</label><input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" placeholder="Keterangan tambahan..." /></div></div>
                     <div className="bg-slate-50 dark:bg-gray-950 p-6 rounded-2xl border border-ice-100 dark:border-gray-800 space-y-6">
-                        <div className="flex flex-col md:flex-row gap-4"><div className="flex-1 relative" ref={dropdownRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Cari Produk Master</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Ketik Nama atau SKU..." value={itemSearch} onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); setSelectedItemId(''); }} onFocus={() => setShowDropdown(true)} /></div>{showDropdown && itemSearch && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-ice-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">{filteredMaster.length > 0 ? filteredMaster.map(m => (<div key={m.id} onClick={() => handleSelectItem(m)} className="p-3 hover:bg-ice-50 dark:hover:bg-gray-700 cursor-pointer border-b border-ice-50 dark:border-gray-700 last:border-0"><div className="font-bold text-sm text-slate-800 dark:text-white">{m.name}</div><div className="text-[10px] text-slate-500 font-mono">{m.sku}</div></div>)) : <div className="p-4 text-xs text-slate-400 italic">Produk tidak terdaftar di Master Reject</div>}</div>)}</div><div className="w-full md:w-32"><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Satuan</label><select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white appearance-none" disabled={!selectedItem}>{selectedItem && (<><option value={selectedItem.baseUnit}>{selectedItem.baseUnit}</option>{selectedItem.unit2 && <option value={selectedItem.unit2}>{selectedItem.unit2}</option>}{selectedItem.unit3 && <option value={selectedItem.unit3}>{selectedItem.unit3}</option>}</>)}</select></div><div className="w-full md:w-32"><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Qty</label><input ref={qtyInputRef} type="number" step="any" value={quantityInput} onChange={e => setQuantityInput(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white font-bold" placeholder="0" onKeyDown={e => e.key === 'Enter' && handleAddItem()} /></div></div>
+                        <div className="flex flex-col md:flex-row gap-4"><div className="flex-1 relative" ref={dropdownRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Cari Produk Master</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Ketik Nama atau SKU..." value={itemSearch} onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); setActiveIndex(-1); }} onFocus={() => setShowDropdown(true)} onKeyDown={handleSearchKeyDown} /></div>{showDropdown && itemSearch && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-ice-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">{filteredMaster.length > 0 ? filteredMaster.map((m, idx) => (<div key={m.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => handleSelectItem(m)} className={`p-3 cursor-pointer border-b last:border-0 dark:border-gray-700 transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-ice-50/50 dark:hover:bg-gray-700'}`}><div className="font-bold text-sm text-slate-800 dark:text-white">{m.name}</div><div className="text-[10px] text-slate-500 font-mono">{m.sku}</div></div>)) : <div className="p-4 text-xs text-slate-400 italic">Produk tidak terdaftar di Master Reject</div>}</div>)}</div><div className="w-full md:w-32"><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Satuan</label><select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white appearance-none" disabled={!selectedItem}>{selectedItem && (<><option value={selectedItem.baseUnit}>{selectedItem.baseUnit}</option>{selectedItem.unit2 && <option value={selectedItem.unit2}>{selectedItem.unit2}</option>}{selectedItem.unit3 && <option value={selectedItem.unit3}>{selectedItem.unit3}</option>}</>)}</select></div><div className="w-full md:w-32"><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Qty</label><input ref={qtyInputRef} type="number" step="any" value={quantityInput} onChange={e => setQuantityInput(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white font-bold" placeholder="0" onKeyDown={e => e.key === 'Enter' && handleAddItem()} /></div></div>
                         <div className="flex flex-col md:flex-row gap-4 items-end"><div className="flex-1 w-full"><label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Alasan Reject</label><input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-rose-300" placeholder="Contoh: Expired, Segel Rusak, Penyok..." onKeyDown={e => e.key === 'Enter' && handleAddItem()} /></div><button onClick={handleAddItem} disabled={!selectedItem || !quantityInput} className="px-10 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2"><Plus size={18} /> Tambah</button></div>
                     </div>
                     <div className="border border-ice-100 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm"><div className="flex justify-between items-center bg-slate-50 dark:bg-gray-800 px-6 py-3 border-b border-ice-100 dark:border-gray-800"><h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Package size={14}/> Daftar Item Terpilih</h4><button onClick={handleCopyToClipboard} disabled={items.length === 0} className="text-[10px] font-bold flex items-center gap-1.5 text-slate-600 dark:text-gray-300 hover:text-indigo-600 transition-all"><Copy size={14} /> Salin Format Teks</button></div><table className="w-full text-left"><thead className="bg-slate-50 dark:bg-gray-800 border-b border-ice-50 dark:border-gray-800 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><tr><th className="p-4">Item Details</th><th className="p-4 text-center">Qty Input</th><th className="p-4 text-center">Konversi Dasar</th><th className="p-4">Alasan</th><th className="p-4 w-10"></th></tr></thead><tbody className="divide-y divide-ice-50 dark:divide-gray-800">{items.length > 0 ? items.map((item, idx) => (<tr key={idx} className="hover:bg-slate-50 dark:hover:bg-gray-800/50"><td className="p-4"><div className="font-bold text-sm text-slate-800 dark:text-white">{item.itemName}</div><div className="text-[10px] font-mono text-slate-400">{item.sku}</div></td><td className="p-4 text-center"><span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold">{item.quantity} {item.unit}</span></td><td className="p-4 text-center"><span className="text-xs font-bold text-slate-700 dark:text-gray-200">{item.totalBaseQuantity} {item.baseUnit}</span></td><td className="p-4 text-sm text-rose-500 italic">{item.reason || '-'}</td><td className="p-4"><button onClick={() => handleRemoveItem(idx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><X size={16}/></button></td></tr>)) : <tr><td colSpan={5} className="p-12 text-center text-xs text-slate-400 italic">Belum ada item yang ditambahkan ke log ini.</td></tr>}</tbody></table></div>
