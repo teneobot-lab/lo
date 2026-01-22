@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, ArrowDownCircle, ArrowUpCircle, Loader2 } from 'lucide-react';
+import { Plus, Trash, ShoppingCart, Upload, Search, AlertCircle, FileSpreadsheet, Calendar, Download, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon } from 'lucide-react';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -31,7 +31,8 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [supplier, setSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
-  const [documentImage, setDocumentImage] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [documentImages, setDocumentImages] = useState<string[]>([]); // Multi-photo state
 
   const [isImporting, setIsImporting] = useState(false);
 
@@ -108,7 +109,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     setCart(cart.filter((_, i) => i !== index));
   };
 
-  // --- LOGIKA BULK IMPORT BARU ---
+  // --- LOGIKA TEMPLATE & IMPORT ---
+  const downloadTransactionTemplate = () => {
+      const template = [
+          { SKU: 'SKU-001', 'Nama Barang': 'Contoh Barang A', QTY: 10, Unit: 'Pcs' },
+          { SKU: 'SKU-002', 'Nama Barang': 'Contoh Barang B', QTY: 5, Unit: 'Box' }
+      ];
+      const ws = XLSX.utils.json_to_sheet(template);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template_Transaksi");
+      XLSX.writeFile(wb, "Nexus_Transaction_Template.xlsx");
+      notify("Template diunduh", "success");
+  };
+
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -128,34 +141,30 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         }
 
         setIsImporting(true);
-
-        // 1. Aggregasi Data berdasarkan SKU (Case Insensitive)
-        const aggregated: Record<string, { sku: string, name: string, qty: number, price: number }> = {};
+        const aggregated: Record<string, { sku: string, name: string, qty: number, unit: string }> = {};
         
         data.forEach(row => {
             const rawSku = String(row.SKU || row.sku || '').trim();
             if (!rawSku) return;
             
             const sku = rawSku.toUpperCase();
-            const qty = Number(row.Qty || row.qty || row.Jumlah || 0);
-            const name = String(row.Name || row.Nama || row.name || sku);
-            const price = Number(row.Price || row.Harga || row.price || 0);
+            const qty = Number(row.QTY || row.Qty || row.qty || row.Jumlah || 0);
+            const name = String(row['Nama Barang'] || row.Name || row.name || sku);
+            const unit = String(row.Unit || row.unit || 'Pcs');
 
             if (aggregated[sku]) {
                 aggregated[sku].qty += qty;
             } else {
-                aggregated[sku] = { sku, name, qty, price };
+                aggregated[sku] = { sku, name, qty, unit };
             }
         });
 
         const newItemsInCart: TransactionItem[] = [];
         const uniqueSkus = Object.values(aggregated);
 
-        // 2. Loop & Sync dengan Inventory
         for (const item of uniqueSkus) {
             let inventoryItem = items.find(i => i.sku.toUpperCase() === item.sku);
 
-            // Jika item belum ada di inventory, buat otomatis
             if (!inventoryItem) {
                 const newId = crypto.randomUUID();
                 const newItem: InventoryItem = {
@@ -163,10 +172,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     sku: item.sku,
                     name: item.name,
                     category: 'Imported',
-                    price: item.price || 0,
+                    price: 0,
                     location: 'A-01',
-                    unit: 'Pcs',
-                    stock: 0, // Awal 0, nanti ditambah oleh transaksi inbound/outbound
+                    unit: item.unit,
+                    stock: 0,
                     minLevel: 0,
                     active: true
                 };
@@ -174,32 +183,48 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 inventoryItem = newItem;
             }
 
-            const conversionRatio = 1; // Default Pcs jika import massal
-            const unitPrice = inventoryItem.price || item.price;
-
+            const unitPrice = inventoryItem.price || 0;
             newItemsInCart.push({
                 itemId: inventoryItem.id,
                 sku: inventoryItem.sku,
                 name: inventoryItem.name,
-                qty: item.qty, // Base unit
-                uom: inventoryItem.unit,
+                qty: item.qty,
+                uom: item.unit,
                 unitPrice: unitPrice,
                 total: item.qty * unitPrice
             });
         }
 
         setCart(prev => [...prev, ...newItemsInCart]);
-        notify(`${uniqueSkus.length} tipe barang berhasil dimuat ke Cart.`, 'success');
-        onSuccess(); // Refresh inventory list agar SKU baru terdeteksi
+        notify(`${uniqueSkus.length} tipe barang dimuat.`, 'success');
+        onSuccess();
       } catch (err) {
-        console.error(err);
-        notify("Gagal memproses file Excel", "error");
+        notify("Gagal memproses Excel", "error");
       } finally {
         setIsImporting(false);
       }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
+  };
+
+  // --- MULTI PHOTO HANDLER ---
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files) return;
+
+      Array.from(files).forEach(file => {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+              const base64 = evt.target?.result as string;
+              setDocumentImages(prev => [...prev, base64]);
+          };
+          reader.readAsDataURL(file);
+      });
+  };
+
+  const removePhoto = (index: number) => {
+      setDocumentImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
@@ -212,16 +237,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       items: cart,
       totalValue: cart.reduce((acc, curr) => acc + curr.total, 0),
       userId: user.id,
-      supplier, poNumber, deliveryNote,
-      documents: documentImage ? [documentImage] : []
+      supplier, 
+      poNumber, 
+      deliveryNote,
+      notes, // Field keterangan
+      documents: documentImages // Simpan array foto
     };
 
     try {
         await storageService.saveTransaction(transaction);
         onSuccess();
         setCart([]);
-        setSupplier(''); setPoNumber(''); setDeliveryNote('');
-        setDocumentImage(null);
+        setSupplier(''); setPoNumber(''); setDeliveryNote(''); setNotes('');
+        setDocumentImages([]);
         notify(`Transaksi ${transaction.id} berhasil`, 'success');
     } catch (e) { notify("Gagal menyimpan transaksi", 'error'); }
   };
@@ -232,34 +260,34 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
           
           <div className="grid grid-cols-2 gap-6 mb-8">
-            <button onClick={() => { setType('inbound'); setCart([]); }} className={`rounded-2xl p-6 flex flex-col items-center gap-3 transition-all border ${type === 'inbound' ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-transparent text-slate-400'}`}>
+            <button onClick={() => { setType('inbound'); setCart([]); }} className={`rounded-2xl p-6 flex flex-col items-center gap-3 transition-all border ${type === 'inbound' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>
                 <ArrowDownCircle size={32} />
-                <span className="text-sm font-bold uppercase">Masuk (Inbound)</span>
+                <span className="text-sm font-bold uppercase tracking-widest">Masuk (Inbound)</span>
             </button>
-            <button onClick={() => { setType('outbound'); setCart([]); }} className={`rounded-2xl p-6 flex flex-col items-center gap-3 transition-all border ${type === 'outbound' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-transparent text-slate-400'}`}>
+            <button onClick={() => { setType('outbound'); setCart([]); }} className={`rounded-2xl p-6 flex flex-col items-center gap-3 transition-all border ${type === 'outbound' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>
                 <ArrowUpCircle size={32} />
-                <span className="text-sm font-bold uppercase">Keluar (Outbound)</span>
+                <span className="text-sm font-bold uppercase tracking-widest">Keluar (Outbound)</span>
             </button>
           </div>
 
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-gray-900 rounded-2xl">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-gray-900/50 rounded-2xl border border-ice-100 dark:border-gray-700">
                 <div className="flex-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Pilih Barang</label>
                   <div className="relative" ref={dropdownRef}>
                       <input 
                         ref={searchInputRef}
                         type="text"
-                        className="w-full pl-4 pr-4 py-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300"
+                        className="w-full pl-4 pr-4 py-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
                         value={itemSearch}
                         onChange={(e) => { setItemSearch(e.target.value); setShowDropdown(true); }}
                         onFocus={() => setShowDropdown(true)}
                         placeholder="Cari Nama/SKU..."
                       />
                       {showDropdown && itemSearch && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto border border-ice-100">
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto border border-ice-100 dark:border-gray-700">
                             {filteredItems.map(item => (
-                                <div key={item.id} onClick={() => handleSelectItem(item)} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b border-ice-50 last:border-0">
+                                <div key={item.id} onClick={() => handleSelectItem(item)} className="p-3 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer border-b border-ice-50 dark:border-gray-700 last:border-0">
                                     <p className="font-bold text-sm dark:text-white">{item.name}</p>
                                     <p className="text-xs text-slate-400">{item.sku} | Stok: {item.stock} {item.unit}</p>
                                 </div>
@@ -272,7 +300,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 <div className="w-full">
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Satuan</label>
                   <select 
-                      className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none"
+                      className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 appearance-none"
                       value={selectedUOM}
                       onChange={(e) => setSelectedUOM(e.target.value)}
                       disabled={!selectedItemId}
@@ -294,85 +322,133 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     type="number" 
                     value={qty} 
                     onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full p-3 border border-ice-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300"
+                    className="w-full p-3 border border-ice-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-gray-900 dark:text-white"
                     placeholder="0"
                   />
                 </div>
             </div>
 
             <div className="flex flex-col md:flex-row gap-3">
-                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="flex-1 py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="flex-1 py-4 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
                     <Plus size={18} /> Tambah ke Batch
                 </button>
                 
-                <div className="relative flex-1">
-                    <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer" />
-                    <button disabled={isImporting} className="w-full py-4 bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-600 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
-                        {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel
+                <div className="flex gap-2 flex-1">
+                    <button onClick={downloadTransactionTemplate} className="p-4 bg-white dark:bg-gray-800 border border-ice-200 dark:border-gray-700 text-slate-400 hover:text-indigo-600 rounded-2xl shadow-sm transition-all" title="Download Template Excel">
+                        <Download size={20} />
                     </button>
+                    <div className="relative flex-1">
+                        <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                        <button disabled={isImporting} className="w-full h-full bg-white dark:bg-gray-700 text-slate-600 dark:text-white border border-ice-200 dark:border-gray-600 font-bold rounded-2xl hover:bg-ice-50 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
+                            {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} Import Excel
+                        </button>
+                    </div>
                 </div>
             </div>
           </div>
         </div>
 
-        {/* Extra Information (Suppliers, Notes, etc) */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-6 flex items-center gap-2">
-                <FileSpreadsheet size={16} className="text-indigo-500"/> Informasi Tambahan
+        {/* Extra Information */}
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 space-y-8">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <FileText size={16} className="text-indigo-500"/> Informasi Detail
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-5">
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Supplier / Client</label>
-                        <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" placeholder="Nama perusahaan..." />
+                        <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="Nama perusahaan..." />
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Nomor PO / Surat Jalan</label>
-                        <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" placeholder="PO-XXXXX" />
+                        <input value={poNumber} onChange={e => setPoNumber(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" placeholder="PO-XXXXX" />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Keterangan / Catatan</label>
+                        <textarea 
+                            value={notes} 
+                            onChange={e => setNotes(e.target.value)} 
+                            className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 h-24 resize-none" 
+                            placeholder="Catatan tambahan untuk transaksi ini..."
+                        ></textarea>
                     </div>
                 </div>
-                <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Tanggal Transaksi</label>
-                    <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full p-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none" />
+
+                <div className="space-y-5">
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Tanggal Transaksi</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-10 pr-3 py-3 border border-ice-100 dark:border-gray-700 rounded-xl bg-ice-50/30 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300" />
+                        </div>
+                    </div>
+                    
+                    {/* Multi Photo Upload Section */}
+                    {type === 'inbound' && (
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-2 block">Dokumentasi (Multi-Photo)</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {documentImages.map((img, idx) => (
+                                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border-2 border-indigo-100 group">
+                                        <img src={img} className="w-full h-full object-cover" alt="Doc" />
+                                        <button onClick={() => removePhoto(idx)} className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+                                ))}
+                                <label className="aspect-square rounded-xl border-2 border-dashed border-ice-200 dark:border-gray-700 flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-ice-50 dark:hover:bg-gray-700 transition-all text-slate-400">
+                                    <Camera size={20} />
+                                    <span className="text-[8px] font-bold uppercase">Upload</span>
+                                    <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                                </label>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 flex flex-col h-[calc(100vh-140px)]">
-        <div className="p-6 border-b border-ice-100 flex items-center gap-2">
-            <ShoppingCart size={20} className="text-indigo-600" />
-            <h3 className="font-bold dark:text-white text-lg">Batch Cart</h3>
+        <div className="p-6 border-b border-ice-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                <ShoppingCart size={20} className="text-indigo-600" />
+                <h3 className="font-bold dark:text-white text-lg">Batch Cart</h3>
+            </div>
+            <span className="text-[10px] font-bold bg-ice-100 dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full">{cart.length} Items</span>
         </div>
         
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
             {cart.map((item, idx) => (
-                <div key={idx} className="p-4 border-b border-ice-50 dark:border-gray-700 flex justify-between items-center hover:bg-slate-50">
+                <div key={idx} className="p-4 border-b border-ice-50 dark:border-gray-700 flex justify-between items-center hover:bg-ice-50/50 dark:hover:bg-gray-700/50 transition-colors group">
                     <div>
                         <p className="font-bold text-sm dark:text-white">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.sku} | {item.qty} {item.uom}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">{item.sku} | <span className="text-indigo-500">{item.qty} {item.uom}</span></p>
                     </div>
                     <div className="flex items-center gap-4">
-                        <span className="font-bold text-sm text-indigo-600">Rp {item.total.toLocaleString()}</span>
-                        <button onClick={() => removeFromCart(idx)} className="text-slate-300 hover:text-rose-500"><Trash size={16} /></button>
+                        <span className="font-bold text-sm text-slate-700 dark:text-gray-200">Rp {item.total.toLocaleString()}</span>
+                        <button onClick={() => removeFromCart(idx)} className="text-slate-300 hover:text-rose-500 p-1 rounded-lg hover:bg-rose-50 transition-all"><Trash size={16} /></button>
                     </div>
                 </div>
             ))}
             {cart.length === 0 && (
-                <div className="p-10 text-center space-y-3 opacity-40">
-                    <ShoppingCart size={48} className="mx-auto text-slate-300" />
-                    <p className="text-xs font-bold text-slate-400 uppercase">Keranjang Kosong</p>
+                <div className="p-10 text-center space-y-4 opacity-40 h-full flex flex-col items-center justify-center">
+                    <div className="p-5 bg-slate-50 dark:bg-gray-900 rounded-full">
+                        <ShoppingCart size={48} className="text-slate-300" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Keranjang Kosong</p>
                 </div>
             )}
         </div>
 
-        <div className="p-6 bg-slate-50 dark:bg-gray-900">
-            <div className="flex justify-between mb-4">
-                <span className="font-bold text-slate-500">Total Transaksi</span>
-                <span className="font-black text-xl dark:text-white">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
+        <div className="p-6 bg-slate-50 dark:bg-gray-900/50 border-t border-ice-100 dark:border-gray-700 rounded-b-3xl">
+            <div className="flex justify-between items-end mb-6">
+                <span className="text-xs font-bold text-slate-400 uppercase">Estimasi Total</span>
+                <span className="font-black text-2xl dark:text-white tracking-tight">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
             </div>
-            <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50">
-                Proses Transaksi Sekarang
+            <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2">
+                <ImageIcon size={18} /> Proses Transaksi
             </button>
         </div>
       </div>
