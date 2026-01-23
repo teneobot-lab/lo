@@ -9,12 +9,8 @@ export const geminiService = {
     recentTransactions: Transaction[]
   ): Promise<string> => {
     
-    const key = process.env.API_KEY;
-    if (!key || key.trim() === '') {
-        return "⚠️ API Key Belum Terpasang Bang.\n\nMasuk ke Settings Vercel atau .env, tambahkan 'API_KEY' biar AI-nya bangun.";
-    }
-
-    const ai = new GoogleGenAI({ apiKey: key });
+    // FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}) directly as per guidelines.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     // Ringkasan data biar AI tetap punya konteks gudang tapi hemat memori
     const inventorySummary = inventory.slice(0, 50).map(i => 
@@ -42,6 +38,7 @@ export const geminiService = {
     `;
 
     try {
+      // FIX: Use ai.models.generateContent to query GenAI with both the model name and prompt.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview', 
         contents: prompt,
@@ -53,19 +50,18 @@ export const geminiService = {
         }
       });
       
+      // FIX: The response features a text property (not a method, so do not call text()).
       return response.text || "Waduh, otak saya lagi nge-blank bentar Bang. Coba tanya lagi deh.";
     } catch (error: any) {
       console.error("Gemini Error:", error);
-      if (error.message?.includes("403")) return "❌ Akses ditolak. Cek API Key Abang, kayaknya belum di-whitelist atau salah pasang.";
+      if (error.message?.includes("403")) return "❌ Akses ditolak. Silakan hubungi administrator sistem untuk bantuan lebih lanjut.";
       return "⚠️ Lagi ada gangguan koneksi ke server AI nih Bang. Coba cek internet atau refresh halaman ya.";
     }
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
-    const key = process.env.API_KEY;
-    if (!key || key.trim() === '') return "API Key Missing.";
-
-    const ai = new GoogleGenAI({ apiKey: key });
+    // FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}) directly as per guidelines.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     const prompt = `
       Data: ${JSON.stringify(inventory.slice(0, 20).map(i => ({ n: i.name, s: i.stock })))}
@@ -73,11 +69,13 @@ export const geminiService = {
     `;
 
     try {
+      // FIX: Use ai.models.generateContent to query GenAI.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { systemInstruction: "Kamu adalah Business Analyst handal." }
       });
+      // FIX: Access the extracted string output using the .text property.
       return response.text || "Gagal dapet insight.";
     } catch (error) {
       return "Gagal generate laporan.";

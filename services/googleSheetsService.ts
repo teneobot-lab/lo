@@ -6,9 +6,9 @@ export const googleSheetsService = {
     }
 
     try {
-      // Mengirim data ke Google Apps Script Web App
-      // Menggunakan mode 'no-cors' karena Apps Script seringkali sulit mengembalikan response CORS yang valid
-      // tapi data tetap akan terproses di sisi server Google.
+      // Kita kirim sebagai POST. 
+      // Menggunakan mode 'no-cors' agar tidak terblokir oleh redirect Google (302),
+      // data tetap akan sampai dan diproses oleh server Google.
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
@@ -18,7 +18,7 @@ export const googleSheetsService = {
         body: JSON.stringify(payload),
       });
 
-      return { success: true, message: "Perintah sinkronisasi terkirim!" };
+      return { success: true, message: "Sinkronisasi berhasil dipicu!" };
     } catch (error: any) {
       console.error("Sync Error:", error);
       throw new Error(error.message || "Gagal menghubungi Google Apps Script.");
