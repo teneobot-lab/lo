@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet, Plus, Camera, Trash, Table, Loader2 } from 'lucide-react';
+import { Calendar, Search, X, Edit2, Trash2, LineChart, FileSpreadsheet, Table, Loader2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 
@@ -72,7 +72,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
     setIsSyncing(true);
     try {
-      // Flatten transactions for table format
       const syncData: any[] = [];
       filtered.forEach(tx => {
         tx.items.forEach(it => {
@@ -139,7 +138,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   };
 
   const handleEditClick = (t: Transaction) => { setEditingTransaction(JSON.parse(JSON.stringify(t))); setIsEditModalOpen(true); };
-  const handleUpdate = async (updatedTx: Transaction) => { if (editingTransaction) { try { await storageService.updateTransaction(editingTransaction, updatedTx); setIsEditModalOpen(false); onRefresh(); } catch (err) {} } };
   const selectSCItem = (it: InventoryItem) => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); setActiveIndex(-1); };
 
   const handleSCKeyDown = (e: React.KeyboardEvent) => {
@@ -205,7 +203,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800"><div className="flex items-center gap-3"><div className="p-2.5 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600 dark:text-indigo-400"><LineChart size={24} /></div><div><h3 className="font-bold text-xl text-slate-800 dark:text-white">Analisa Kartu Stok</h3></div></div><button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><X className="text-slate-400" /></button></div>
                 <div className="p-6 bg-slate-50 dark:bg-gray-950 grid grid-cols-1 md:grid-cols-4 gap-4 items-end border-b border-ice-100 dark:border-gray-800">
                     <div className="md:col-span-2 relative" ref={autocompleteRef}><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Pilih Barang</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" className="w-full pl-10 pr-4 py-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-300 transition-all shadow-sm" placeholder="Ketik Nama atau SKU..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); setActiveIndex(-1); }} onFocus={() => setIsAutocompleteOpen(true)} onKeyDown={handleSCKeyDown} /></div>{isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-ice-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">{filteredItemsForSC.length > 0 ? filteredItemsForSC.map((it, idx) => (<div key={it.id} onMouseEnter={() => setActiveIndex(idx)} onClick={() => selectSCItem(it)} className={`p-4 cursor-pointer border-b last:border-0 dark:text-white transition-colors ${activeIndex === idx ? 'bg-indigo-50 dark:bg-indigo-900/40' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}><div className="font-bold text-sm">{it.name}</div><div className="text-[10px] text-slate-400 font-mono tracking-wider">{it.sku}</div></div>)) : <div className="p-4 text-xs text-slate-400 italic">Tidak ditemukan.</div>}</div>)}</div>
-                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dari</label><input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:border-gray-700 dark:text-white outline-none" /></div>
                     <div><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Sampai</label><input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white outline-none" /></div>
                 </div>
                 <div className="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900">

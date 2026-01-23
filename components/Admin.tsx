@@ -3,11 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
 import { 
-  Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
-  Database, Wifi, Play, Globe, Download, Upload, RefreshCcw, 
-  ShieldCheck, Youtube, ListMusic, Terminal, AlertCircle, FileJson, 
-  Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor, ChevronDown,
-  RotateCcw, Table, ExternalLink, Link2
+  Settings, Users, Server, Plus, Edit2, Trash2, X, Save, 
+  Play, RefreshCcw, ShieldCheck, Youtube, Copy, Table, Link2
 } from 'lucide-react';
 
 interface AdminProps {
@@ -55,7 +52,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         }
     };
 
-    // Fix: Added the missing handleDeleteUser function to resolve the reference error and enable staff deletion logic.
     const handleDeleteUser = async (id: string) => {
         if (id === 'admin') {
             alert("Cannot delete super admin account.");
@@ -89,31 +85,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
             localStorage.setItem('nexus_api_url', PROXY_PATH);
             window.location.reload();
         }
-    };
-
-    const addToPlaylist = () => {
-        if (!newMediaTitle || !newMediaUrl) return;
-        let videoId = '';
-        const url = newMediaUrl.trim();
-        try {
-            if (url.includes('watch?v=')) videoId = url.split('v=')[1]?.split('&')[0];
-            else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1]?.split('?')[0];
-            else if (url.includes('/shorts/')) videoId = url.split('/shorts/')[1]?.split('?')[0];
-            else if (url.includes('/embed/')) videoId = url.split('/embed/')[1]?.split('?')[0];
-            else if (videoId.length === 11) videoId = url;
-        } catch (e) {}
-
-        if (!videoId || videoId.length !== 11) {
-            alert("ID Video tidak valid.");
-            return;
-        }
-
-        const embedUrl = `https://www.youtube.com/embed/${videoId}`;
-        const newItem = { id: Math.random().toString(36).substr(2, 9), title: newMediaTitle, url: embedUrl };
-        const next = [...playlist, newItem];
-        setPlaylist(next);
-        localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
-        setNewMediaTitle(''); setNewMediaUrl('');
     };
 
     const deleteFromPlaylist = (id: string) => {
@@ -198,9 +169,9 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                             <div className="p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-ice-100 dark:border-gray-800 space-y-4">
                                 <h4 className="text-xs font-bold text-slate-700 dark:text-gray-300 flex items-center gap-2"><Link2 size={14}/> Cara Aktivasi (Apps Script):</h4>
                                 <ol className="text-[11px] text-slate-500 space-y-2 list-decimal ml-4">
-                                    <li>Buka Google Sheets, ke menu <b>Extensions > Apps Script</b>.</li>
+                                    <li>Buka Google Sheets, ke menu <b>Extensions &gt; Apps Script</b>.</li>
                                     <li>Hapus semua kode, lalu paste kode di bawah ini.</li>
-                                    <li>Klik <b>Deploy > New Deployment</b>. Pilih tipe <b>Web App</b>.</li>
+                                    <li>Klik <b>Deploy &gt; New Deployment</b>. Pilih tipe <b>Web App</b>.</li>
                                     <li>Set "Who has access" ke <b>Anyone</b>. Klik Deploy.</li>
                                     <li>Copy URL yang muncul dan tempel di kotak di atas.</li>
                                 </ol>
@@ -245,7 +216,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                 </div>
 
                 <div className="space-y-8">
-                    {/* API Connection */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-6">
                             <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Server size={28}/></div>

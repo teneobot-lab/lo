@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2, CheckSquare, Square, Table } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, Layers, Loader2, CheckSquare, Square, Table } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { ToastType } from './Toast';
@@ -92,7 +92,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
     setIsSyncing(true);
     try {
-      // Siapkan data untuk Google Sheets
       const syncData = items.map(i => ({
         SKU: i.sku,
         Nama: i.name,
@@ -120,14 +119,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       onRefresh();
       notify('Status diperbarui', 'info');
     } catch (e) { notify("Gagal update status", 'error'); }
-  };
-
-  const downloadTemplate = () => {
-      const template = [{ SKU: 'BRW-001', Name: 'Item', Category: 'Sembako', Price: 5000, Location: 'A-01', Unit: 'Pcs', Stock: 100, MinLevel: 10 }];
-      const ws = XLSX.utils.json_to_sheet(template);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Template");
-      XLSX.writeFile(wb, "Nexus_Template.xlsx");
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {

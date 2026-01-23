@@ -8,7 +8,7 @@ export const googleSheetsService = {
     try {
       // Menggunakan mode 'no-cors' atau POST biasa ke Apps Script
       // Apps Script membutuhkan POST request dengan payload JSON
-      const response = await fetch(url, {
+      await fetch(url, {
         method: 'POST',
         mode: 'no-cors', // Apps Script seringkali bermasalah dengan CORS, no-cors adalah workaround umum
         headers: {
