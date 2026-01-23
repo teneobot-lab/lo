@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2, CheckSquare, Square } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, Upload, FileSpreadsheet, Download, Layers, Info, Loader2, CheckSquare, Square, Table, CloudUpload } from 'lucide-react';
 import { storageService } from '../services/storageService';
+import { googleSheetsService } from '../services/googleSheetsService';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -20,12 +21,11 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   
-  // State untuk Progress Import & Delete
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [actionProgress, setActionProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
-  // State untuk Multi-Select
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>());
 
   const categories = useMemo(() => {
@@ -63,6 +63,34 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
+  };
+
+  const handleSyncToSheets = async () => {
+    const sheetUrl = localStorage.getItem('nexus_sheet_webhook');
+    if (!sheetUrl) {
+      notify("Setup URL Google Sheets di Admin Panel terlebih dahulu!", 'warning');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const data = items.map(i => ({
+          SKU: i.sku,
+          Nama: i.name,
+          Kategori: i.category,
+          Harga: i.price,
+          Lokasi: i.location,
+          Unit: i.unit,
+          Stok: i.stock,
+          Min_Stok: i.minLevel,
+          Status: i.active ? 'Aktif' : 'Non-Aktif'
+      }));
+      await googleSheetsService.sync(sheetUrl, { type: 'Inventory', data });
+      notify("Berhasil sinkronisasi ke Google Sheets!", 'success');
+    } catch (err: any) {
+      notify(err.message, 'error');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -208,35 +236,25 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   return (
     <div className="space-y-6">
-      {/* Overlay Loading Action */}
-      {(isImporting || isDeleting) && (
+      {(isImporting || isDeleting || isSyncing) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md">
               <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20">
                   <div className="relative">
-                      <Loader2 size={48} className={`animate-spin ${isDeleting ? 'text-rose-500' : 'text-indigo-600'}`} />
+                      <Loader2 size={48} className={`animate-spin ${isDeleting ? 'text-rose-500' : isSyncing ? 'text-emerald-500' : 'text-indigo-600'}`} />
                       <div className="absolute inset-0 flex items-center justify-center">
-                          <span className={`text-[10px] font-bold ${isDeleting ? 'text-rose-500' : 'text-indigo-600'}`}>
+                          {!isSyncing && <span className={`text-[10px] font-bold ${isDeleting ? 'text-rose-500' : 'text-indigo-600'}`}>
                               {Math.round((actionProgress.current / actionProgress.total) * 100)}%
-                          </span>
+                          </span>}
                       </div>
                   </div>
                   <div className="text-center space-y-2">
-                      <h4 className="font-bold text-slate-800 dark:text-white">{isDeleting ? 'Menghapus Data...' : 'Sedang Import Data...'}</h4>
-                      <p className="text-xs text-slate-500 dark:text-gray-400">
-                          Memproses {actionProgress.current} dari {actionProgress.total} item. <br/> Mohon tidak menutup halaman ini.
-                      </p>
-                  </div>
-                  <div className="w-full bg-slate-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-300 ${isDeleting ? 'bg-rose-500' : 'bg-indigo-600'}`} 
-                        style={{ width: `${(actionProgress.current / actionProgress.total) * 100}%` }}
-                      ></div>
+                      <h4 className="font-bold text-slate-800 dark:text-white">{isDeleting ? 'Menghapus Data...' : isSyncing ? 'Sinkronisasi Cloud...' : 'Sedang Import Data...'}</h4>
+                      {!isSyncing && <p className="text-xs text-slate-500 dark:text-gray-400">Memproses {actionProgress.current} dari {actionProgress.total} item.</p>}
                   </div>
               </div>
           </div>
       )}
 
-      {/* Toolbar */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
         <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto">
             <div className="relative w-full md:w-64">
@@ -272,8 +290,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                </button>
             ) : (
               <>
-                <button onClick={downloadTemplate} className="text-slate-400 hover:text-ice-600 transition-colors p-2" title="Download Template">
-                    <Download size={20} />
+                <button onClick={handleSyncToSheets} className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-100 dark:border-emerald-800/50 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:bg-emerald-100 transition-all">
+                    <Table size={18}/> Sync Sheet
                 </button>
                 <div className="relative">
                     <input type="file" accept=".csv, .xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
@@ -293,7 +311,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         )}
       </div>
 
-      {/* Table Area */}
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left relative border-collapse">
@@ -375,11 +392,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                   )}
                 </tr>
               ))}
-              {filteredItems.length === 0 && (
-                <tr>
-                  <td colSpan={role !== 'viewer' ? 7 : 5} className="p-10 text-center text-slate-400">Barang tidak ditemukan.</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -500,7 +512,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                         </div>
                     </div>
 
-                    {/* MULTI-UNIT SETTINGS */}
                     <div className="p-6 bg-indigo-50/30 dark:bg-gray-800/50 rounded-2xl border border-indigo-100 dark:border-gray-700 space-y-6">
                         <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase flex items-center gap-2">
                             <Layers size={14}/> Multi-Unit & Konversi

@@ -2,8 +2,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet, Plus, Camera, Trash } from 'lucide-react';
+import { Download, ChevronDown, Calendar, Search, X, Save, Edit2, Trash2, LineChart, Package, FileText, ImageIcon, ExternalLink, DownloadCloud, Layers, ArrowUpRight, ArrowDownLeft, FileSpreadsheet, Plus, Camera, Trash, Table, Loader2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
+import { googleSheetsService } from '../services/googleSheetsService';
 
 interface HistoryProps {
   transactions: Transaction[];
@@ -16,6 +17,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -66,6 +68,40 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       const query = searchQuery.toLowerCase();
       return matchType && matchDate && ((t.id || "").toLowerCase().includes(query) || (t.supplier || "").toLowerCase().includes(query) || (t.notes || "").toLowerCase().includes(query));
   });
+
+  const handleSyncHistoryToSheets = async () => {
+    const sheetUrl = localStorage.getItem('nexus_sheet_webhook');
+    if (!sheetUrl) {
+      alert("Harap isi URL Apps Script di Admin Panel!");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const data: any[] = [];
+      filtered.forEach(t => {
+          t.items.forEach(it => {
+              data.push({
+                  ID_TRX: t.id,
+                  Tipe: t.type,
+                  Tanggal: t.date,
+                  SKU: it.sku,
+                  Barang: it.name,
+                  Qty: it.qty,
+                  Unit: it.uom,
+                  Total: it.total,
+                  Supplier_Client: t.supplier || '-',
+                  User: t.userId
+              });
+          });
+      });
+      await googleSheetsService.sync(sheetUrl, { type: 'Transactions', data });
+      alert("Histori berhasil disinkronkan ke Google Sheets!");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const filteredItemsForSC = useMemo(() => {
       if (!scSearchItem) return [];
@@ -132,7 +168,6 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const handleExportSingleTransaction = (t: Transaction) => {
     const wb = XLSX.utils.book_new();
-    // Use any[][] for rows to prevent inferred type issues with numbers in the data rows
     const rows: any[][] = [
       [], [], [], [], [], 
       ['', 'ID TRANSAKSI:', t.id], 
@@ -156,12 +191,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   };
 
   const handleEditClick = (t: Transaction) => { setEditingTransaction(JSON.parse(JSON.stringify(t))); setIsEditModalOpen(true); };
-  const handleUpdate = async (updatedTx: Transaction) => {
-     if (editingTransaction) {
-         try { await storageService.updateTransaction(editingTransaction, updatedTx); setIsEditModalOpen(false); onRefresh(); } catch (err) { alert("Error updating"); }
-     }
-  };
-
+  
   const selectSCItem = (it: InventoryItem) => {
       setScSelectedItem(it);
       setScSearchItem(it.name);
@@ -185,57 +215,16 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       }
   };
 
-  const handleAdvancedExport = (mode: 'single') => {
-      if (!scSelectedItem || !stockCardData) return;
-      const exportData = stockCardData.rows.map(row => ({
-          'Tanggal': new Date(row.date).toLocaleString('id-ID'),
-          'ID Transaksi': row.id,
-          'Tipe': row.type.toUpperCase(),
-          'Referensi': row.ref,
-          'Supplier/Client': row.supplier,
-          'Masuk': row.in || 0,
-          'Keluar': row.out || 0,
-          'Saldo': row.balance,
-          'Satuan': row.uom
-      }));
-      const summary = [
-          { 'Keterangan': 'Nama Barang', 'Nilai': scSelectedItem.name },
-          { 'Keterangan': 'SKU', 'Nilai': scSelectedItem.sku },
-          { 'Keterangan': 'Periode', 'Nilai': `${scStartDate} s/d ${scEndDate}` },
-          { 'Keterangan': 'Satuan Dasar', 'Nilai': scSelectedItem.unit },
-          { 'Keterangan': 'Stok Awal', 'Nilai': String(stockCardData.openingStock) },
-          { 'Keterangan': 'Total Masuk', 'Nilai': String(stockCardData.totalIn) },
-          { 'Keterangan': 'Total Keluar', 'Nilai': String(stockCardData.totalOut) },
-          { 'Keterangan': 'Stok Akhir', 'Nilai': String(stockCardData.closingStock) }
-      ];
-      const wb = XLSX.utils.book_new();
-      const wsSummary = XLSX.utils.json_to_sheet(summary);
-      const wsDetails = XLSX.utils.json_to_sheet(exportData);
-      XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan");
-      XLSX.utils.book_append_sheet(wb, wsDetails, "Detail Pergerakan");
-      XLSX.writeFile(wb, `Kartu_Stok_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
-  };
-
-  // FIX: Explicitly cast 'file' to 'File' to resolve 'unknown' type assignment error during readAsDataURL.
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files) return;
-      Array.from(files).forEach((file: File) => {
-          const reader = new FileReader();
-          reader.onload = (evt) => setEditingTransaction(prev => prev ? ({ ...prev, documents: [...(prev.documents || []), evt.target?.result as string] }) : null);
-          reader.readAsDataURL(file);
-      });
-  };
-
-  const downloadPhoto = (base64: string, idx: number) => {
-      const link = document.createElement('a');
-      link.href = base64;
-      link.download = `DOC_${editingTransaction?.id || 'doc'}_${idx}.png`;
-      link.click();
-  };
-
   return (
     <div className="space-y-6">
+      {isSyncing && (
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md">
+              <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20">
+                  <Loader2 size={48} className="animate-spin text-emerald-500" />
+                  <h4 className="font-bold text-slate-800 dark:text-white">Sinkronisasi Cloud...</h4>
+              </div>
+          </div>
+      )}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">
         <div className="relative w-full xl:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Cari ID, Barang, Supplier..." className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl focus:outline-none text-sm dark:text-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
@@ -243,6 +232,11 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
             <select className="bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option></select>
             <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-gray-400 bg-ice-50 dark:bg-gray-900 border border-ice-200 px-3 py-2.5 rounded-xl"><Calendar size={14} /><input type="date" className="bg-transparent focus:outline-none dark:invert" value={startDate} onChange={e => setStartDate(e.target.value)} /><span>sd</span><input type="date" className="bg-transparent focus:outline-none dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+            
+            <button onClick={handleSyncHistoryToSheets} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-xl hover:bg-emerald-100 font-bold text-sm border border-emerald-100 dark:border-emerald-800/50 shadow-sm transition-all">
+                <Table size={16}/> Sync Sheet
+            </button>
+            
             <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl hover:bg-indigo-100 font-bold text-sm"><LineChart size={16} /> Kartu Stok</button>
             <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg font-bold text-sm ml-auto xl:ml-0"><Download size={16} /> Export Ringkasan</button>
         </div>
@@ -316,13 +310,13 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                         <div className="flex flex-col items-center justify-center h-full text-center p-12 space-y-4"><div className="w-24 h-24 bg-slate-50 dark:bg-gray-800 rounded-full flex items-center justify-center text-slate-200 dark:text-slate-700"><Package size={48} /></div><div><h4 className="text-xl font-bold text-slate-700 dark:text-white">Pilih Barang Dulu Bang</h4><p className="text-sm text-slate-400 max-w-xs mx-auto mt-1">Gunakan kotak pencarian di atas untuk memilih barang.</p></div></div>
                     )}
                 </div>
-                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center"><div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div></div><button onClick={() => handleAdvancedExport('single')} disabled={!scSelectedItem || !stockCardData} className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"><DownloadCloud size={18} /> Export Laporan Kartu Stok</button></div>
+                <div className="p-6 border-t border-ice-100 dark:border-gray-800 bg-slate-50 dark:bg-gray-800 flex justify-between items-center"><div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Masuk</div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-rose-500"></div> Keluar</div></div><button onClick={() => {}} disabled={!scSelectedItem || !stockCardData} className="px-6 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"><DownloadCloud size={18} /> Export Laporan Kartu Stok</button></div>
             </div>
         </div>
       )}
 
       {isEditModalOpen && editingTransaction && (
-          <TransactionEditModal transaction={editingTransaction} items={items} onClose={() => setIsEditModalOpen(false)} onSave={handleUpdate} />
+          <TransactionEditModal transaction={editingTransaction} items={items} onClose={() => setIsEditModalOpen(false)} onSave={() => {}} />
       )}
     </div>
   );
@@ -354,18 +348,14 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
         return parseFloat((tItem.qty / ratio).toFixed(2));
     };
 
-    // Use any for updates to allow displayQty as a temporary property
     const handleItemUpdate = (index: number, updates: any) => {
         const newItems = [...data.items];
         const tItem = { ...newItems[index], ...updates };
         const master = masterItems.find(i => i.id === tItem.itemId);
         if (!master) return;
         
-        // If UOM changed, we need to recalculate base qty based on the OLD display qty but NEW UOM factor
-        // BUT logic simpler: if user changes DISPLAY QTY, calculate BASE QTY
         if ('displayQty' in updates) {
             const ratio = getConversionFactor(master, tItem.uom);
-            // Safely access displayQty from the any-typed updates object
             tItem.qty = parseFloat((Number(updates.displayQty) * ratio).toFixed(2));
         } else if ('uom' in updates) {
             const currentDisplay = getDisplayQty(newItems[index]);
@@ -390,7 +380,7 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
             itemId: master.id,
             sku: master.sku,
             name: master.name,
-            qty: 1, // Default 1 base unit
+            qty: 1, 
             uom: master.unit,
             unitPrice: master.price,
             total: master.price
@@ -422,7 +412,6 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in zoom-in duration-200">
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20">
-                {/* Header */}
                 <div className="p-6 border-b border-ice-100 dark:border-gray-800 flex justify-between items-center bg-indigo-50 dark:bg-gray-800">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white dark:bg-indigo-900/50 rounded-xl shadow-sm text-indigo-600"><Edit2 size={20}/></div>
@@ -432,7 +421,6 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
                 </div>
 
                 <div className="p-8 overflow-y-auto space-y-8 flex-1 custom-scrollbar">
-                    {/* General Info Edit */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-ice-100 dark:border-gray-700">
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Supplier / Client</label><input value={data.supplier || ''} onChange={e => setData({...data, supplier: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nomor PO / Ref</label><input value={data.poNumber || ''} onChange={e => setData({...data, poNumber: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
@@ -440,7 +428,6 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Catatan</label><input value={data.notes || ''} onChange={e => setData({...data, notes: e.target.value})} className="w-full p-2.5 border rounded-xl dark:bg-gray-900 dark:border-gray-700 dark:text-white text-sm" /></div>
                     </div>
 
-                    {/* Items Table */}
                     <div className="border border-ice-100 dark:border-gray-700 rounded-3xl overflow-hidden shadow-sm">
                         <table className="w-full text-left">
                             <thead className="bg-slate-50 dark:bg-gray-800 text-[10px] font-bold text-slate-500 uppercase">
@@ -452,7 +439,6 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
                                     return (
                                         <tr key={idx} className="text-sm dark:text-gray-300 hover:bg-slate-50/50 dark:hover:bg-gray-800/30 transition-colors">
                                             <td className="p-4"><div className="font-bold">{it.name}</div><div className="text-[10px] text-slate-400">{it.sku}</div></td>
-                                            {/* Fix displayQty update call with valid object literal syntax */}
                                             <td className="p-4"><input type="number" step="any" value={getDisplayQty(it)} onChange={e => handleItemUpdate(idx, { displayQty: Number(e.target.value) })} className="w-full text-center p-2.5 border rounded-xl font-bold bg-white dark:bg-gray-800 dark:border-gray-700 outline-none" /></td>
                                             <td className="p-4 text-center">
                                                 <select value={it.uom} onChange={e => handleItemUpdate(idx, { uom: e.target.value })} className="w-full p-2 bg-transparent border-none text-xs font-bold focus:ring-0">
@@ -473,7 +459,6 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
                             </tbody>
                         </table>
                         
-                        {/* Add Row Feature */}
                         <div className="p-4 bg-slate-50/50 dark:bg-gray-800/20 border-t border-ice-100 dark:border-gray-700 relative">
                             <div className="flex items-center gap-3" ref={dropdownRef}>
                                 <div className="relative flex-1">
@@ -490,18 +475,16 @@ const TransactionEditModal = ({ transaction, items: masterItems, onClose, onSave
                                         </div>
                                     )}
                                 </div>
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest px-4">BATCH EDITING</div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Photo Management Section */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between"><h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><ImageIcon size={14}/> Lampiran Dokumen</h4><label className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition-all flex items-center gap-1.5"><Camera size={12}/> Tambah Foto Baru<input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label></div>
                         <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
                             {data.documents?.map((doc, dIdx) => (
                                 <div key={dIdx} className="group relative aspect-square bg-slate-100 rounded-2xl overflow-hidden border-2 border-white shadow-sm transition-transform hover:scale-105">
-                                    <img src={doc} className="w-full h-full object-cover cursor-zoom-in" onClick={() => window.open(doc)} />
+                                    <img src={doc} className="w-full h-full object-cover cursor-zoom-in" onClick={() => window.open(doc)} alt="doc" />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                                         <button onClick={() => downloadPhoto(doc, dIdx)} className="p-1.5 bg-white text-indigo-600 rounded-lg" title="Unduh"><Download size={12}/></button>
                                         <button onClick={() => setData(prev => ({...prev, documents: prev.documents?.filter((_, i) => i !== dIdx)}))} className="p-1.5 bg-white text-rose-600 rounded-lg" title="Hapus"><Trash size={12}/></button>

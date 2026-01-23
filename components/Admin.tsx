@@ -2,12 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
+import { googleSheetsService } from '../services/googleSheetsService';
 import { 
   Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
   Database, Wifi, Play, Globe, Download, Upload, RefreshCcw, 
   ShieldCheck, Youtube, ListMusic, Terminal, AlertCircle, FileJson, 
   Copy, CheckCircle2, Search, ArrowRight, FileText, Monitor, ChevronDown,
-  RotateCcw
+  RotateCcw, Table, Link2, ExternalLink, CloudUpload
 } from 'lucide-react';
 
 interface AdminProps {
@@ -24,11 +25,12 @@ interface PlaylistItem {
 export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [apiUrl, setApiUrl] = useState('');
+    const [sheetUrl, setSheetUrl] = useState('');
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userSearch, setUserSearch] = useState('');
+    const [isSyncing, setIsSyncing] = useState(false);
     
-    // Media Playlist State
     const [playlist, setPlaylist] = useState<PlaylistItem[]>(() => {
         const saved = localStorage.getItem('nexus_media_playlist');
         return saved ? JSON.parse(saved) : [{ id: '1', title: 'Nexus Lo-Fi Relaxing', url: 'https://www.youtube.com/embed/jfKfPfyJRdk' }];
@@ -41,7 +43,9 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
     useEffect(() => {
         refreshUsers();
         const stored = localStorage.getItem('nexus_api_url');
+        const storedSheet = localStorage.getItem('nexus_sheet_webhook');
         setApiUrl(stored || PROXY_PATH);
+        setSheetUrl(storedSheet || '');
     }, []);
 
     const refreshUsers = async () => {
@@ -59,8 +63,62 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         } else {
             localStorage.setItem('nexus_api_url', apiUrl.trim());
         }
-        alert("Konfigurasi API diperbarui. Halaman akan dimuat ulang untuk sinkronisasi.");
-        window.location.reload();
+        localStorage.setItem('nexus_sheet_webhook', sheetUrl.trim());
+        alert("Konfigurasi disimpan!");
+        if (apiUrl !== (localStorage.getItem('nexus_api_url') || PROXY_PATH)) {
+            window.location.reload();
+        }
+    };
+
+    const handleSyncNow = async (module: 'Inventory' | 'Transactions') => {
+        if (!sheetUrl) {
+            alert("Harap isi URL Apps Script terlebih dahulu!");
+            return;
+        }
+        setIsSyncing(true);
+        try {
+            let data: any[] = [];
+            if (module === 'Inventory') {
+                const items = await storageService.getItems();
+                data = items.map(i => ({
+                    SKU: i.sku,
+                    Nama: i.name,
+                    Kategori: i.category,
+                    Harga: i.price,
+                    Lokasi: i.location,
+                    Unit: i.unit,
+                    Stok: i.stock,
+                    Min_Stok: i.minLevel,
+                    Status: i.active ? 'Aktif' : 'Non-Aktif'
+                }));
+            } else {
+                const trxs = await storageService.getTransactions();
+                // Flatten transactions: one row per item
+                trxs.forEach(t => {
+                    t.items.forEach(it => {
+                        data.push({
+                            ID_TRX: t.id,
+                            Tipe: t.type,
+                            Tanggal: t.date,
+                            SKU: it.sku,
+                            Barang: it.name,
+                            Qty: it.qty,
+                            Unit: it.uom,
+                            Total: it.total,
+                            Supplier_Client: t.supplier || '-',
+                            User: t.userId
+                        });
+                    });
+                });
+            }
+
+            await googleSheetsService.sync(sheetUrl, { type: module, data });
+            alert(`Sinkronisasi ${module} berhasil dikirim! Silakan cek Google Sheet Anda.`);
+        } catch (err: any) {
+            alert("Error: " + err.message);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleResetToProxy = () => {
@@ -83,36 +141,24 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     const addToPlaylist = () => {
         if (!newMediaTitle || !newMediaUrl) return;
-        
         let videoId = '';
         const url = newMediaUrl.trim();
-
-        // YouTube Link Parsing Logic (Ultra Robust)
         try {
-            if (url.includes('watch?v=')) {
-                videoId = url.split('v=')[1]?.split('&')[0];
-            } else if (url.includes('youtu.be/')) {
-                videoId = url.split('youtu.be/')[1]?.split('?')[0];
-            } else if (url.includes('/shorts/')) {
-                videoId = url.split('/shorts/')[1]?.split('?')[0];
-            } else if (url.includes('/embed/')) {
-                videoId = url.split('/embed/')[1]?.split('?')[0];
-            } else if (url.length === 11) {
-                videoId = url;
-            }
-        } catch (e) {
-            console.error("Link parsing failed", e);
-        }
+            if (url.includes('watch?v=')) videoId = url.split('v=')[1]?.split('&')[0];
+            else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            else if (url.includes('/shorts/')) videoId = url.split('/shorts/')[1]?.split('?')[0];
+            else if (url.includes('/embed/')) videoId = url.split('/embed/')[1]?.split('?')[0];
+            else if (url.length === 11) videoId = url;
+        } catch (e) {}
 
         if (!videoId || videoId.length !== 11) {
-            alert("Format link YouTube tidak dikenal. Pastikan ID video benar.");
+            alert("Format link YouTube tidak dikenal.");
             return;
         }
 
         const embedUrl = `https://www.youtube.com/embed/${videoId}`;
         const newItem = { id: Math.random().toString(36).substr(2, 9), title: newMediaTitle, url: embedUrl };
         const next = [...playlist, newItem];
-        
         setPlaylist(next);
         localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
         setNewMediaTitle(''); 
@@ -127,8 +173,40 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        alert("Command berhasil disalin! Sekarang buka Terminal/Putty dan klik kanan untuk Paste.");
+        alert("Kode disalin!");
     };
+
+    const appsScriptCode = `function doPost(e) {
+  var contents = JSON.parse(e.postData.contents);
+  var type = contents.type; // 'Inventory' or 'Transactions'
+  var data = contents.data; // Array of objects
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(type);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(type);
+  }
+  
+  sheet.clear();
+  
+  if (data && data.length > 0) {
+    // Ambil header dari key objek pertama
+    var headers = Object.keys(data[0]);
+    sheet.appendRow(headers);
+    
+    // Format range untuk efisiensi
+    var rows = data.map(function(item) {
+      return headers.map(function(h) {
+        return item[h];
+      });
+    });
+    
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  }
+  
+  return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
+}`;
 
     const filteredUsers = users.filter(u => 
         u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
@@ -137,7 +215,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
 
     return (
         <div className="space-y-8 max-w-7xl mx-auto pb-24">
-            {/* STICKY HEADER - HUB */}
             <div className="sticky top-[-1.5rem] z-[35] pt-4 pb-6 bg-slate-50/80 dark:bg-gray-900/80 backdrop-blur-md -mx-4 px-4 border-b border-ice-100 dark:border-gray-800 transition-all duration-300">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="space-y-1">
@@ -155,8 +232,82 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Column 1: Staff & Migration Guide */}
                 <div className="lg:col-span-2 space-y-8">
+                    {/* Google Sheets Integration Card */}
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-emerald-100 dark:border-emerald-900/30 overflow-hidden relative group">
+                        <div className="absolute -right-12 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all"></div>
+                        
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-4">
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl text-emerald-600 shadow-sm"><Table size={28}/></div>
+                                <div>
+                                    <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Google Sheets Sync</h3>
+                                    <p className="text-xs text-emerald-600 font-black uppercase tracking-widest">Real-time Cloud Reporting</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Webhook URL (Apps Script Deployment)</label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        value={sheetUrl} 
+                                        onChange={e => setSheetUrl(e.target.value)} 
+                                        placeholder="https://script.google.com/macros/s/.../exec" 
+                                        className="flex-1 p-3.5 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-sm bg-emerald-50/20 dark:bg-gray-900 dark:text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-300 font-mono" 
+                                    />
+                                    <button onClick={handleSaveConfig} className="bg-emerald-600 text-white px-6 rounded-2xl hover:bg-emerald-700 shadow-lg active:scale-95 transition-all flex items-center gap-2 font-bold">
+                                        <Save size={18}/> Simpan
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button 
+                                    onClick={() => handleSyncNow('Inventory')}
+                                    disabled={isSyncing}
+                                    className="flex items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-gray-900 border border-emerald-100 dark:border-emerald-900/20 rounded-3xl hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all group"
+                                >
+                                    {isSyncing ? <RefreshCcw size={24} className="animate-spin text-emerald-600" /> : <CloudUpload size={24} className="text-emerald-600 group-hover:scale-110 transition-transform"/>}
+                                    <div className="text-left">
+                                        <p className="font-bold text-slate-800 dark:text-white">Sync Inventory</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">Master Stok & Lokasi</p>
+                                    </div>
+                                </button>
+                                <button 
+                                    onClick={() => handleSyncNow('Transactions')}
+                                    disabled={isSyncing}
+                                    className="flex items-center justify-center gap-3 p-6 bg-slate-50 dark:bg-gray-900 border border-emerald-100 dark:border-emerald-900/20 rounded-3xl hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all group"
+                                >
+                                    {isSyncing ? <RefreshCcw size={24} className="animate-spin text-emerald-600" /> : <FileJson size={24} className="text-emerald-600 group-hover:scale-110 transition-transform"/>}
+                                    <div className="text-left">
+                                        <p className="font-bold text-slate-800 dark:text-white">Sync History</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">Log Transaksi Detail</p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <div className="p-6 bg-slate-50 dark:bg-gray-950 rounded-3xl border border-ice-100 dark:border-gray-800 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Link2 size={14}/> Setup Guide</h4>
+                                    <button onClick={() => copyToClipboard(appsScriptCode)} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"><Copy size={12}/> Copy Apps Script</button>
+                                </div>
+                                <ol className="text-[11px] text-slate-500 dark:text-slate-400 space-y-2 list-decimal ml-4">
+                                    <li>Buka Spreadsheet baru di Google Sheets.</li>
+                                    <li>Klik <b>Extensions &gt; Apps Script</b>.</li>
+                                    <li>Hapus semua kode di sana, lalu paste kode yang disalin di atas.</li>
+                                    <li>Klik <b>Deploy &gt; New Deployment</b>.</li>
+                                    <li>Pilih <b>Web App</b>. Akses: <b>Anyone</b>. Klik Deploy.</li>
+                                    <li>Copy Web App URL dan tempel ke kotak Webhook di atas.</li>
+                                </ol>
+                                <div className="max-h-32 overflow-y-auto rounded-xl bg-black p-4 font-mono text-[10px] text-emerald-400 border border-slate-800 custom-scrollbar">
+                                    {appsScriptCode}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Staff List */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-8">
@@ -192,62 +343,34 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                             ))}
                         </div>
                     </div>
+                </div>
 
-                    {/* NEWBIE-FRIENDLY MIGRATION GUIDE */}
-                    <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-700 text-white space-y-8 overflow-hidden">
-                        <div className="flex items-center gap-4">
-                            <div className="p-4 bg-emerald-600 rounded-2xl text-white shadow-lg"><Monitor size={28}/></div>
-                            <div>
-                                <h3 className="font-bold text-2xl">Panduan Pindah Server (Migrasi)</h3>
-                                <p className="text-xs text-emerald-300 font-black uppercase tracking-[0.2em]">Khusus Newbie / Pemula</p>
-                            </div>
+                <div className="space-y-8">
+                    {/* API Connection */}
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Server size={28}/></div>
+                            <h3 className="font-bold text-2xl text-slate-800 dark:text-white">API Config</h3>
                         </div>
-                        
-                        <div className="space-y-8">
-                            <div className="relative pl-8 border-l-2 border-slate-800 group">
-                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">1</span></div>
-                                <h4 className="text-sm font-bold text-indigo-300 mb-2">SIAPKAN BACKUP (DI SERVER LAMA)</h4>
-                                <p className="text-xs text-slate-400 mb-4 leading-relaxed italic">"Ketik perintah di bawah ini di terminal server lama untuk mengambil data."</p>
-                                <div className="group/code relative">
-                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
-                                        mysqldump -u root -p nexus_wms {'>'} backup_nexus.sql
-                                    </code>
-                                    <button onClick={() => copyToClipboard(`mysqldump -u root -p nexus_wms > backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
-                                </div>
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Vercel Proxy / VPS URL</label>
+                            <div className="flex gap-2">
+                                <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl font-mono text-xs bg-indigo-50/20 dark:bg-gray-900 dark:text-indigo-400 outline-none" />
+                                <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 active:scale-95 transition-all shadow-lg" title="Simpan Config"><Save size={18}/></button>
                             </div>
-
-                            <div className="relative pl-8 border-l-2 border-slate-800 group">
-                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">2</span></div>
-                                <h4 className="text-sm font-bold text-indigo-300 mb-2">TRANSFER FILE KE SERVER BARU</h4>
-                                <p className="text-xs text-slate-400 mb-4 leading-relaxed">Pindahkan file <span className="text-white font-bold">backup_nexus.sql</span> ke server baru. <br/> Tips: Gunakan aplikasi <span className="text-indigo-400 underline">WinSCP</span> atau <span className="text-indigo-400 underline">FileZilla</span> biar tinggal tarik-lepas file gampang.</p>
+                            <div className="flex gap-2">
+                                <button onClick={handleResetToProxy} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-[10px] border border-rose-100 dark:border-rose-800 uppercase tracking-wider hover:bg-rose-100 transition-all">
+                                    <RefreshCcw size={14} /> Reset ke Proxy Vercel
+                                </button>
                             </div>
-
-                            <div className="relative pl-8 border-l-2 border-slate-800 group">
-                                <div className="absolute -left-[13px] top-0 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center border-4 border-slate-900 group-hover:bg-indigo-500 transition-colors"><span className="text-[10px] font-bold">3</span></div>
-                                <h4 className="text-sm font-bold text-indigo-300 mb-2">PASANG DATA (DI SERVER BARU)</h4>
-                                <p className="text-xs text-slate-400 mb-4 leading-relaxed italic">"Masuk ke terminal server baru, lalu jalankan perintah ini:"</p>
-                                <div className="group/code relative">
-                                    <code className="block bg-black p-4 rounded-2xl text-[11px] text-emerald-400 border border-slate-800 font-mono overflow-x-auto">
-                                        mysql -u root -p nexus_wms {'<'} backup_nexus.sql
-                                    </code>
-                                    <button onClick={() => copyToClipboard(`mysql -u root -p nexus_wms < backup_nexus.sql`)} className="absolute top-2 right-2 p-2 bg-slate-800 text-slate-400 rounded-lg opacity-0 group-hover/code:opacity-100 transition-all"><Copy size={14}/></button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-5 bg-amber-900/20 rounded-3xl border border-amber-800/30 flex items-start gap-4">
-                            <AlertCircle className="text-amber-500 flex-shrink-0 mt-1" size={20}/>
-                            <div>
-                                <p className="text-[11px] font-bold text-amber-200">Catatan Penting:</p>
-                                <p className="text-[11px] text-amber-100/70 leading-relaxed italic">"Jika server baru belum punya database, ketik: <b>mysql -u root -p -e 'CREATE DATABASE nexus_wms;'</b> terlebih dahulu di terminal sebelum langkah nomor 3."</p>
+                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
+                                <Wifi size={16} className="text-emerald-500"/>
+                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Status API: Aktif</span>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Column 2: Media & Hub Settings */}
-                <div className="space-y-8">
-                    {/* Media Manager */}
+                    {/* Media Hub */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={28}/></div>
@@ -273,30 +396,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                     </div>
                                 </div>
                             ))}
-                        </div>
-                    </div>
-
-                    {/* API Connection */}
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600"><Server size={28}/></div>
-                            <h3 className="font-bold text-2xl text-slate-800 dark:text-white">API Config</h3>
-                        </div>
-                        <div className="space-y-4">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Vercel Proxy / VPS URL</label>
-                            <div className="flex gap-2">
-                                <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="/api" className="flex-1 p-3 border border-ice-100 dark:border-gray-700 rounded-xl font-mono text-xs bg-indigo-50/20 dark:bg-gray-900 dark:text-indigo-400 outline-none" />
-                                <button onClick={handleSaveConfig} className="bg-slate-800 text-white p-3.5 rounded-xl hover:bg-slate-900 active:scale-95 transition-all shadow-lg" title="Simpan Config"><Save size={18}/></button>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={handleResetToProxy} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-[10px] border border-rose-100 dark:border-rose-800 uppercase tracking-wider hover:bg-rose-100 transition-all">
-                                    <RefreshCcw size={14} /> Reset ke Proxy Vercel
-                                </button>
-                            </div>
-                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 flex items-center gap-3">
-                                <Wifi size={16} className="text-emerald-500"/>
-                                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Status API: Aktif</span>
-                            </div>
                         </div>
                     </div>
                 </div>
