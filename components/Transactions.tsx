@@ -223,10 +223,11 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     reader.readAsArrayBuffer(file as any);
   };
 
+  // FIX: Explicitly cast 'file' to 'File' to resolve 'unknown' type assignment error during readAsDataURL.
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files) return;
-      Array.from(files).forEach(file => {
+      Array.from(files).forEach((file: File) => {
           const reader = new FileReader();
           reader.onload = (evt) => setDocumentImages(prev => [...prev, evt.target?.result as string]);
           reader.readAsDataURL(file);

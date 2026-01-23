@@ -216,6 +216,24 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       XLSX.writeFile(wb, `Kartu_Stok_${scSelectedItem.sku}_${scStartDate}_${scEndDate}.xlsx`);
   };
 
+  // FIX: Explicitly cast 'file' to 'File' to resolve 'unknown' type assignment error during readAsDataURL.
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files) return;
+      Array.from(files).forEach((file: File) => {
+          const reader = new FileReader();
+          reader.onload = (evt) => setEditingTransaction(prev => prev ? ({ ...prev, documents: [...(prev.documents || []), evt.target?.result as string] }) : null);
+          reader.readAsDataURL(file);
+      });
+  };
+
+  const downloadPhoto = (base64: string, idx: number) => {
+      const link = document.createElement('a');
+      link.href = base64;
+      link.download = `DOC_${editingTransaction?.id || 'doc'}_${idx}.png`;
+      link.click();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-3xl shadow-soft border border-ice-100 dark:border-gray-700">

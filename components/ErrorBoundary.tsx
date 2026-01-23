@@ -11,8 +11,8 @@ interface State {
   error: Error | null;
 }
 
-// FIX: Use Component directly from the react import to ensure correct type inheritance for props and state.
-export class ErrorBoundary extends Component<Props, State> {
+// FIX: Extend React.Component explicitly to ensure correct type inheritance for props and state, resolving 'props' not existing on ErrorBoundary.
+export class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,

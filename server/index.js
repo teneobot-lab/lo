@@ -166,6 +166,81 @@ app.post('/api/transactions', async (req, res) => {
     }
 });
 
+// BARU: Endpoint DELETE Transaksi (Sinkronisasi Stok)
+app.delete('/api/transactions/:id', async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        // 1. Ambil data lama untuk revert stok
+        const [txs] = await conn.execute('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
+        if (txs.length === 0) throw new Error("Transaction not found");
+        const tx = txs[0];
+
+        const [items] = await conn.execute('SELECT * FROM transaction_items WHERE transaction_id = ?', [req.params.id]);
+        
+        // 2. Revert stok barang
+        for (const item of items) {
+            const stockOp = tx.type === 'inbound' ? '-' : '+';
+            await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [item.qty, item.item_id]);
+        }
+
+        // 3. Hapus record (otomatis hapus item karena CASCADE)
+        await conn.execute('DELETE FROM transactions WHERE id = ?', [req.params.id]);
+        
+        await conn.commit();
+        res.json({ success: true });
+    } catch (e) {
+        await conn.rollback();
+        res.status(500).json({ error: e.message });
+    } finally {
+        conn.release();
+    }
+});
+
+// BARU: Endpoint PUT Transaksi (Sinkronisasi Stok)
+app.put('/api/transactions/:id', async (req, res) => {
+    const { oldTx, newTx } = req.body;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        // 1. Kembalikan stok lama (Revert)
+        for (const item of oldTx.items) {
+            const stockOp = oldTx.type === 'inbound' ? '-' : '+';
+            await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [item.qty, item.itemId]);
+        }
+
+        // 2. Update Header Transaksi
+        const docsJson = JSON.stringify(newTx.documents || []);
+        await conn.execute(
+            `UPDATE transactions SET type=?, date=?, total_value=?, supplier=?, po_number=?, delivery_note=?, notes=?, documents=? WHERE id=?`,
+            [newTx.type, newTx.date, newTx.totalValue, newTx.supplier || '', newTx.poNumber || '', newTx.deliveryNote || '', newTx.notes || '', docsJson, req.params.id]
+        );
+
+        // 3. Update Detail Items (Hapus yang lama, insert yang baru)
+        await conn.execute('DELETE FROM transaction_items WHERE transaction_id = ?', [req.params.id]);
+        for (const item of newTx.items) {
+            const qty = Number(item.qty) || 0;
+            await conn.execute(
+                `INSERT INTO transaction_items (transaction_id, item_id, sku, name, qty, uom, unit_price, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.params.id, item.itemId, item.sku, item.name, qty, item.uom, item.unitPrice, item.total]
+            );
+
+            // 4. Kurangi stok baru
+            const stockOp = newTx.type === 'inbound' ? '+' : '-';
+            await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [qty, item.itemId]);
+        }
+
+        await conn.commit();
+        res.json({ success: true });
+    } catch (e) {
+        await conn.rollback();
+        res.status(500).json({ error: e.message });
+    } finally {
+        conn.release();
+    }
+});
+
 /* ================= REJECT API ================= */
 app.get('/api/reject_master', async (req, res) => {
     try {
