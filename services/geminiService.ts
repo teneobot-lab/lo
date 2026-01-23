@@ -9,8 +9,12 @@ export const geminiService = {
     recentTransactions: Transaction[]
   ): Promise<string> => {
     
-    // Fix: Using process.env.API_KEY directly for initialization as per security and architectural guidelines.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = process.env.API_KEY;
+    if (!key || key.trim() === '') {
+        return "⚠️ API Key Belum Terpasang Bang.\n\nMasuk ke Settings Vercel atau .env, tambahkan 'API_KEY' biar AI-nya bangun.";
+    }
+
+    const ai = new GoogleGenAI({ apiKey: key });
 
     // Ringkasan data biar AI tetap punya konteks gudang tapi hemat memori
     const inventorySummary = inventory.slice(0, 50).map(i => 
@@ -38,7 +42,6 @@ export const geminiService = {
     `;
 
     try {
-      // Fix: Utilizing 'gemini-3-flash-preview' for basic assistant and text-heavy conversational tasks.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview', 
         contents: prompt,
@@ -53,14 +56,16 @@ export const geminiService = {
       return response.text || "Waduh, otak saya lagi nge-blank bentar Bang. Coba tanya lagi deh.";
     } catch (error: any) {
       console.error("Gemini Error:", error);
-      if (error.message?.includes("403")) return "❌ Akses ditolak. Pastikan API Key valid dan terkonfigurasi dengan benar.";
+      if (error.message?.includes("403")) return "❌ Akses ditolak. Cek API Key Abang, kayaknya belum di-whitelist atau salah pasang.";
       return "⚠️ Lagi ada gangguan koneksi ke server AI nih Bang. Coba cek internet atau refresh halaman ya.";
     }
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
-    // Fix: Direct initialization of GoogleGenAI instance for each request to ensure fresh context and key management.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = process.env.API_KEY;
+    if (!key || key.trim() === '') return "API Key Missing.";
+
+    const ai = new GoogleGenAI({ apiKey: key });
 
     const prompt = `
       Data: ${JSON.stringify(inventory.slice(0, 20).map(i => ({ n: i.name, s: i.stock })))}
@@ -68,15 +73,13 @@ export const geminiService = {
     `;
 
     try {
-      // Fix: Upgraded to 'gemini-3-pro-preview' for complex data analysis and business reasoning.
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { systemInstruction: "Kamu adalah Business Analyst handal." }
       });
       return response.text || "Gagal dapet insight.";
     } catch (error) {
-      console.error("Gemini Error:", error);
       return "Gagal generate laporan.";
     }
   }
