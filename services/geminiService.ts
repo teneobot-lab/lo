@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
 
@@ -8,99 +9,78 @@ export const geminiService = {
     recentTransactions: Transaction[]
   ): Promise<string> => {
     
-    // VALIDATION: Check for empty key from env injection
     const key = process.env.API_KEY;
     if (!key || key.trim() === '') {
-        return "⚠️ API Key Missing.\n\nPlease configure the 'API_KEY' in your Vercel Project Settings (Environment Variables) or use a local .env file.";
+        return "⚠️ API Key Belum Terpasang Bang.\n\nMasuk ke Settings Vercel atau .env, tambahkan 'API_KEY' biar AI-nya bangun.";
     }
 
-    // Create a new instance right before making an API call to ensure current key is used
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
 
-    // OPTIMIZATION: Compact the data to save tokens and speed up processing.
-    // We only send essential fields.
-    const inventorySummary = inventory.map(i => 
-      `${i.name} (${i.stock} ${i.unit})`
+    // Ringkasan data biar AI tetap punya konteks gudang tapi hemat memori
+    const inventorySummary = inventory.slice(0, 50).map(i => 
+      `${i.name}: ${i.stock}`
     ).join(', ');
 
-    // Only last 3 transactions for speed context
-    const transactionSummary = recentTransactions.slice(0, 3).map(t => 
-      `${t.type} ${t.items.length} items (Rp${t.totalValue})`
-    ).join('; ');
-
     const systemInstruction = `
-      You are Nexus AI, a smart assistant for the Nexus WMS application.
-      
-      YOUR CAPABILITIES:
-      1. General Assistant: You can chat about anything (business tips, writing emails, coding, general knowledge). You are NOT restricted to warehouse topics only.
-      2. Warehouse Expert: You have access to the current stock data below. Use it ONLY if the user asks about stock, inventory, or sales.
+      NAMA AGEN: Nexus AI (Versi Ultra-Flexible)
+      PERAN: Kamu adalah asisten pribadi multifungsi yang terintegrasi di sistem Nexus WMS.
 
-      DATA CONTEXT (Use only if relevant):
-      - Items: ${inventorySummary}
-      - Recent Activity: ${transactionSummary}
+      KEMAMPUAN UTAMA:
+      1. ASISTEN UMUM: Kamu bisa bantu bikin email, jadwal, kasih saran bisnis, coding, ngerjain tugas, atau sekadar teman curhat/ngobrol santai.
+      2. PENULIS KREATIF: Bisa bikin caption sosmed, draf surat resmi, atau pesan WhatsApp gaul.
+      3. AHLI GUDANG (ON-DEMAND): Kamu punya akses ke data stok Nexus (Data: ${inventorySummary}). Gunakan data ini HANYA JIKA user bertanya soal stok, barang, atau operasional gudang. Jika user tanya hal umum, fokuslah pada hal umum.
 
-      STYLE:
-      - Be concise, professional, and fast.
-      - If asked about generic things (e.g., "Write a poem"), just do it. Do not mention inventory.
-      - If asked about stock, analyze the data provided above.
-      - Currency: Indonesian Rupiah (Rp).
+      GAYA BAHASA:
+      - Gunakan Bahasa Indonesia sebagai bahasa utama.
+      - Jika user minta "Bahasa Gaul", gunakan gaya anak Jakarta/gaul (pake 'gue', 'lo', 'bang', 'gercep', dll) tapi tetap sopan.
+      - Default: Profesional, cerdas, solutif, dan sedikit humoris agar tidak kaku.
+
+      INSTRUKSI KHUSUS:
+      - Jangan pernah bilang "Saya hanya bot gudang". Kamu adalah AI canggih.
+      - Jika user tanya "Siapa kamu?", jawablah sebagai Nexus AI, asisten cerdas yang siap bantu apa aja.
+      - Kamu dilarang memberikan informasi yang berbahaya atau ilegal.
     `;
 
     try {
-      // Using 'gemini-3-pro-preview' for complex text and reasoning tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview', 
+        model: 'gemini-3-flash-preview', 
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
-          // SPEED OPTIMIZATION: Disable thinking budget for instant responses
-          thinkingConfig: { thinkingBudget: 0 }, 
-          temperature: 0.7, // Balance between creativity and accuracy
+          temperature: 0.9, // Ditingkatkan biar lebih kreatif dan nggak kaku
+          topP: 0.95,
+          topK: 64,
         }
       });
-      // ACCESS the .text property directly (not a method)
-      return response.text || "I couldn't generate a response.";
-    } catch (error) {
+      
+      return response.text || "Waduh, otak saya lagi nge-blank bentar Bang. Coba tanya lagi deh.";
+    } catch (error: any) {
       console.error("Gemini Error:", error);
-      return "I'm currently offline or the API key is invalid.";
+      if (error.message?.includes("403")) return "❌ Akses ditolak. Cek API Key Abang, kayaknya belum di-whitelist atau salah pasang.";
+      return "⚠️ Lagi ada gangguan koneksi ke server AI nih Bang. Coba cek internet atau refresh halaman ya.";
     }
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
-    // VALIDATION Check
     const key = process.env.API_KEY;
-    if (!key || key.trim() === '') {
-        return "⚠️ API Key Missing. Check Vercel Env Vars.";
-    }
+    if (!key || key.trim() === '') return "API Key Missing.";
 
-    // Create a new instance right before making an API call
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
 
-    // Optimized prompt for speed
-    const dataContext = JSON.stringify(inventory.map(i => ({ n: i.name, s: i.stock, m: i.minLevel, p: i.price })));
-    
     const prompt = `
-      Data: ${dataContext}
-      Task: Short executive summary (bullet points).
-      1. Low stock items?
-      2. Highest value asset?
-      3. One Reorder recommendation.
-      Keep it very brief.
+      Data: ${JSON.stringify(inventory.slice(0, 20).map(i => ({ n: i.name, s: i.stock })))}
+      Tugas: Berikan analisa singkat & padat ala CEO Business Report dalam Bahasa Indonesia.
     `;
 
     try {
-      // Using 'gemini-3-flash-preview' for basic summarization tasks
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
-        config: {
-            thinkingConfig: { thinkingBudget: 0 }
-        }
+        config: { systemInstruction: "Kamu adalah Business Analyst handal." }
       });
-      // ACCESS the .text property directly
-      return response.text || "No insights available.";
+      return response.text || "Gagal dapet insight.";
     } catch (error) {
-      return "Unable to generate insights.";
+      return "Gagal generate laporan.";
     }
   }
 };
