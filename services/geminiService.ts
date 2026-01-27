@@ -76,23 +76,27 @@ export const geminiService = {
     }
   },
 
-  findYoutubeVideo: async (query: string): Promise<{ title: string, url: string } | null> => {
+  searchYoutubeVideos: async (query: string): Promise<Array<{ title: string, channel: string, url: string }>> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Using 2.5 flash as it supports grounding consistently
-        contents: `Find the official YouTube video URL for: "${query}". Return the specific video URL, not a channel or search result.`,
+        model: 'gemini-2.5-flash', 
+        contents: `Search for top 5 YouTube videos matching: "${query}". Return the song/video title, the channel name (artist), and the URL.`,
         config: {
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING, description: "The exact title of the video found" },
-              url: { type: Type.STRING, description: "The full YouTube URL (e.g., https://www.youtube.com/watch?v=...)" }
-            },
-            required: ["title", "url"]
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Title of the video/song" },
+                channel: { type: Type.STRING, description: "Channel name or Artist name" },
+                url: { type: Type.STRING, description: "YouTube link" }
+              },
+              required: ["title", "channel", "url"]
+            }
           }
         }
       });
@@ -100,10 +104,10 @@ export const geminiService = {
       if (response.text) {
         return JSON.parse(response.text);
       }
-      return null;
+      return [];
     } catch (error) {
       console.error("AI Search Error:", error);
-      return null;
+      return [];
     }
   }
 };

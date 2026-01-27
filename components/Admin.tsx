@@ -7,7 +7,7 @@ import { geminiService } from '../services/geminiService';
 import { 
   Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
   RefreshCcw, ShieldCheck, Youtube, Copy, Search, ArrowRight, 
-  Table, Link2, CloudUpload, FileJson, ChevronDown, Wifi, Play, Sparkles, Loader2
+  Table, Link2, CloudUpload, FileJson, ChevronDown, Wifi, Play, Sparkles, Loader2, Mic2
 } from 'lucide-react';
 
 interface AdminProps {
@@ -18,6 +18,12 @@ interface AdminProps {
 interface PlaylistItem {
     id: string;
     title: string;
+    url: string;
+}
+
+interface SearchResult {
+    title: string;
+    channel: string;
     url: string;
 }
 
@@ -38,6 +44,7 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
     // Media State
     const [mediaSearchQuery, setMediaSearchQuery] = useState('');
     const [isSearchingMedia, setIsSearchingMedia] = useState(false);
+    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
     const PROXY_PATH = '/api';
 
@@ -129,32 +136,12 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
     const handleAISearchMedia = async () => {
         if (!mediaSearchQuery.trim()) return;
         setIsSearchingMedia(true);
+        setSearchResults([]);
 
         try {
-            const result = await geminiService.findYoutubeVideo(mediaSearchQuery);
-            
-            if (result && result.url) {
-                // Convert Standard URL to Embed URL
-                let embedUrl = result.url;
-                
-                // Regex to extract video ID from various YouTube URL formats
-                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-                const match = result.url.match(regExp);
-
-                if (match && match[2].length === 11) {
-                    embedUrl = `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
-                }
-
-                const newItem = { 
-                    id: Math.random().toString(36).substr(2, 9), 
-                    title: result.title, 
-                    url: embedUrl 
-                };
-
-                const next = [...playlist, newItem];
-                setPlaylist(next);
-                localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
-                setMediaSearchQuery('');
+            const results = await geminiService.searchYoutubeVideos(mediaSearchQuery);
+            if (results && results.length > 0) {
+                setSearchResults(results);
             } else {
                 alert("AI tidak dapat menemukan video yang sesuai. Coba kata kunci lain.");
             }
@@ -163,6 +150,33 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         } finally {
             setIsSearchingMedia(false);
         }
+    };
+
+    const handleAddSearchResult = (result: SearchResult) => {
+        // Convert Standard URL to Embed URL
+        let embedUrl = result.url;
+        
+        // Regex to extract video ID from various YouTube URL formats
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const match = result.url.match(regExp);
+
+        if (match && match[2].length === 11) {
+            embedUrl = `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
+        }
+
+        const newItem = { 
+            id: Math.random().toString(36).substr(2, 9), 
+            title: `${result.title} - ${result.channel}`, 
+            url: embedUrl 
+        };
+
+        const next = [...playlist, newItem];
+        setPlaylist(next);
+        localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
+        
+        // Clear search
+        setSearchResults([]);
+        setMediaSearchQuery('');
     };
 
     const deleteFromPlaylist = (id: string) => {
@@ -335,14 +349,14 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                     </div>
 
                     {/* Media Hub - AI Enhanced */}
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700 relative overflow-visible">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={28}/></div>
                             <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Media Hub</h3>
                         </div>
                         
                         {/* AI Search Bar */}
-                        <div className="mb-6 relative">
+                        <div className="mb-6 relative z-30">
                             <label className="text-[10px] font-bold text-rose-400 uppercase tracking-widest block mb-2">AI Media Search</label>
                             <div className="flex gap-2">
                                 <div className="relative flex-1">
@@ -350,12 +364,32 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                     <input 
                                         type="text"
                                         value={mediaSearchQuery}
-                                        onChange={e => setMediaSearchQuery(e.target.value)}
+                                        onChange={e => { setMediaSearchQuery(e.target.value); if(e.target.value === '') setSearchResults([]); }}
                                         onKeyDown={e => e.key === 'Enter' && handleAISearchMedia()}
-                                        placeholder="Cari lagu/video (Contoh: 'Lofi hip hop radio')"
+                                        placeholder="Ketik judul lagu / penyanyi (Contoh: 'Sailor')"
                                         className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 dark:text-white"
                                         disabled={isSearchingMedia}
                                     />
+                                    {searchResults.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-[10px] font-bold text-gray-500 uppercase">
+                                                Hasil Pencarian AI
+                                            </div>
+                                            {searchResults.map((res, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => handleAddSearchResult(res)}
+                                                    className="w-full text-left p-3 hover:bg-rose-50 dark:hover:bg-rose-900/20 border-b border-gray-50 dark:border-gray-800 last:border-0 flex items-center justify-between group transition-colors"
+                                                >
+                                                    <div>
+                                                        <div className="font-bold text-sm text-gray-800 dark:text-white group-hover:text-rose-600">{res.title}</div>
+                                                        <div className="text-xs text-gray-500 flex items-center gap-1"><Mic2 size={10} /> {res.channel}</div>
+                                                    </div>
+                                                    <Plus size={16} className="text-gray-300 group-hover:text-rose-500" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <button 
                                     onClick={handleAISearchMedia}
@@ -366,11 +400,11 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                 </button>
                             </div>
                             <p className="text-[10px] text-gray-400 mt-2 italic">
-                                *AI akan mencari link YouTube dan otomatis menambahkannya ke playlist.
+                                *AI akan menampilkan pilihan lagu sesuai kata kunci.
                             </p>
                         </div>
 
-                        <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-2">
+                        <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-2 relative z-10">
                             {playlist.map(p => (
                                 <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800' : 'bg-white border-ice-50 dark:bg-gray-900 dark:border-gray-800'}`}>
                                     <div className="flex-1 min-w-0 pr-2">

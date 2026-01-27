@@ -118,7 +118,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         if (!data || typeof data === 'string') return;
 
         const wb = XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]]; 
+        const sheetName = wb.SheetNames[0];
+        if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
+        
+        const ws = wb.Sheets[sheetName]; 
         const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
         
         setIsImporting(true);
