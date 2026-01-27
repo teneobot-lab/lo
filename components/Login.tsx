@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
-import { Lock, User as UserIcon, ArrowRight, Loader2, CheckCircle, Shield, Users, RefreshCw, Hexagon } from 'lucide-react';
+import { Lock, User as UserIcon, Shield, Users, RefreshCw, Hexagon, CheckCircle2 } from 'lucide-react';
 import { ToastType } from './Toast';
 
 interface LoginProps {
@@ -15,120 +15,148 @@ export const Login: React.FC<LoginProps> = ({ onLogin, notify }) => {
   const [password, setPassword] = useState('12345');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  // Animation Logic for Percentage
+  useEffect(() => {
+    let interval: any;
+    if (isLoading && progress < 100) {
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          const next = prev + Math.floor(Math.random() * 15) + 5;
+          return next > 100 ? 100 : next;
+        });
+      }, 150);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading, progress]);
 
   const performLogin = async (u: string, p: string) => {
     setError('');
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 600));
+    setProgress(0);
+
+    // Simulate network/processing time aligned with animation
     const hash = storageService.hashPassword(p);
     const user = await storageService.login(u, hash);
-    if (user) {
-      setIsSuccess(true);
-      setTimeout(() => { onLogin(user); }, 800);
-    } else {
-      setIsLoading(false);
-      setError('Username atau password salah.');
-      notify('Login gagal. Periksa koneksi atau kredensial.', 'error');
-    }
+
+    // Wait for animation to hit 100% or close to it
+    setTimeout(() => {
+        if (user) {
+            setProgress(100);
+            setTimeout(() => {
+                onLogin(user);
+            }, 500);
+        } else {
+            setIsLoading(false);
+            setProgress(0);
+            setError('Invalid Credentials');
+            notify('Login failed. Please check your username and password.', 'error');
+        }
+    }, 2000);
   };
 
   const handleLogin = (e: React.FormEvent) => { e.preventDefault(); performLogin(username, password); };
   const quickLogin = (u: string, p: string) => { setUsername(u); setPassword(p); performLogin(u, p); };
-  const handleResetMode = () => { localStorage.removeItem('nexus_api_url'); notify('Reset koneksi ke default.', 'success'); window.location.reload(); };
+  const handleResetMode = () => { localStorage.removeItem('nexus_api_url'); notify('Server connection reset to default.', 'info'); window.location.reload(); };
 
   return (
-    <div className="min-h-screen bg-[#F4F5F7] dark:bg-gray-900 flex flex-col items-center justify-center p-4">
-      {/* Brand Header */}
-      <div className="mb-8 text-center flex flex-col items-center">
-          <div className="w-12 h-12 bg-corporate-600 rounded flex items-center justify-center text-white mb-4 shadow-lg">
-              <Hexagon size={28} fill="currentColor" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-white tracking-tight">Nexus<span className="text-corporate-600">WMS</span></h1>
-          <p className="text-gray-500 text-sm mt-1">Enterprise Warehouse Management System</p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#021B35] via-[#052e55] to-[#001226] overflow-hidden relative">
+      {/* Background Decor */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-600/20 blur-[120px]"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-cyan-600/10 blur-[120px]"></div>
 
-      <div className={`bg-white dark:bg-gray-800 w-full max-w-sm p-8 rounded shadow-card border border-gray-200 dark:border-gray-700 transition-all duration-300`}>
-        {isSuccess ? (
-          <div className="flex flex-col items-center justify-center py-8 animate-in zoom-in duration-300">
-            <CheckCircle size={64} className="text-green-500 mb-4 animate-bounce" />
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white">Login Berhasil</h2>
-            <p className="text-gray-500 text-sm mt-2">Mengalihkan ke dashboard...</p>
-          </div>
+      <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 w-full max-w-sm p-10 rounded-[2rem] shadow-2xl animate-in zoom-in duration-500">
+        
+        {/* Brand */}
+        <div className="text-center mb-10">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg shadow-blue-500/30 mb-4">
+                <Hexagon size={32} fill="white" className="text-white animate-pulse" />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-widest uppercase font-sans">User Login</h1>
+            <p className="text-blue-200/60 text-xs mt-1 tracking-wider">NEXUS ENTERPRISE WMS</p>
+        </div>
+
+        {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-6">
+                <div className="relative w-32 h-32 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90">
+                        <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-blue-900/30" />
+                        <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray="351.86" strokeDashoffset={351.86 - (351.86 * progress) / 100} className="text-blue-400 transition-all duration-300 ease-out" strokeLinecap="round" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center flex-col">
+                        <span className="text-2xl font-bold text-white">{progress}%</span>
+                    </div>
+                </div>
+                <p className="text-blue-200 text-sm animate-pulse tracking-wide">Authenticating Securely...</p>
+            </div>
         ) : (
-          <div>
-            <div className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Sign In</h2>
-                <p className="text-xs text-gray-500">Masuk untuk mengakses sistem gudang.</p>
-            </div>
-            
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Username</label>
-                <div className="relative">
-                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input 
-                        type="text" 
-                        disabled={isLoading}
-                        className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:border-corporate-500 focus:ring-1 focus:ring-corporate-500 transition-all text-gray-800 dark:text-white"
-                        placeholder="contoh: admin"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                    />
+            <form onSubmit={handleLogin} className="space-y-6">
+                <div className="space-y-1">
+                    <div className="relative group">
+                        <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center text-blue-300 group-focus-within:text-white transition-colors">
+                            <UserIcon size={20} />
+                        </div>
+                        <input 
+                            type="text" 
+                            disabled={isLoading}
+                            className="w-full pl-12 pr-4 py-4 bg-black/20 border border-white/5 rounded-full text-white placeholder-white/30 focus:outline-none focus:bg-black/40 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all text-sm"
+                            placeholder="Username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                        />
+                    </div>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase">Password</label>
-                <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input 
-                        type="password" 
-                        disabled={isLoading}
-                        className="w-full pl-10 pr-3 py-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:border-corporate-500 focus:ring-1 focus:ring-corporate-500 transition-all text-gray-800 dark:text-white"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                    />
+                <div className="space-y-1">
+                    <div className="relative group">
+                        <div className="absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center text-blue-300 group-focus-within:text-white transition-colors">
+                            <Lock size={20} />
+                        </div>
+                        <input 
+                            type="password" 
+                            disabled={isLoading}
+                            className="w-full pl-12 pr-4 py-4 bg-black/20 border border-white/5 rounded-full text-white placeholder-white/30 focus:outline-none focus:bg-black/40 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all text-sm"
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                    </div>
                 </div>
-              </div>
 
-              {error && <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600 text-center">{error}</div>}
+                {error && (
+                    <div className="py-2 px-4 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                        <p className="text-xs text-red-300 font-medium">{error}</p>
+                    </div>
+                )}
 
-              <button 
-                type="submit" 
-                disabled={isLoading}
-                className={`w-full py-2.5 font-bold rounded text-sm transition-all flex items-center justify-center gap-2
-                  ${isLoading 
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                    : 'bg-corporate-600 hover:bg-corporate-700 text-white shadow-sm'
-                  }`}
-              >
-                {isLoading ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : 'Masuk'}
-              </button>
+                <button 
+                    type="submit" 
+                    className="w-full py-4 bg-white text-blue-900 font-bold rounded-full shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 uppercase tracking-widest text-sm"
+                >
+                    Login
+                </button>
             </form>
+        )}
 
-            <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
-                <p className="text-[10px] text-center text-gray-400 font-bold uppercase mb-3">Quick Login (Dev Mode)</p>
-                <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => quickLogin('admin', '12345')} disabled={isLoading} className="flex items-center justify-center gap-2 p-2 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors">
-                        <Shield size={14} className="text-corporate-600"/> Admin
+        {/* Footer Actions */}
+        {!isLoading && (
+            <div className="mt-8 pt-6 border-t border-white/10">
+                <div className="flex justify-center gap-4 mb-4">
+                    <button onClick={() => quickLogin('admin', '12345')} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all border border-white/5" title="Quick Admin">
+                        <Shield size={16} />
                     </button>
-                    <button onClick={() => quickLogin('staff', '12345')} disabled={isLoading} className="flex items-center justify-center gap-2 p-2 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors">
-                        <Users size={14} className="text-green-600"/> Staff
+                    <button onClick={() => quickLogin('staff', '12345')} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all border border-white/5" title="Quick Staff">
+                        <Users size={16} />
+                    </button>
+                    <button onClick={handleResetMode} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all border border-white/5" title="Reset Connection">
+                        <RefreshCw size={16} />
                     </button>
                 </div>
+                <p className="text-center text-[10px] text-white/30 uppercase tracking-widest">Secured by Nexus WMS</p>
             </div>
-            
-            <div className="mt-4 text-center">
-               <button onClick={handleResetMode} className="text-[10px] text-gray-400 hover:text-corporate-600 flex items-center justify-center gap-1 mx-auto transition-colors">
-                  <RefreshCw size={10} /> Reset Koneksi Server
-               </button>
-            </div>
-          </div>
         )}
       </div>
-      <p className="mt-8 text-xs text-gray-400">© 2025 Nexus Enterprise Solutions. All rights reserved.</p>
     </div>
   );
 };

@@ -113,10 +113,14 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     reader.onload = async (evt) => {
       try {
         const target = evt.target as FileReader;
-        const bstr = target?.result as string;
-        if (!bstr) return;
+        const arrayBuffer = target?.result;
+        
+        if (!arrayBuffer || typeof arrayBuffer === 'string') return;
 
-        const wb = XLSX.read(bstr, { type: 'binary' }); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(ws) as any[];
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]]; 
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+        
         setIsImporting(true);
         for (let i = 0; i < data.length; i += 5) {
             const chunk = data.slice(i, i + 5);
@@ -129,7 +133,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         notify('Import berhasil', 'success'); onRefresh();
       } catch (e: any) { notify("Gagal import", 'error'); } finally { setIsImporting(false); }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const calculateDisplayStock = (baseStock: number, ratio: number, op: 'multiply' | 'divide') => {
