@@ -58,6 +58,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     // Return the children props when no error is caught.
-    return this.props.children;
+    return (this.props as any).children;
   }
 }

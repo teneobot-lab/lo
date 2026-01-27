@@ -117,7 +117,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         
         if (!data || typeof data === 'string') return;
 
-        const wb = XLSX.read(data, { type: 'array' });
+        const wb = XLSX.read(data as any, { type: 'array' });
         const sheetName = wb.SheetNames[0];
         if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
         
@@ -129,7 +129,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             const chunk = sheetData.slice(i, i + 5);
             await Promise.all(chunk.map(async (row) => {
                 const sku = String(row.SKU || row.sku).trim(); const existing = items.find(item => item.sku === sku);
-                const newItem: InventoryItem = { id: existing ? existing.id : crypto.randomUUID(), sku: sku, name: row.Name || row.name || (existing?.name || 'Unnamed'), category: row.Category || row.category || 'General', price: Number(row.Price || row.price || 0), location: row.Location || row.location || 'A-01', unit: row.Unit || row.unit || 'Pcs', stock: Number(row.Stock || row.stock || 0), minLevel: Number(row.MinLevel || row.minLevel || 0), active: true };
+                const newItem: InventoryItem = { id: existing ? existing.id : (crypto.randomUUID() as string), sku: sku, name: row.Name || row.name || (existing?.name || 'Unnamed'), category: row.Category || row.category || 'General', price: Number(row.Price || row.price || 0), location: row.Location || row.location || 'A-01', unit: row.Unit || row.unit || 'Pcs', stock: Number(row.Stock || row.stock || 0), minLevel: Number(row.MinLevel || row.minLevel || 0), active: true };
                 return storageService.saveItem(newItem);
             }));
         }

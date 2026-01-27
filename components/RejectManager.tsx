@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet, Download, Layers } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet, Download, Layers, Table } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface RejectManagerProps {
@@ -137,6 +137,67 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
       e.target.value = ''; 
   };
 
+  // Logic Export Matrix (Pivot Date)
+  const handleExportMatrix = () => {
+    if (rejectLogs.length === 0) return alert("Tidak ada data log reject untuk diexport.");
+
+    // 1. Kumpulkan semua tanggal unik dan urutkan
+    const uniqueDates = Array.from(new Set(rejectLogs.map(l => l.date))).sort();
+
+    // 2. Mapping data per SKU
+    const itemMap: Record<string, { sku: string, name: string, unit: string, qtyByDate: Record<string, number> }> = {};
+
+    rejectLogs.forEach((log: RejectLog) => {
+        log.items.forEach((item: RejectItemDetail) => {
+            if (!itemMap[item.sku]) {
+                itemMap[item.sku] = {
+                    sku: item.sku,
+                    name: item.itemName,
+                    unit: item.unit,
+                    qtyByDate: {}
+                };
+            }
+            // Akumulasi qty jika ada beberapa log di tanggal yang sama untuk item yang sama
+            const currentQty = itemMap[item.sku].qtyByDate[log.date] || 0;
+            itemMap[item.sku].qtyByDate[log.date] = currentQty + item.quantity;
+        });
+    });
+
+    // 3. Bentuk baris-baris Excel
+    const rows = Object.values(itemMap).map(item => {
+        const row: any = {
+            'Kode Barang': item.sku,
+            'Nama Barang': item.name,
+            'Satuan': item.unit
+        };
+        
+        // Isi kolom tanggal (D1, E1, dst...)
+        uniqueDates.forEach(date => {
+            row[date] = item.qtyByDate[date] || 0;
+        });
+        
+        return row;
+    });
+
+    // 4. Buat Worksheet & Workbook
+    const ws = XLSX.utils.json_to_sheet(rows);
+    
+    // Atur lebar kolom agar rapi
+    const wscols = [
+        { wch: 15 }, // SKU
+        { wch: 30 }, // Name
+        { wch: 10 }, // Unit
+        ...uniqueDates.map(() => ({ wch: 12 })) // Date columns
+    ];
+    ws['!cols'] = wscols;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Matrix Reject");
+    
+    // 5. Download
+    XLSX.writeFile(wb, `Reject_Matrix_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   const handleSaveLog = (log: RejectLog) => {
       if (editingLog) {
           onUpdateLog(log);
@@ -160,6 +221,10 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                    <input type="text" placeholder="Cari SKU, Nama, atau ID..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-ice-50 dark:bg-gray-900 border border-ice-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ice-300 dark:text-white" />
                </div>
                
+               {activeTab === 'logs' && (
+                  <button onClick={handleExportMatrix} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm whitespace-nowrap transition-all active:scale-95" title="Export Matrix Horizontal"><Table size={18} /> Export Matrix XLSX</button>
+               )}
+
                {activeTab === 'master' && (
                   <div className="flex items-center gap-2">
                       <button onClick={downloadTemplate} className="p-2.5 bg-ice-100 dark:bg-gray-700 text-ice-600 dark:text-ice-400 rounded-xl hover:bg-ice-200 transition-all border border-ice-200 dark:border-gray-600" title="Download Template Master"><Download size={18} /></button>
