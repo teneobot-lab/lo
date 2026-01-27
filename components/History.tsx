@@ -209,119 +209,156 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   const handleExportSCPDF = () => {
       if (!stockCardData || !scSelectedItem) return;
       const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const contentWidth = pageWidth - (margin * 2);
 
-      // --- Layout mimicking Surat Jalan style ---
+      // --- Layout Configuration (Surat Jalan Style) ---
       
-      // 1. Header Box (Left: No SJ/Date placeholder, Right: Title)
-      doc.setDrawColor(0);
-      doc.setLineWidth(0.5);
-      
-      // Title
+      // 1. Top Right Title
       doc.setFontSize(22);
       doc.setFont("helvetica", "bold");
-      doc.text("KARTU STOK", 195, 20, { align: 'right' });
+      // Mimic "Surat Jalan" text style but for Stock Card context
+      doc.text("KARTU STOK", pageWidth - margin, 20, { align: 'right' });
+      doc.setLineWidth(0.5);
+      doc.line(pageWidth - margin - 50, 22, pageWidth - margin, 22);
+
+      // 2. Top Left Box (No. SJ / Tanggal Style)
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.1);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
       
-      // Top Left Info Box
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.rect(14, 10, 80, 20); // Box
-      doc.text(`Kode Barang  : ${scSelectedItem.sku}`, 16, 16);
-      doc.text(`Periode      : ${scStartDate} s/d ${scEndDate}`, 16, 24);
+      // Draw Box
+      doc.rect(margin, 10, 90, 18);
+      // Text inside
+      doc.text(`No. Dokumen : SC/${scSelectedItem.sku}`, margin + 2, 16);
+      doc.text(`Periode     : ${scStartDate} s/d ${scEndDate}`, margin + 2, 22);
 
-      // 2. Info Boxes (Dari / Ke Equivalent)
-      // Box 1: Item Details
-      doc.rect(14, 35, 90, 25);
-      doc.setFont("helvetica", "bold");
-      doc.text("Item Detail", 16, 40);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Nama: ${scSelectedItem.name}`, 16, 46);
-      doc.text(`Kategori: ${scSelectedItem.category}`, 16, 52);
-      doc.text(`Lokasi: ${scSelectedItem.location}`, 16, 58);
-
-      // Box 2: Summary Stats
-      doc.rect(105, 35, 90, 25);
-      doc.setFont("helvetica", "bold");
-      doc.text("Ringkasan Mutasi", 107, 40);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Stok Awal : ${stockCardData.openingStock}`, 107, 46);
-      doc.text(`Total Masuk : ${stockCardData.totalIn}`, 107, 52);
-      doc.text(`Total Keluar: ${stockCardData.totalOut}`, 107, 58);
+      // 3. Middle Section (Dari / Ke Boxes)
+      const boxY = 32;
+      const boxHeight = 28;
+      const halfWidth = (contentWidth / 2);
       
-      // 3. Table
-      const tableColumn = ["Tanggal", "Referensi", "Ket", "Masuk", "Keluar", "Saldo"];
-      const tableRows: any[] = [];
+      // LEFT BOX: "Dari" (Item Information)
+      doc.rect(margin, boxY, halfWidth, boxHeight);
+      doc.setFont("helvetica", "bold");
+      doc.text("Item Detail", margin + 2, boxY + 5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${scSelectedItem.name}`, margin + 2, boxY + 10);
+      doc.text(`SKU: ${scSelectedItem.sku}`, margin + 2, boxY + 15);
+      doc.text(`Loc: ${scSelectedItem.location} | Cat: ${scSelectedItem.category}`, margin + 2, boxY + 20);
 
-      // Initial Row
-      tableRows.push(["-", "-", "Stok Awal", "-", "-", stockCardData.openingStock]);
+      // RIGHT BOX: "Ke" (Mutation Summary)
+      const box2X = margin + halfWidth;
+      doc.rect(box2X, boxY, halfWidth, boxHeight);
+      doc.setFont("helvetica", "bold");
+      doc.text("Ringkasan Mutasi", box2X + 2, boxY + 5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Stok Awal : ${stockCardData.openingStock}`, box2X + 2, boxY + 10);
+      doc.text(`Masuk     : ${stockCardData.totalIn}`, box2X + 2, boxY + 15);
+      doc.text(`Keluar    : ${stockCardData.totalOut}`, box2X + 2, boxY + 20);
+      // Extra Info Far Right (Mimic "BSM" Code)
+      const codeBoxWidth = 25;
+      doc.rect(pageWidth - margin - codeBoxWidth, boxY, codeBoxWidth, boxHeight);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(scSelectedItem.unit.substring(0,4).toUpperCase(), pageWidth - margin - (codeBoxWidth/2), boxY + 18, { align: 'center' });
+      doc.setFontSize(9); // Reset font size
 
-      stockCardData.rows.forEach(row => {
-          const rowData = [
-              new Date(row.date).toLocaleDateString('id-ID'),
-              row.ref,
-              row.notes || row.supplier,
-              row.in > 0 ? row.in : '-',
-              row.out > 0 ? row.out : '-',
-              row.balance
-          ];
-          tableRows.push(rowData);
-      });
+      // 4. Table
+      const tableY = boxY + boxHeight + 5;
+      const headers = [['No.', 'Tanggal', 'Referensi', 'Keterangan', 'Masuk', 'Keluar', 'Saldo']];
+      const data = [
+          ['-', scStartDate, '-', 'Stok Awal Periode', '', '', stockCardData.openingStock],
+          ...stockCardData.rows.map((r, i) => [
+              i + 1,
+              new Date(r.date).toLocaleDateString('id-ID'),
+              r.ref || '-',
+              r.notes || r.supplier || '-',
+              r.in > 0 ? r.in : '',
+              r.out > 0 ? r.out : '',
+              r.balance
+          ])
+      ];
 
       autoTable(doc, {
-          startY: 65,
-          head: [tableColumn],
-          body: tableRows,
-          theme: 'grid',
-          headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
-          styles: { fontSize: 8, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.1 },
+          startY: tableY,
+          head: headers,
+          body: data,
+          theme: 'grid', // 'grid' provides the borders shown in Surat Jalan
+          styles: {
+              fontSize: 8,
+              textColor: 20,
+              lineColor: [0, 0, 0],
+              lineWidth: 0.1,
+              cellPadding: 2,
+          },
+          headStyles: {
+              fillColor: [255, 255, 255],
+              textColor: 0,
+              fontStyle: 'bold',
+              lineWidth: 0.1,
+              lineColor: [0, 0, 0]
+          },
           columnStyles: {
-              0: { cellWidth: 25 },
-              1: { cellWidth: 35 },
-              2: { cellWidth: 'auto' },
-              3: { cellWidth: 20, halign: 'center' },
-              4: { cellWidth: 20, halign: 'center' },
-              5: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
+              0: { halign: 'center', cellWidth: 10 },
+              4: { halign: 'center' },
+              5: { halign: 'center' },
+              6: { halign: 'center', fontStyle: 'bold' }
           }
       });
 
-      // 4. Footer Signatures (Surat Jalan Style)
-      const finalY = (doc as any).lastAutoTable.finalY + 10;
-      
-      const sigY = finalY;
-      const boxWidth = 35;
-      const boxHeight = 25;
-      const gap = 10;
-      let startX = 14;
+      // 5. Footer (Totals & Signatures)
+      let finalY = (doc as any).lastAutoTable.finalY + 5;
 
-      // Signature 1: Dibuat
+      // Summary Boxes (Bottom Left/Center)
+      doc.setFont("helvetica", "normal");
+      
+      // Total Transaksi Box
+      doc.rect(margin, finalY, 40, 15);
+      doc.text("Total Transaksi", margin + 2, finalY + 5);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${stockCardData.rows.length}`, margin + 38, finalY + 11, { align: 'right' });
+
+      // Total Stok Akhir Box (Mimic Total Kuantitas)
+      const boxTotal2X = margin + 40; // Adjacent
+      doc.setFont("helvetica", "normal");
+      doc.rect(boxTotal2X, finalY, 40, 15);
+      doc.text("Stok Akhir", boxTotal2X + 2, finalY + 5);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${stockCardData.closingStock}`, boxTotal2X + 38, finalY + 11, { align: 'right' });
+
+      // Keterangan Box
+      const ketX = boxTotal2X + 45;
+      const ketWidth = contentWidth - (ketX - margin);
+      doc.rect(ketX, finalY, ketWidth, 15);
+      doc.setFont("helvetica", "normal");
+      doc.text("Keterangan:", ketX + 2, finalY + 5);
       doc.setFontSize(8);
-      doc.text("Dibuat", startX, sigY);
-      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2); // Top line
-      doc.rect(startX, sigY + 3, boxWidth, boxHeight); // Box
-      doc.text("Tgl:", startX, sigY + boxHeight + 8);
-      
-      startX += boxWidth + gap;
+      doc.text("System Generated by Nexus WMS", ketX + 2, finalY + 10);
 
-      // Signature 2: Pemeriksa
-      doc.text("Pemeriksa", startX, sigY);
-      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2);
-      doc.rect(startX, sigY + 3, boxWidth, boxHeight);
-      doc.text("Tgl:", startX, sigY + boxHeight + 8);
+      // Signatures
+      const sigY = finalY + 25;
+      const sigWidth = contentWidth / 4;
+      const sigHeight = 25;
+      const roles = ["Dibuat", "Pemeriksa", "Gudang", "Mengetahui"];
 
-      startX += boxWidth + gap;
+      roles.forEach((role, i) => {
+          const x = margin + (i * sigWidth);
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+          doc.text(role, x, sigY);
+          
+          // Signature Line
+          doc.line(x, sigY + sigHeight, x + sigWidth - 5, sigY + sigHeight);
+          
+          // Tgl below line
+          doc.setFontSize(8);
+          doc.text("Tgl:", x, sigY + sigHeight + 4);
+      });
 
-      // Signature 3: Mengetahui
-      doc.text("Mengetahui", startX, sigY);
-      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2);
-      doc.rect(startX, sigY + 3, boxWidth, boxHeight);
-      doc.text("Tgl:", startX, sigY + boxHeight + 8);
-
-      // Keterangan Box on right
-      startX += boxWidth + gap;
-      doc.text("Keterangan:", startX, sigY);
-      doc.rect(startX, sigY + 3, 50, boxHeight);
-      doc.text("System Generated", startX + 2, sigY + 8);
-
-      doc.save(`StockCard_${scSelectedItem.sku}.pdf`);
+      doc.save(`KartuStok_${scSelectedItem.sku}.pdf`);
   };
 
   const handleDelete = async (id: string) => { if (window.confirm("Hapus transaksi ini? Stok akan dikembalikan.")) { try { await storageService.deleteTransaction(id); onRefresh(); } catch (err) { alert("Error deleting"); } } };
