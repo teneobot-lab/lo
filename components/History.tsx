@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save } from 'lucide-react';
+import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save, CheckSquare, Square, FileSpreadsheet } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 
@@ -18,6 +18,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -40,15 +41,78 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return parseFloat((tItem.qty / ratio).toFixed(2));
   };
 
-  const filtered = transactions.filter(t => {
-      const matchType = filterType === 'all' || t.type === filterType;
-      const tDate = new Date(t.date).getTime();
-      const sDate = startDate ? new Date(startDate).getTime() : 0;
-      const eDate = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
-      const matchDate = tDate >= sDate && tDate <= eDate;
-      const query = searchQuery.toLowerCase();
-      return matchType && matchDate && ((t.id || "").toLowerCase().includes(query) || (t.supplier || "").toLowerCase().includes(query) || (t.notes || "").toLowerCase().includes(query));
-  });
+  const filtered = useMemo(() => {
+      return transactions.filter(t => {
+          const matchType = filterType === 'all' || t.type === filterType;
+          const tDate = new Date(t.date).getTime();
+          const sDate = startDate ? new Date(startDate).getTime() : 0;
+          const eDate = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
+          const matchDate = tDate >= sDate && tDate <= eDate;
+          const query = searchQuery.toLowerCase();
+          return matchType && matchDate && ((t.id || "").toLowerCase().includes(query) || (t.supplier || "").toLowerCase().includes(query) || (t.notes || "").toLowerCase().includes(query));
+      });
+  }, [transactions, filterType, startDate, endDate, searchQuery]);
+
+  // Selection Logic
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+        setSelectedIds(new Set());
+    } else {
+        setSelectedIds(new Set(filtered.map(t => t.id)));
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelectedIds(next);
+  };
+
+  const handleExportFlattened = () => {
+      // 1. Determine Source Data (Selected OR All Filtered)
+      const sourceData = selectedIds.size > 0 
+          ? transactions.filter(t => selectedIds.has(t.id))
+          : filtered;
+
+      if (sourceData.length === 0) return alert("Tidak ada data untuk diexport.");
+
+      // 2. Flatten Data (One row per ITEM)
+      const flatData = sourceData.flatMap(tx => {
+          return tx.items.map(item => ({
+              "ID Transaksi": tx.id,
+              "Tanggal": tx.date.split('T')[0],
+              "Waktu": new Date(tx.date).toLocaleTimeString(),
+              "Tipe": tx.type === 'inbound' ? 'Masuk' : 'Keluar',
+              "Gudang": tx.warehouse || 'Gudang Utama',
+              "Supplier / Customer": tx.supplier || '-',
+              "No. Referensi (PO)": tx.poNumber || '-',
+              "No. Surat Jalan": tx.deliveryNote || '-',
+              "Catatan Transaksi": tx.notes || '-',
+              "User Admin": tx.userId,
+              "SKU Barang": item.sku,
+              "Nama Barang": item.name,
+              "Qty (Base)": item.qty,
+              "Satuan Transaksi": item.uom,
+              "Harga Satuan": item.unitPrice,
+              "Subtotal": item.total,
+              "Total Nilai Transaksi": tx.totalValue // Useful for validation
+          }));
+      });
+
+      // 3. Generate Excel
+      const ws = XLSX.utils.json_to_sheet(flatData);
+      
+      // Auto-width columns roughly
+      const wscols = Object.keys(flatData[0]).map(() => ({ wch: 20 }));
+      ws['!cols'] = wscols;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Detail Transaksi");
+      
+      const fileName = `Export_Detail_Transaksi_${new Date().toISOString().slice(0,10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+  };
 
   const handleSyncHistoryToSheets = async () => {
     const sheetUrl = localStorage.getItem('nexus_sheet_webhook');
@@ -77,7 +141,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
     } catch (err: any) { alert(err.message); } finally { setIsSyncing(false); }
   };
 
-  const handleDelete = async (id: string) => { if (window.confirm("Hapus transaksi ini? Stok akan dikembalikan.")) { try { await storageService.deleteTransaction(id); onRefresh(); } catch (err) { alert("Error deleting"); } } };
+  const handleDelete = async (id: string) => { if (window.confirm("Hapus transaksi ini? Stok akan dikembalikan.")) { try { await storageService.deleteTransaction(id); onRefresh(); setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; }); } catch (err) { alert("Error deleting"); } } };
 
   const handleEditSave = async (updatedTx: Transaction) => {
       if (!editingTransaction) return;
@@ -124,7 +188,12 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
             <button onClick={handleSyncHistoryToSheets} className="flex items-center gap-2 bg-white text-emerald-600 border border-emerald-200 px-3 py-2 rounded-md font-bold text-xs hover:bg-emerald-50 transition-all whitespace-nowrap shadow-sm">
                 {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Table size={14} />} Sync
             </button>
-            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 bg-white text-indigo-600 border border-indigo-200 px-4 py-2 rounded-md font-bold text-xs hover:bg-indigo-50 shadow-sm transition-all whitespace-nowrap"><Download size={14} /> Export List</button>
+            <button 
+                onClick={handleExportFlattened} 
+                className={`flex items-center gap-2 px-4 py-2 rounded-md font-bold text-xs shadow-sm transition-all whitespace-nowrap border ${selectedIds.size > 0 ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}
+            >
+                <FileSpreadsheet size={14} /> {selectedIds.size > 0 ? `Export Pilihan (${selectedIds.size})` : 'Export Detail (XLSX)'}
+            </button>
         </div>
       </div>
       
@@ -134,6 +203,11 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
               <tr>
+                <th className="p-3 w-10 text-center">
+                    <button onClick={toggleSelectAll} className="text-gray-500 hover:text-indigo-600">
+                        {selectedIds.size === filtered.length && filtered.length > 0 ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} />}
+                    </button>
+                </th>
                 <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">ID Transaksi</th>
                 <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-24 text-center">Tipe</th>
                 <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-40">Tanggal</th>
@@ -146,7 +220,12 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filtered.map((t, idx) => (
-                  <tr key={t.id} className={`hover:bg-indigo-50/30 dark:hover:bg-gray-700/30 transition-colors text-sm ${idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}>
+                  <tr key={t.id} className={`hover:bg-indigo-50/30 dark:hover:bg-gray-700/30 transition-colors text-sm ${selectedIds.has(t.id) ? 'bg-indigo-50 dark:bg-indigo-900/20' : idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}>
+                      <td className="p-3 text-center">
+                          <button onClick={() => toggleSelectOne(t.id)}>
+                             {selectedIds.has(t.id) ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} className="text-gray-300" />}
+                          </button>
+                      </td>
                       <td className="p-3 font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">{t.id}</td>
                       <td className="p-3 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type === 'inbound' ? 'Masuk' : 'Keluar'}</span></td>
                       <td className="p-3 text-xs text-gray-600 dark:text-gray-300">{new Date(t.date).toLocaleString('id-ID')}</td>
@@ -177,7 +256,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           </table>
         </div>
         <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center text-xs font-medium text-gray-500 sticky bottom-0 z-20">
-            <div>Menampilkan {filtered.length} Transaksi</div>
+            <div>Menampilkan {filtered.length} Transaksi ({selectedIds.size} dipilih)</div>
             <div>Total Valuasi: <span className="font-bold text-gray-800 dark:text-white">Rp {filtered.reduce((a, b) => a + b.totalValue, 0).toLocaleString('id-ID')}</span></div>
         </div>
       </div>
