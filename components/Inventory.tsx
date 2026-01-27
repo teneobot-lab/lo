@@ -117,7 +117,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         
         if (!arrayBuffer || typeof arrayBuffer === 'string') return;
 
-        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        // FIX: Cast arrayBuffer to any to resolve "Argument of type 'unknown' is not assignable to parameter of type 'string'"
+        const wb = XLSX.read(arrayBuffer as any, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]]; 
         const data = XLSX.utils.sheet_to_json(ws) as any[];
         

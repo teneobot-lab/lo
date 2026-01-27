@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexus WMS</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <script>
       // Browser Shim Configuration
       window.process = {
@@ -20,33 +20,40 @@
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
+              sans: ['"Open Sans"', 'sans-serif'], // Match the clean sans-serif from image
             },
             colors: {
-              // Enterprise Blue Palette (Accurate-like)
-              corporate: {
-                50: '#F0F7FF',
-                100: '#E0EFFE',
-                200: '#BADCFE',
-                300: '#7CC2FD',
-                400: '#36A4FC',
-                500: '#0C87F2',
-                600: '#0066CC', // Primary Action
-                700: '#0052A3', // Sidebar / Active States
-                800: '#004685',
-                900: '#003A6D',
+              // Paper Theme Palette
+              paper: {
+                dark: '#1C2434', // Sidebar Background
+                darker: '#161D29',
+                blue: '#5BA4E6', // Primary Action / Banner
+                blueHover: '#4A90D0',
+                light: '#F5F7FA', // Main Background
+                text: '#64748B', // Muted Text
+                textDark: '#1E293B', // Headings
+                border: '#E2E8F0',
               },
-              primary: '#0066CC',
-              secondary: '#0C87F2',
-              background: '#F4F5F7', // Neutral ERP background
+              // Mapping to existing utility names for compatibility
+              corporate: {
+                50: '#F0F9FF',
+                100: '#E0F2FE',
+                200: '#BAE6FD',
+                300: '#7DD3FC',
+                400: '#38BDF8',
+                500: '#5BA4E6', // Main Primary
+                600: '#0284C7',
+                700: '#0369A1',
+                800: '#075985',
+                900: '#0C4A6E',
+              },
+              primary: '#5BA4E6', 
+              background: '#F5F7FA',
               surface: '#FFFFFF',
-              dark: '#172B4D',
-              muted: '#6B778C',
-              border: '#DFE1E6',
             },
             boxShadow: {
-              'card': '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
-              'menu': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+              'paper': '0 2px 4px rgba(0,0,0,0.04)',
+              'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
             }
           }
         }
@@ -54,49 +61,49 @@
     </script>
     <style>
       body {
-        background-color: #F4F5F7;
-        color: #172B4D;
+        background-color: #F5F7FA;
+        color: #334155;
       }
       .dark body {
         background-color: #111827;
         color: #F9FAFB;
       }
-      /* Compact Scrollbar for Data Tables */
-      ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #F4F5F7;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #C1C7D0;
-        border-radius: 5px;
-        border: 2px solid #F4F5F7;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #A5ADBA;
-      }
       
-      /* Enterprise Table Styles */
+      /* Date Input Styling to match reference */
+      input[type="date"] {
+        position: relative;
+        padding-right: 20px;
+      }
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0.5;
+        cursor: pointer;
+      }
+
+      /* Clean Tables */
       .enterprise-table th {
-        background-color: #EBECF0;
-        color: #42526E;
+        background-color: #F8FAFC;
+        color: #64748B;
         font-weight: 600;
-        text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.05em;
-        border-bottom: 2px solid #DFE1E6;
+        text-transform: capitalize; 
+        font-size: 0.8rem;
+        border-bottom: 1px solid #E2E8F0;
+        padding: 12px 16px;
       }
       .enterprise-table td {
-        border-bottom: 1px solid #EBECF0;
+        border-bottom: 1px solid #F1F5F9;
+        padding: 12px 16px;
+        color: #334155;
       }
       
-      input[type=number]::-webkit-inner-spin-button, 
-      input[type=number]::-webkit-outer-spin-button { 
-        -webkit-appearance: none; 
-        margin: 0; 
-      }
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #F5F7FA; }
+      ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
     </style>
 <script type="importmap">
 {
@@ -124,7 +131,7 @@
 }
 </script>
 </head>
-  <body class="antialiased">
+  <body class="antialiased font-sans">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>

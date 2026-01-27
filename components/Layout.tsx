@@ -9,17 +9,14 @@ import {
   Settings, 
   LogOut, 
   Menu, 
-  Cloud,
-  Activity,
-  Moon,
+  Bell,
   Sun,
+  Moon,
   Music,
   Minimize2,
-  Hexagon,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
   User as UserIcon,
-  Bell
+  Circle
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -37,7 +34,6 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout, isDarkMode, toggleTheme, mediaUrl }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [latency, setLatency] = useState(24);
   const [isPlayerOpen, setIsPlayerOpen] = useState(true);
 
   useEffect(() => {
@@ -51,20 +47,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    const latencyInterval = setInterval(() => {
-      const baseLatency = Math.floor(Math.random() * (45 - 20) + 20);
-      setLatency(baseLatency);
-    }, 3000);
-    return () => clearInterval(latencyInterval);
-  }, []);
-
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'inventory', label: 'Inventory', icon: Package },
-    { id: 'transactions', label: 'Transaksi', icon: ArrowRightLeft },
-    { id: 'reject', label: 'Barang Reject', icon: Hexagon },
-    { id: 'history', label: 'Riwayat & Laporan', icon: History },
+    { id: 'inventory', label: 'Produk & Stok', icon: Package }, // Renamed to match image "Produk & Stok"
+    { id: 'transactions', label: 'Penjualan / Pembelian', icon: ArrowRightLeft },
+    { id: 'reject', label: 'Barang Reject', icon: Circle },
+    { id: 'history', label: 'Laporan', icon: History },
     { id: 'ai', label: 'Smart Assistant', icon: Bot },
     { id: 'admin', label: 'Pengaturan', icon: Settings },
   ];
@@ -76,7 +64,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
   };
 
   return (
-    <div className="flex h-screen bg-[#F4F5F7] dark:bg-gray-900 text-[#172B4D] dark:text-gray-100 font-sans overflow-hidden">
+    <div className="flex h-screen bg-[#F5F7FA] dark:bg-gray-900 text-[#334155] dark:text-gray-100 font-sans overflow-hidden">
       {isMobile && isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40"
@@ -84,27 +72,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
         />
       )}
 
-      {/* Sidebar - Enterprise Style (Deep Blue) */}
+      {/* Sidebar - Paper Theme (Dark Navy) */}
       <aside 
-        className={`fixed lg:relative z-50 h-full bg-[#003A6D] dark:bg-gray-800 transition-all duration-300 flex flex-col shadow-xl ${isSidebarOpen ? 'w-64' : 'w-16'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
+        className={`fixed lg:relative z-50 h-full bg-[#1C2434] text-white transition-all duration-300 flex flex-col shadow-xl ${isSidebarOpen ? 'w-64' : 'w-20'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
       >
         {/* Brand Header */}
-        <div className="h-16 flex items-center px-4 bg-[#002B52] dark:bg-gray-900 border-b border-[#004685] dark:border-gray-700">
+        <div className="h-20 flex items-center px-6 border-b border-gray-700/50">
             <div className="flex items-center gap-3 w-full">
-                <div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center text-white flex-shrink-0">
-                    <Hexagon size={20} fill="currentColor" className="text-white" />
+                <div className="w-8 h-8 rounded-full bg-white text-[#1C2434] flex items-center justify-center font-bold text-lg flex-shrink-0">
+                    P
                 </div>
                 {isSidebarOpen && (
-                    <div className="flex flex-col overflow-hidden">
-                        <span className="font-bold text-lg leading-tight tracking-wide text-white">NEXUS<span className="text-corporate-300">WMS</span></span>
-                        <span className="text-[10px] text-gray-300 tracking-wider">Enterprise Edition</span>
-                    </div>
+                    <span className="font-bold text-xl tracking-wide">PAPER</span>
                 )}
             </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+        <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => (
             <button
               key={item.id}
@@ -112,10 +97,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 onNavigate(item.id);
                 if (isMobile) setIsSidebarOpen(false);
               }}
-              className={`w-full flex items-center px-3 py-2.5 rounded transition-all duration-200 group text-sm ${
+              className={`w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 group text-sm font-medium ${
                 activePage === item.id 
-                  ? 'bg-corporate-600 dark:bg-gray-700 text-white shadow-sm' 
-                  : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                  ? 'bg-gray-700/50 text-white' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
               }`}
             >
               <item.icon 
@@ -123,89 +108,86 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 strokeWidth={1.5}
                 className={`${activePage === item.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} 
               />
-              {isSidebarOpen && <span className="ml-3 font-medium truncate">{item.label}</span>}
+              {isSidebarOpen && <span className="ml-3 truncate">{item.label}</span>}
+              {isSidebarOpen && activePage === item.id && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-green-400"></div>
+              )}
             </button>
           ))}
         </nav>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-[#004685] dark:border-gray-700 bg-[#002B52] dark:bg-gray-900">
-            <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
-                {isSidebarOpen && (
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-8 h-8 rounded bg-corporate-500 flex items-center justify-center text-xs font-bold text-white uppercase">
-                            {user.name.charAt(0)}
-                        </div>
-                        <div className="flex flex-col truncate">
-                            <span className="text-xs font-bold text-white truncate">{user.name}</span>
-                            <span className="text-[10px] text-gray-400 capitalize truncate">{user.role}</span>
-                        </div>
-                    </div>
-                )}
-                <button onClick={onLogout} className="text-gray-400 hover:text-white transition-colors" title="Keluar">
-                    <LogOut size={18} />
-                </button>
-            </div>
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-gray-700/50">
+            <button onClick={onLogout} className={`flex items-center w-full px-3 py-2 text-gray-400 hover:text-white transition-colors ${!isSidebarOpen && 'justify-center'}`}>
+                <LogOut size={20} strokeWidth={1.5} />
+                {isSidebarOpen && <span className="ml-3 text-sm">Logout</span>}
+            </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#F4F5F7] dark:bg-gray-900">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         
-        {/* Topbar - White, Clean, Corporate */}
-        <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 shadow-sm z-30">
+        {/* Header - White Clean */}
+        <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 z-30">
             <div className="flex items-center gap-4">
                 <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 transition-colors"
                 >
                     <Menu size={20} />
                 </button>
-                <div>
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">{activePage === 'ai' ? 'Smart Assistant' : menuItems.find(m => m.id === activePage)?.label}</h2>
-                    <p className="text-xs text-gray-500 hidden sm:block">Nexus Warehouse Management System</p>
-                </div>
+                {/* Optional Breadcrumb or Page Title if needed */}
             </div>
 
-            <div className="flex items-center gap-3">
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded text-xs font-medium border border-green-200 dark:border-green-800">
-                    <Cloud size={14} />
-                    <span>Online</span>
+            <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{user.name}</span>
+                    <ChevronDown size={14} className="text-gray-400" />
                 </div>
                 
-                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
 
+                <div className="flex items-center gap-4">
+                    <button className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                        <Bell size={20} />
+                    </button>
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                        <span>ID</span>
+                        <ChevronDown size={12} />
+                    </div>
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                         <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">Free</span>
+                        <ChevronDown size={12} />
+                    </div>
+                    <button 
+                         onClick={toggleTheme}
+                         className="text-gray-400 hover:text-gray-600"
+                    >
+                         {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                    </button>
+                </div>
+                
                 {mediaUrl && (
                     <button 
                         onClick={() => setIsPlayerOpen(!isPlayerOpen)}
-                        className={`p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all ${isPlayerOpen ? 'text-corporate-600' : 'text-gray-500'}`}
+                        className={`ml-2 p-2 rounded-full hover:bg-gray-100 ${isPlayerOpen ? 'text-paper-blue' : 'text-gray-400'}`}
                     >
                         <Music size={18} />
                     </button>
                 )}
-                
-                <button 
-                  onClick={toggleTheme}
-                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-yellow-400 transition-all"
-                >
-                  {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-                </button>
-                
-                <div className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 cursor-pointer">
-                    <Bell size={18} />
-                </div>
             </div>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
+        {/* Page Content - Gray Background */}
+        <div className="flex-1 overflow-y-auto p-8 scroll-smooth">
             {children}
         </div>
 
         {/* Media Player Overlay */}
         {mediaUrl && (
              <div 
-                className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ease-in-out bg-black rounded shadow-2xl overflow-hidden border border-gray-700 ${isPlayerOpen ? 'w-72 h-40 opacity-100 translate-y-0' : 'w-72 h-40 opacity-0 translate-y-[150%] pointer-events-none'}`}
+                className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ease-in-out bg-black rounded-lg shadow-2xl overflow-hidden border border-gray-700 ${isPlayerOpen ? 'w-72 h-40 opacity-100 translate-y-0' : 'w-72 h-40 opacity-0 translate-y-[150%] pointer-events-none'}`}
              >
                  <div className="absolute top-0 right-0 p-1 z-10 opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-b from-black/80 to-transparent w-full flex justify-end">
                      <button onClick={() => setIsPlayerOpen(false)} className="text-white hover:text-gray-300 bg-black/50 rounded p-1"><Minimize2 size={14}/></button>
