@@ -1,8 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, Calendar, Search, X, Edit2, Trash2, LineChart, Package, FileSpreadsheet, Loader2, Table, Filter, Eye, Plus, Save, Image as ImageIcon } from 'lucide-react';
+import { Download, Calendar, Search, X, Edit2, Trash2, LineChart, Package, FileSpreadsheet, Loader2, Table, Filter, Eye, Plus, Save, Image as ImageIcon, Printer } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 
@@ -29,6 +31,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
   const [scEndDate, setScEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [scSearchItem, setScSearchItem] = useState('');
   const [scSelectedItem, setScSelectedItem] = useState<InventoryItem | null>(null);
+  const [scTypeFilter, setScTypeFilter] = useState<'all' | 'inbound' | 'outbound'>('all');
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
@@ -102,26 +105,224 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       return items.filter(i => i.name.toLowerCase().includes(scSearchItem.toLowerCase()) || i.sku.toLowerCase().includes(scSearchItem.toLowerCase())).slice(0, 10);
   }, [scSearchItem, items]);
 
-  const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string) => {
+  const calculateItemMovement = (item: InventoryItem, startStr: string, endStr: string, typeFilter: string) => {
       const start = new Date(startStr); start.setHours(0,0,0,0);
       const end = new Date(endStr); end.setHours(23,59,59,999);
       let openingStock = item.stock;
-      const allItemTrans = transactions.filter(t => t.items.some(i => i.itemId === item.id)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
-      allItemTrans.forEach(t => { const tDate = new Date(t.date); if (tDate >= start) { const it = t.items.find(i => i.itemId === item.id); if (it) { if (t.type === 'inbound') openingStock -= it.qty; else openingStock += it.qty; } } });
-      const periodTrans = allItemTrans.filter(t => { const d = new Date(t.date); return d >= start && d <= end; }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+      
+      const allItemTrans = transactions
+        .filter(t => t.items.some(i => i.itemId === item.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
+      
+      // Calculate opening stock by reverse engineering from current stock
+      allItemTrans.forEach(t => { 
+          const tDate = new Date(t.date); 
+          if (tDate >= start) { 
+              const it = t.items.find(i => i.itemId === item.id); 
+              if (it) { 
+                  // If we are looking at a transaction that happened AFTER the start date,
+                  // we reverse its effect to get back to opening stock
+                  if (t.type === 'inbound') openingStock -= it.qty; 
+                  else openingStock += it.qty; 
+              } 
+          } 
+      });
+
+      // Filter for the period and type
+      const periodTrans = allItemTrans
+        .filter(t => { 
+            const d = new Date(t.date); 
+            const matchesType = typeFilter === 'all' || t.type === typeFilter;
+            return d >= start && d <= end && matchesType; 
+        })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+      
       let runningBalance = openingStock;
-      let totalIn = 0; let totalOut = 0;
+      let totalIn = 0; 
+      let totalOut = 0;
+      
       const rows = periodTrans.map(t => {
           const it = t.items.find(i => i.itemId === item.id);
           const qty = it ? it.qty : 0;
           let inQty = 0; let outQty = 0;
-          if (t.type === 'inbound') { inQty = qty; totalIn += qty; runningBalance += qty; } else { outQty = qty; totalOut += qty; runningBalance -= qty; }
-          return { date: t.date, id: t.id, type: t.type, ref: t.poNumber || t.deliveryNote || '-', in: inQty, out: outQty, balance: runningBalance, uom: it?.uom || item.unit, supplier: t.supplier || '-' };
+          
+          if (t.type === 'inbound') { 
+              inQty = qty; 
+              totalIn += qty; 
+              runningBalance += qty; 
+          } else { 
+              outQty = qty; 
+              totalOut += qty; 
+              runningBalance -= qty; 
+          }
+          
+          return { 
+              date: t.date, 
+              id: t.id, 
+              type: t.type, 
+              ref: t.poNumber || t.deliveryNote || '-', 
+              notes: t.notes || '-',
+              in: inQty, 
+              out: outQty, 
+              balance: runningBalance, 
+              uom: it?.uom || item.unit, 
+              supplier: t.supplier || '-' 
+          };
       });
+      
       return { openingStock, closingStock: runningBalance, totalIn, totalOut, rows };
   };
 
-  const stockCardData = useMemo(() => { if (!scSelectedItem) return null; return calculateItemMovement(scSelectedItem, scStartDate, scEndDate); }, [scSelectedItem, scStartDate, scEndDate, transactions]);
+  const stockCardData = useMemo(() => { 
+      if (!scSelectedItem) return null; 
+      return calculateItemMovement(scSelectedItem, scStartDate, scEndDate, scTypeFilter); 
+  }, [scSelectedItem, scStartDate, scEndDate, scTypeFilter, transactions]);
+
+  const handleExportSCXLSX = () => {
+      if (!stockCardData || !scSelectedItem) return;
+      
+      const flatData = stockCardData.rows.map(r => ({
+          'Tanggal': new Date(r.date).toLocaleString('id-ID'),
+          'Ref / PO': r.ref,
+          'Keterangan': r.notes,
+          'Supplier/Cust': r.supplier,
+          'Masuk': r.in > 0 ? r.in : '',
+          'Keluar': r.out > 0 ? r.out : '',
+          'Saldo': r.balance
+      }));
+
+      // Add Header Info as first rows
+      const headerInfo = [
+          { 'Tanggal': 'Item:', 'Ref / PO': scSelectedItem.name },
+          { 'Tanggal': 'SKU:', 'Ref / PO': scSelectedItem.sku },
+          { 'Tanggal': 'Periode:', 'Ref / PO': `${scStartDate} s/d ${scEndDate}` },
+          { 'Tanggal': 'Stok Awal:', 'Ref / PO': stockCardData.openingStock },
+          { 'Tanggal': '' } // Spacer
+      ];
+
+      const ws = XLSX.utils.json_to_sheet([...headerInfo, ...flatData], { skipHeader: false });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok");
+      XLSX.writeFile(wb, `Kartu_Stok_${scSelectedItem.sku}_${scStartDate}.xlsx`);
+  };
+
+  const handleExportSCPDF = () => {
+      if (!stockCardData || !scSelectedItem) return;
+      const doc = new jsPDF();
+
+      // --- Layout mimicking Surat Jalan style ---
+      
+      // 1. Header Box (Left: No SJ/Date placeholder, Right: Title)
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.5);
+      
+      // Title
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text("KARTU STOK", 195, 20, { align: 'right' });
+      
+      // Top Left Info Box
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.rect(14, 10, 80, 20); // Box
+      doc.text(`Kode Barang  : ${scSelectedItem.sku}`, 16, 16);
+      doc.text(`Periode      : ${scStartDate} s/d ${scEndDate}`, 16, 24);
+
+      // 2. Info Boxes (Dari / Ke Equivalent)
+      // Box 1: Item Details
+      doc.rect(14, 35, 90, 25);
+      doc.setFont("helvetica", "bold");
+      doc.text("Item Detail", 16, 40);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Nama: ${scSelectedItem.name}`, 16, 46);
+      doc.text(`Kategori: ${scSelectedItem.category}`, 16, 52);
+      doc.text(`Lokasi: ${scSelectedItem.location}`, 16, 58);
+
+      // Box 2: Summary Stats
+      doc.rect(105, 35, 90, 25);
+      doc.setFont("helvetica", "bold");
+      doc.text("Ringkasan Mutasi", 107, 40);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Stok Awal : ${stockCardData.openingStock}`, 107, 46);
+      doc.text(`Total Masuk : ${stockCardData.totalIn}`, 107, 52);
+      doc.text(`Total Keluar: ${stockCardData.totalOut}`, 107, 58);
+      
+      // 3. Table
+      const tableColumn = ["Tanggal", "Referensi", "Ket", "Masuk", "Keluar", "Saldo"];
+      const tableRows: any[] = [];
+
+      // Initial Row
+      tableRows.push(["-", "-", "Stok Awal", "-", "-", stockCardData.openingStock]);
+
+      stockCardData.rows.forEach(row => {
+          const rowData = [
+              new Date(row.date).toLocaleDateString('id-ID'),
+              row.ref,
+              row.notes || row.supplier,
+              row.in > 0 ? row.in : '-',
+              row.out > 0 ? row.out : '-',
+              row.balance
+          ];
+          tableRows.push(rowData);
+      });
+
+      autoTable(doc, {
+          startY: 65,
+          head: [tableColumn],
+          body: tableRows,
+          theme: 'grid',
+          headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
+          styles: { fontSize: 8, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.1 },
+          columnStyles: {
+              0: { cellWidth: 25 },
+              1: { cellWidth: 35 },
+              2: { cellWidth: 'auto' },
+              3: { cellWidth: 20, halign: 'center' },
+              4: { cellWidth: 20, halign: 'center' },
+              5: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
+          }
+      });
+
+      // 4. Footer Signatures (Surat Jalan Style)
+      const finalY = (doc as any).lastAutoTable.finalY + 10;
+      
+      const sigY = finalY;
+      const boxWidth = 35;
+      const boxHeight = 25;
+      const gap = 10;
+      let startX = 14;
+
+      // Signature 1: Dibuat
+      doc.setFontSize(8);
+      doc.text("Dibuat", startX, sigY);
+      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2); // Top line
+      doc.rect(startX, sigY + 3, boxWidth, boxHeight); // Box
+      doc.text("Tgl:", startX, sigY + boxHeight + 8);
+      
+      startX += boxWidth + gap;
+
+      // Signature 2: Pemeriksa
+      doc.text("Pemeriksa", startX, sigY);
+      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2);
+      doc.rect(startX, sigY + 3, boxWidth, boxHeight);
+      doc.text("Tgl:", startX, sigY + boxHeight + 8);
+
+      startX += boxWidth + gap;
+
+      // Signature 3: Mengetahui
+      doc.text("Mengetahui", startX, sigY);
+      doc.line(startX, sigY + 2, startX + boxWidth, sigY + 2);
+      doc.rect(startX, sigY + 3, boxWidth, boxHeight);
+      doc.text("Tgl:", startX, sigY + boxHeight + 8);
+
+      // Keterangan Box on right
+      startX += boxWidth + gap;
+      doc.text("Keterangan:", startX, sigY);
+      doc.rect(startX, sigY + 3, 50, boxHeight);
+      doc.text("System Generated", startX + 2, sigY + 8);
+
+      doc.save(`StockCard_${scSelectedItem.sku}.pdf`);
+  };
 
   const handleDelete = async (id: string) => { if (window.confirm("Hapus transaksi ini? Stok akan dikembalikan.")) { try { await storageService.deleteTransaction(id); onRefresh(); } catch (err) { alert("Error deleting"); } } };
 
@@ -149,9 +350,15 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       {/* Toolbar */}
       <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-3">
         <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                <input type="text" placeholder="Cari ID, Barang, Supplier..." className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 outline-none dark:text-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            <div className="relative flex-1 md:w-64 flex gap-2">
+                <div className="relative w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                    <input type="text" placeholder="Cari ID, Barang, Supplier..." className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 outline-none dark:text-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                </div>
+                {/* Stock Card Button Moved Here */}
+                <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-md font-bold text-xs hover:bg-indigo-700 transition-all whitespace-nowrap shadow-sm">
+                    <LineChart size={14} /> Kartu Stok
+                </button>
             </div>
             <div className="relative">
                 <select className="pl-3 pr-8 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option></select>
@@ -168,10 +375,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
             <button onClick={handleSyncHistoryToSheets} className="flex items-center gap-2 bg-white text-emerald-600 border border-emerald-200 px-3 py-2 rounded-md font-bold text-xs hover:bg-emerald-50 transition-all whitespace-nowrap shadow-sm">
                 {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Table size={14} />} Sync
             </button>
-            <button onClick={() => setIsStockCardOpen(true)} className="flex items-center gap-2 bg-white text-indigo-600 border border-indigo-200 px-3 py-2 rounded-md font-bold text-xs hover:bg-indigo-50 transition-all whitespace-nowrap shadow-sm">
-                <LineChart size={14} /> Kartu Stok
-            </button>
-            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md font-bold text-xs hover:bg-indigo-700 shadow-sm transition-all whitespace-nowrap"><Download size={14} /> Export</button>
+            <button onClick={() => { const ws = XLSX.utils.json_to_sheet(filtered.map(t => ({ ID: t.id, Tipe: t.type, Tanggal: t.date, Total: t.totalValue }))); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "History"); XLSX.writeFile(wb, `History.xlsx`); }} className="flex items-center gap-2 bg-white text-indigo-600 border border-indigo-200 px-4 py-2 rounded-md font-bold text-xs hover:bg-indigo-50 shadow-sm transition-all whitespace-nowrap"><Download size={14} /> Export List</button>
         </div>
       </div>
       
@@ -230,51 +434,67 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
       </div>
 
       {isStockCardOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in zoom-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in zoom-in duration-200">
+            {/* Modal Full Screen Configuration */}
+            <div className="bg-white dark:bg-gray-900 w-screen h-screen max-w-none rounded-none shadow-none flex flex-col overflow-hidden">
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800">
-                    <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><LineChart size={18}/> Kartu Stok</h3>
-                    <button onClick={() => setIsStockCardOpen(false)}><X className="text-gray-400 hover:text-gray-600" size={18}/></button>
+                    <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-2"><LineChart size={20}/> Kartu Stok & Laporan Mutasi</h3>
+                    <div className="flex items-center gap-2">
+                        <button onClick={handleExportSCXLSX} disabled={!scSelectedItem} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded font-bold text-sm hover:bg-emerald-700 disabled:opacity-50"><FileSpreadsheet size={16} /> Export Excel</button>
+                        <button onClick={handleExportSCPDF} disabled={!scSelectedItem} className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded font-bold text-sm hover:bg-rose-700 disabled:opacity-50"><Printer size={16} /> Print PDF</button>
+                        <button onClick={() => setIsStockCardOpen(false)} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full"><X className="text-gray-500" size={24}/></button>
+                    </div>
                 </div>
-                <div className="p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div className="md:col-span-2 relative" ref={autocompleteRef}>
-                        <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white" placeholder="Cari Barang..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} /></div>
+                        <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:bg-gray-800 dark:text-white" placeholder="Cari Barang (SKU / Nama)..." value={scSearchItem} onChange={e => { setScSearchItem(e.target.value); setIsAutocompleteOpen(true); }} /></div>
                         {isAutocompleteOpen && scSearchItem && (<div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">{filteredItemsForSC.map((it) => (<div key={it.id} onClick={() => { setScSelectedItem(it); setScSearchItem(it.name); setIsAutocompleteOpen(false); }} className="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-sm border-b dark:border-gray-700 last:border-0"><div className="font-bold text-gray-800 dark:text-white">{it.name}</div><div className="text-xs text-gray-500">{it.sku}</div></div>))}</div>)}
                     </div>
+                    <select className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-800 dark:text-white" value={scTypeFilter} onChange={(e) => setScTypeFilter(e.target.value as any)}><option value="all">Semua Transaksi</option><option value="inbound">Barang Masuk</option><option value="outbound">Barang Keluar</option></select>
                     <input type="date" value={scStartDate} onChange={e => setScStartDate(e.target.value)} className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-800 dark:text-white" />
                     <input type="date" value={scEndDate} onChange={e => setScEndDate(e.target.value)} className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-800 dark:text-white" />
                 </div>
                 
-                <div className="flex-1 overflow-auto bg-white dark:bg-gray-900">
+                <div className="flex-1 overflow-auto bg-white dark:bg-gray-900 p-6">
                     {scSelectedItem && stockCardData ? (
-                        <div className="flex flex-col h-full">
+                        <div className="flex flex-col h-full max-w-5xl mx-auto shadow-card border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                             <div className="grid grid-cols-4 gap-0 border-b border-gray-200 dark:border-gray-700 text-center bg-gray-50 dark:bg-gray-800 text-sm">
-                                <div className="p-3 border-r border-gray-200 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold">Awal</p><p className="font-bold text-lg">{stockCardData.openingStock}</p></div>
-                                <div className="p-3 border-r border-gray-200 dark:border-gray-700 text-emerald-600"><p className="text-xs uppercase font-bold">Masuk</p><p className="font-bold text-lg">+{stockCardData.totalIn}</p></div>
-                                <div className="p-3 border-r border-gray-200 dark:border-gray-700 text-rose-600"><p className="text-xs uppercase font-bold">Keluar</p><p className="font-bold text-lg">-{stockCardData.totalOut}</p></div>
-                                <div className="p-3 text-indigo-600"><p className="text-xs uppercase font-bold">Akhir</p><p className="font-bold text-lg">{stockCardData.closingStock}</p></div>
+                                <div className="p-4 border-r border-gray-200 dark:border-gray-700"><p className="text-xs text-gray-500 uppercase font-bold tracking-widest">Stok Awal</p><p className="font-bold text-xl mt-1">{stockCardData.openingStock}</p></div>
+                                <div className="p-4 border-r border-gray-200 dark:border-gray-700 text-emerald-600"><p className="text-xs uppercase font-bold tracking-widest">Total Masuk</p><p className="font-bold text-xl mt-1">+{stockCardData.totalIn}</p></div>
+                                <div className="p-4 border-r border-gray-200 dark:border-gray-700 text-rose-600"><p className="text-xs uppercase font-bold tracking-widest">Total Keluar</p><p className="font-bold text-xl mt-1">-{stockCardData.totalOut}</p></div>
+                                <div className="p-4 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20"><p className="text-xs uppercase font-bold tracking-widest">Stok Akhir</p><p className="font-bold text-xl mt-1">{stockCardData.closingStock}</p></div>
                             </div>
-                            <div className="flex-1 overflow-auto custom-scrollbar p-4">
+                            <div className="flex-1 overflow-auto custom-scrollbar">
                                 <table className="w-full text-left border-collapse text-sm">
-                                    <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700">
-                                        <tr><th className="p-2 text-xs font-bold text-gray-500 uppercase">Tanggal</th><th className="p-2 text-xs font-bold text-gray-500 uppercase">Ref</th><th className="p-2 text-xs font-bold text-gray-500 uppercase">Ket</th><th className="p-2 text-center text-xs font-bold text-gray-500 uppercase">In</th><th className="p-2 text-center text-xs font-bold text-gray-500 uppercase">Out</th><th className="p-2 text-center text-xs font-bold text-gray-500 uppercase">Saldo</th></tr>
+                                    <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+                                        <tr><th className="p-3 text-xs font-bold text-gray-500 uppercase w-32">Tanggal</th><th className="p-3 text-xs font-bold text-gray-500 uppercase w-32">Ref / PO</th><th className="p-3 text-xs font-bold text-gray-500 uppercase">Keterangan / Supplier</th><th className="p-3 text-center text-xs font-bold text-gray-500 uppercase w-24">In</th><th className="p-3 text-center text-xs font-bold text-gray-500 uppercase w-24">Out</th><th className="p-3 text-center text-xs font-bold text-gray-500 uppercase w-24">Saldo</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                        <tr className="bg-gray-50/50">
+                                            <td colSpan={5} className="p-3 text-right font-bold text-gray-400 italic text-xs">Saldo Awal Periode</td>
+                                            <td className="p-3 text-center font-bold text-gray-700 dark:text-gray-300">{stockCardData.openingStock}</td>
+                                        </tr>
                                         {stockCardData.rows.map((row, i) => (
-                                            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                                                <td className="p-2 text-gray-600 dark:text-gray-400">{new Date(row.date).toLocaleDateString()}</td>
-                                                <td className="p-2 font-mono text-xs text-indigo-600">{row.id}</td>
-                                                <td className="p-2 text-gray-500">{row.supplier}</td>
-                                                <td className="p-2 text-center font-bold text-emerald-600">{row.in > 0 ? row.in : '-'}</td>
-                                                <td className="p-2 text-center font-bold text-rose-600">{row.out > 0 ? row.out : '-'}</td>
-                                                <td className="p-2 text-center font-bold text-gray-800 dark:text-white bg-gray-50 dark:bg-gray-800/50">{row.balance}</td>
+                                            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                                <td className="p-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{new Date(row.date).toLocaleDateString('id-ID')}</td>
+                                                <td className="p-3 font-mono text-xs text-indigo-600">{row.ref}</td>
+                                                <td className="p-3 text-gray-600 dark:text-gray-400">
+                                                    <div className="font-medium">{row.supplier}</div>
+                                                    <div className="text-[10px] text-gray-400">{row.notes}</div>
+                                                </td>
+                                                <td className="p-3 text-center font-bold text-emerald-600 bg-emerald-50/30 dark:bg-emerald-900/10">{row.in > 0 ? row.in : ''}</td>
+                                                <td className="p-3 text-center font-bold text-rose-600 bg-rose-50/30 dark:bg-rose-900/10">{row.out > 0 ? row.out : ''}</td>
+                                                <td className="p-3 text-center font-bold text-gray-800 dark:text-white bg-gray-50 dark:bg-gray-800/50">{row.balance}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-                    ) : <div className="h-full flex items-center justify-center text-gray-400 italic">Pilih barang untuk melihat kartu stok</div>}
+                    ) : <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4">
+                        <div className="p-6 bg-gray-50 rounded-full"><LineChart size={48} className="text-gray-300"/></div>
+                        <p className="font-medium">Pilih barang dan rentang tanggal untuk melihat kartu stok</p>
+                    </div>}
                 </div>
             </div>
         </div>
