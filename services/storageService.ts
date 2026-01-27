@@ -163,6 +163,21 @@ export const storageService = {
 
   saveTransaction: async (transaction: Transaction) => {
     if (isApiMode()) return apiCall('transactions', 'POST', transaction);
+    
+    // Local Mode: Update Stock
+    const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
+    transaction.items.forEach(tItem => {
+        const itemIndex = items.findIndex((i: InventoryItem) => i.id === tItem.itemId);
+        if (itemIndex >= 0) {
+            if (transaction.type === 'inbound') {
+                items[itemIndex].stock += tItem.qty;
+            } else {
+                items[itemIndex].stock -= tItem.qty;
+            }
+        }
+    });
+    safeSet(KEYS.ITEMS, items);
+
     const transactions = safeGet(KEYS.TRANSACTIONS) || [];
     transactions.unshift(transaction);
     safeSet(KEYS.TRANSACTIONS, transactions);
@@ -170,15 +185,58 @@ export const storageService = {
 
   updateTransaction: async (oldTx: Transaction, newTx: Transaction) => {
       if (isApiMode()) return apiCall(`transactions/${newTx.id}`, 'PUT', { oldTx, newTx });
+      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
       const idx = transactions.findIndex((t: Transaction) => t.id === oldTx.id);
-      if (idx >= 0) transactions[idx] = newTx;
-      safeSet(KEYS.TRANSACTIONS, transactions);
+      if (idx >= 0) {
+          transactions[idx] = newTx;
+          safeSet(KEYS.TRANSACTIONS, transactions);
+
+          // Update Stocks locally
+          const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
+          
+          // Revert Old
+          oldTx.items.forEach(oldItem => {
+              const iIdx = items.findIndex((i: InventoryItem) => i.id === oldItem.itemId);
+              if (iIdx >= 0) {
+                  // If inbound was +qty, revert means -qty.
+                  if (oldTx.type === 'inbound') items[iIdx].stock -= oldItem.qty;
+                  else items[iIdx].stock += oldItem.qty;
+              }
+          });
+
+          // Apply New
+          newTx.items.forEach(newItem => {
+              const iIdx = items.findIndex((i: InventoryItem) => i.id === newItem.itemId);
+              if (iIdx >= 0) {
+                  if (newTx.type === 'inbound') items[iIdx].stock += newItem.qty;
+                  else items[iIdx].stock -= newItem.qty;
+              }
+          });
+          
+          safeSet(KEYS.ITEMS, items);
+      }
   },
 
   deleteTransaction: async (id: string) => {
       if (isApiMode()) return apiCall(`transactions/${id}`, 'DELETE');
+      
       const transactions = safeGet(KEYS.TRANSACTIONS) || [];
+      const txToDelete = transactions.find((t: Transaction) => t.id === id);
+      
+      if (txToDelete) {
+          // Revert stock before deleting
+          const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
+          txToDelete.items.forEach((item: any) => {
+              const iIdx = items.findIndex((i: InventoryItem) => i.id === item.itemId);
+              if (iIdx >= 0) {
+                  if (txToDelete.type === 'inbound') items[iIdx].stock -= item.qty;
+                  else items[iIdx].stock += item.qty;
+              }
+          });
+          safeSet(KEYS.ITEMS, items);
+      }
+
       safeSet(KEYS.TRANSACTIONS, transactions.filter((t: Transaction) => t.id !== id));
   },
 
