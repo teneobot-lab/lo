@@ -49,6 +49,7 @@ export interface Transaction {
   id: string;
   type: 'inbound' | 'outbound';
   date: string; // ISO string
+  warehouse: string; // New: Warehouse ID/Name
   items: TransactionItem[];
   totalValue: number;
   // Specific to Inbound

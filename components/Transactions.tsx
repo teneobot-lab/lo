@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
 import { geminiService } from '../services/geminiService';
-import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon, ScanText } from 'lucide-react';
+import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon, ScanText, Building2 } from 'lucide-react';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -26,9 +26,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
 
+  // CHANGED: Initialized to empty string instead of 0
   const [qty, setQty] = useState<number | ''>('');
   const [selectedUOM, setSelectedUOM] = useState(''); 
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
+
+  // Warehouse State
+  const [warehouse, setWarehouse] = useState('Gudang Utama');
 
   const [supplier, setSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
@@ -127,9 +131,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     }
 
     setIsAnalyzing(true);
-    // Important: Don't clear value yet if we were just using onChange, 
-    // but standard practice to allow re-uploading same file is to clear it.
-    // We will clear it in finally block or right away.
     const input = e.target;
 
     try {
@@ -143,14 +144,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         const mimeType = file.type;
         let data = await geminiService.parseTransactionDocument(base64Str, mimeType);
         
-        // Robustness: Handle if AI returns an array (some models do this despite schema)
-        if (Array.isArray(data)) {
-            data = data[0];
-        }
+        if (Array.isArray(data)) { data = data[0]; }
 
-        if (!data || typeof data !== 'object') {
-            throw new Error("Format data tidak valid dari AI.");
-        }
+        if (!data || typeof data !== 'object') { throw new Error("Format data tidak valid dari AI."); }
         
         if (data.supplier) setSupplier(String(data.supplier));
         if (data.poNumber) setPoNumber(String(data.poNumber));
@@ -163,30 +159,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             for (const importedItem of data.items) {
                 const importSku = String(importedItem.sku || '').toUpperCase().trim();
                 const importName = String(importedItem.name || '').toLowerCase().trim();
-
-                // Try matching by SKU first, then Name
-                const existingItem = items.find(i => 
-                    (importSku && i.sku.toUpperCase() === importSku) || 
-                    (importName && i.name.toLowerCase().includes(importName))
-                );
+                const existingItem = items.find(i => (importSku && i.sku.toUpperCase() === importSku) || (importName && i.name.toLowerCase().includes(importName)));
                 
                 if (existingItem) {
-                     const qtyVal = Number(importedItem.qty) || 1; // Default to 1 if parsed 0 or null
+                     const qtyVal = Number(importedItem.qty) || 1;
                      const unitPriceVal = Number(importedItem.unitPrice) || existingItem.price;
                      const uomVal = importedItem.uom || existingItem.unit;
-                     
                      const ratio = getConversionFactor(existingItem, uomVal);
                      const baseQty = qtyVal * ratio;
 
-                     newItems.push({
-                         itemId: existingItem.id,
-                         sku: existingItem.sku,
-                         name: existingItem.name,
-                         qty: baseQty,
-                         uom: uomVal,
-                         unitPrice: unitPriceVal,
-                         total: baseQty * unitPriceVal 
-                     });
+                     newItems.push({ itemId: existingItem.id, sku: existingItem.sku, name: existingItem.name, qty: baseQty, uom: uomVal, unitPrice: unitPriceVal, total: baseQty * unitPriceVal });
                      matchedCount++;
                 }
             }
@@ -195,17 +177,10 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 setCart(prev => [...prev, ...newItems]);
                 notify(`Berhasil import ${matchedCount} item dari dokumen.`, 'success');
             } else {
-                if (data.items.length > 0) {
-                    notify(`Dokumen terbaca (${data.items.length} item), namun tidak ada yang cocok dengan Master Data.`, 'warning');
-                } else {
-                    notify("Dokumen terbaca namun tidak ada daftar barang.", 'warning');
-                }
+                notify("Dokumen terbaca namun tidak ada yang cocok dengan Master Data.", 'warning');
             }
-        } else {
-            notify("Header berhasil dibaca, namun detail barang tidak ditemukan.", 'info');
         }
     } catch (err: any) {
-        console.error("PDF Import Error:", err);
         notify("Gagal memproses dokumen: " + (err.message || "Error tidak diketahui"), 'error');
     } finally {
         setIsAnalyzing(false);
@@ -220,8 +195,27 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
-    const transaction: Transaction = { id: storageService.generateTransactionId(), type, date: `${customDate} ${new Date().toTimeString().split(' ')[0]}`, items: cart, totalValue: cart.reduce((acc, curr) => acc + curr.total, 0), userId: user.id || 'admin', supplier, poNumber, deliveryNote, notes, documents: documentImages };
-    try { await storageService.saveTransaction(transaction); onSuccess(); setCart([]); setSupplier(''); setPoNumber(''); setDeliveryNote(''); setNotes(''); setDocumentImages([]); notify(`Transaksi ${transaction.id} berhasil`, 'success'); } catch (e) { notify("Gagal menyimpan transaksi", 'error'); }
+    const transaction: Transaction = { 
+        id: storageService.generateTransactionId(), 
+        type, 
+        date: `${customDate} ${new Date().toTimeString().split(' ')[0]}`, 
+        warehouse, // Include Warehouse
+        items: cart, 
+        totalValue: cart.reduce((acc, curr) => acc + curr.total, 0), 
+        userId: user.id || 'admin', 
+        supplier, 
+        poNumber, 
+        deliveryNote, 
+        notes, 
+        documents: documentImages 
+    };
+    try { 
+        await storageService.saveTransaction(transaction); 
+        notify(`Transaksi ${transaction.id} berhasil`, 'success');
+        onSuccess(); // Triggers closeTab in parent
+    } catch (e) { 
+        notify("Gagal menyimpan transaksi", 'error'); 
+    }
   };
 
   const getDisplayQty = (tItem: TransactionItem) => {
@@ -234,14 +228,32 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       {/* Left Panel: Entry Form */}
       <div className="lg:col-span-2 flex flex-col gap-4 overflow-y-auto pr-1">
         <div className="bg-white dark:bg-gray-800 p-6 rounded shadow-card border border-gray-200 dark:border-gray-700">
-          {/* Transaction Type Tabs */}
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg mb-6">
-            <button onClick={() => { setType('inbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'inbound' ? 'bg-white shadow text-corporate-600' : 'text-gray-500 hover:text-gray-700'}`}>
-                <ArrowDownCircle size={16} /> Masuk (Inbound)
-            </button>
-            <button onClick={() => { setType('outbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'outbound' ? 'bg-white shadow text-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-                <ArrowUpCircle size={16} /> Keluar (Outbound)
-            </button>
+          
+          {/* Header Controls: Type & Warehouse */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="flex-1 flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
+                <button onClick={() => { setType('inbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'inbound' ? 'bg-white shadow text-corporate-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <ArrowDownCircle size={16} /> Masuk (Inbound)
+                </button>
+                <button onClick={() => { setType('outbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'outbound' ? 'bg-white shadow text-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <ArrowUpCircle size={16} /> Keluar (Outbound)
+                </button>
+              </div>
+              <div className="w-full md:w-64">
+                <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
+                    <select 
+                        value={warehouse} 
+                        onChange={e => setWarehouse(e.target.value)}
+                        className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-corporate-500 appearance-none font-bold"
+                    >
+                        <option value="Gudang Utama">Gudang Utama</option>
+                        <option value="Gudang Cabang A">Gudang Cabang A</option>
+                        <option value="Gudang Cabang B">Gudang Cabang B</option>
+                        <option value="Gudang Reject">Gudang Reject</option>
+                    </select>
+                </div>
+              </div>
           </div>
 
           {/* Quick Item Entry */}
@@ -269,9 +281,9 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </div>
                 <div className="w-24">
                     <label className="text-xs font-bold text-gray-600 mb-1 block">Qty</label>
-                    <input ref={qtyInputRef} type="number" value={qty} onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') addToCart(); }} className="w-full p-2 border border-gray-300 rounded text-sm font-bold" placeholder="0" />
+                    <input ref={qtyInputRef} type="number" value={qty} onChange={(e) => setQty(e.target.value === '' ? '' : parseFloat(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') addToCart(); }} className="w-full p-2 border border-gray-300 rounded text-sm font-bold" placeholder="" />
                 </div>
-                <button onClick={addToCart} disabled={!selectedItemId || !qty} className="px-4 py-2 bg-corporate-600 text-white rounded font-bold text-sm hover:bg-corporate-700 disabled:opacity-50"><Plus size={18} /></button>
+                <button onClick={addToCart} disabled={!selectedItemId || qty === ''} className="px-4 py-2 bg-corporate-600 text-white rounded font-bold text-sm hover:bg-corporate-700 disabled:opacity-50"><Plus size={18} /></button>
             </div>
           </div>
 

@@ -16,22 +16,36 @@ import {
   Minimize2,
   ChevronDown,
   User as UserIcon,
-  Circle
+  Circle,
+  X,
+  Plus
 } from 'lucide-react';
 import { User } from '../types';
+
+interface Tab {
+  id: string;
+  type: string;
+  title: string;
+}
 
 interface LayoutProps {
   children: React.ReactNode;
   user: User;
-  activePage: string;
-  onNavigate: (page: string) => void;
+  activeTabId: string;
+  tabs: Tab[];
+  onOpenTab: (type: string, title: string) => void;
+  onCloseTab: (id: string) => void;
+  onSwitchTab: (id: string) => void;
   onLogout: () => void;
   isDarkMode: boolean;
   toggleTheme: () => void;
   mediaUrl?: string;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNavigate, onLogout, isDarkMode, toggleTheme, mediaUrl }) => {
+export const Layout: React.FC<LayoutProps> = ({ 
+  children, user, activeTabId, tabs, onOpenTab, onCloseTab, onSwitchTab,
+  onLogout, isDarkMode, toggleTheme, mediaUrl 
+}) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isPlayerOpen, setIsPlayerOpen] = useState(true);
@@ -49,7 +63,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'inventory', label: 'Produk & Stok', icon: Package }, // Renamed to match image "Produk & Stok"
+    { id: 'inventory', label: 'Produk & Stok', icon: Package },
     { id: 'transactions', label: 'Penjualan / Pembelian', icon: ArrowRightLeft },
     { id: 'reject', label: 'Barang Reject', icon: Circle },
     { id: 'history', label: 'Laporan', icon: History },
@@ -94,11 +108,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
             <button
               key={item.id}
               onClick={() => {
-                onNavigate(item.id);
+                onOpenTab(item.id, item.label);
                 if (isMobile) setIsSidebarOpen(false);
               }}
               className={`w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 group text-sm font-medium ${
-                activePage === item.id 
+                 // Highlight if any tab of this type is active
+                 tabs.find(t => t.id === activeTabId)?.type === item.id
                   ? 'bg-gray-700/50 text-white' 
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
               }`}
@@ -106,12 +121,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
               <item.icon 
                 size={20} 
                 strokeWidth={1.5}
-                className={`${activePage === item.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} 
+                className={`${tabs.find(t => t.id === activeTabId)?.type === item.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} 
               />
               {isSidebarOpen && <span className="ml-3 truncate">{item.label}</span>}
-              {isSidebarOpen && activePage === item.id && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-green-400"></div>
-              )}
             </button>
           ))}
         </nav>
@@ -129,58 +141,87 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* Header - White Clean */}
-        <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 z-30">
-            <div className="flex items-center gap-4">
-                <button 
-                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 transition-colors"
-                >
-                    <Menu size={20} />
-                </button>
-                {/* Optional Breadcrumb or Page Title if needed */}
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex flex-col z-30">
+            <div className="h-16 flex items-center justify-between px-6">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 transition-colors"
+                    >
+                        <Menu size={20} />
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{user.name}</span>
+                        <ChevronDown size={14} className="text-gray-400" />
+                    </div>
+                    
+                    <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+
+                    <div className="flex items-center gap-4">
+                        <button className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                            <Bell size={20} />
+                        </button>
+                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                            <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">Free</span>
+                        </div>
+                        <button 
+                            onClick={toggleTheme}
+                            className="text-gray-400 hover:text-gray-600"
+                        >
+                            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                        </button>
+                    </div>
+                    
+                    {mediaUrl && (
+                        <button 
+                            onClick={() => setIsPlayerOpen(!isPlayerOpen)}
+                            className={`ml-2 p-2 rounded-full hover:bg-gray-100 ${isPlayerOpen ? 'text-paper-blue' : 'text-gray-400'}`}
+                        >
+                            <Music size={18} />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{user.name}</span>
-                    <ChevronDown size={14} className="text-gray-400" />
-                </div>
-                
-                <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
-
-                <div className="flex items-center gap-4">
-                    <button className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-                        <Bell size={20} />
-                    </button>
-                    <div className="flex items-center gap-1 text-sm text-gray-500">
-                        <span>ID</span>
-                        <ChevronDown size={12} />
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-gray-500">
-                         <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">Free</span>
-                        <ChevronDown size={12} />
-                    </div>
-                    <button 
-                         onClick={toggleTheme}
-                         className="text-gray-400 hover:text-gray-600"
+            {/* Browser-like Tab Bar */}
+            <div className="flex items-end px-2 gap-1 bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 overflow-x-auto no-scrollbar">
+                {tabs.map(tab => (
+                    <div 
+                        key={tab.id}
+                        onClick={() => onSwitchTab(tab.id)}
+                        className={`
+                            group relative flex items-center gap-2 pl-4 pr-2 py-2 min-w-[150px] max-w-[200px] rounded-t-lg cursor-pointer transition-all select-none border-t-2
+                            ${activeTabId === tab.id 
+                                ? 'bg-[#F5F7FA] dark:bg-gray-800 border-paper-blue text-slate-800 dark:text-white font-bold' 
+                                : 'bg-gray-200 dark:bg-gray-800/50 border-transparent text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700'}
+                        `}
                     >
-                         {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-                    </button>
-                </div>
+                        <span className="text-xs truncate flex-1">{tab.title}</span>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+                            className={`p-1 rounded-full hover:bg-red-500 hover:text-white ${activeTabId === tab.id ? 'text-gray-400' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}
+                        >
+                            <X size={12} strokeWidth={3} />
+                        </button>
+                    </div>
+                ))}
                 
-                {mediaUrl && (
-                    <button 
-                        onClick={() => setIsPlayerOpen(!isPlayerOpen)}
-                        className={`ml-2 p-2 rounded-full hover:bg-gray-100 ${isPlayerOpen ? 'text-paper-blue' : 'text-gray-400'}`}
-                    >
-                        <Music size={18} />
-                    </button>
-                )}
+                {/* New Tab Button Shortcut */}
+                <button 
+                    onClick={() => onOpenTab('transactions', 'Penjualan / Pembelian')}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg ml-1"
+                    title="Buka Tab Transaksi Baru"
+                >
+                    <Plus size={16} />
+                </button>
             </div>
         </header>
 
         {/* Page Content - Gray Background */}
-        <div className="flex-1 overflow-y-auto p-8 scroll-smooth">
+        <div className="flex-1 overflow-y-auto p-8 scroll-smooth relative">
             {children}
         </div>
 

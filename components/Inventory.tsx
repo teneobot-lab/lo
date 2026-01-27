@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
 import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2 } from 'lucide-react';
@@ -272,6 +273,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 };
 
 const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onClose: () => void, onSave: (i: InventoryItem) => void }) => {
+    // CHANGED: Numeric fields initialized to '' if new item
     const [formData, setFormData] = useState<any>(item ? { ...item } : { sku: '', name: '', category: '', location: '', active: true, stock: '', minLevel: '', price: '', unit: 'Pcs' });
     const handleChange = (e: any) => setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
     const handleSubmit = (e: React.FormEvent) => {
@@ -295,8 +297,8 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
                         <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Lokasi</label><input name="location" value={formData.location} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm outline-none" /></div>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Harga</label><input type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm outline-none" /></div>
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Stok Awal</label><input type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm font-bold text-corporate-600 outline-none" /></div>
+                        <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Harga</label><input type="number" name="price" value={formData.price} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm outline-none" placeholder="" /></div>
+                        <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Stok Awal</label><input type="number" name="stock" value={formData.stock} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm font-bold text-corporate-600 outline-none" placeholder="" /></div>
                         <div className="space-y-1"><label className="text-xs font-bold text-gray-600 uppercase">Satuan</label><input name="unit" value={formData.unit} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded text-sm outline-none" placeholder="Pcs" /></div>
                     </div>
                     <div className="p-4 bg-gray-50 border border-gray-200 rounded space-y-3">
