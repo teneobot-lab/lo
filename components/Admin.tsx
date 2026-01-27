@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { User, Role } from '../types';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
+import { geminiService } from '../services/geminiService';
 import { 
   Settings, Music, Users, Server, Plus, Edit2, Trash2, X, Save, 
   RefreshCcw, ShieldCheck, Youtube, Copy, Search, ArrowRight, 
-  Table, Link2, CloudUpload, FileJson, ChevronDown, Wifi, Play
+  Table, Link2, CloudUpload, FileJson, ChevronDown, Wifi, Play, Sparkles, Loader2
 } from 'lucide-react';
 
 interface AdminProps {
@@ -33,8 +34,10 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         const saved = localStorage.getItem('nexus_media_playlist');
         return saved ? JSON.parse(saved) : [{ id: '1', title: 'Nexus Lo-Fi Relaxing', url: 'https://www.youtube.com/embed/jfKfPfyJRdk' }];
     });
-    const [newMediaTitle, setNewMediaTitle] = useState('');
-    const [newMediaUrl, setNewMediaUrl] = useState('');
+    
+    // Media State
+    const [mediaSearchQuery, setMediaSearchQuery] = useState('');
+    const [isSearchingMedia, setIsSearchingMedia] = useState(false);
 
     const PROXY_PATH = '/api';
 
@@ -123,13 +126,43 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         }
     };
 
-    const addToPlaylist = () => {
-        if (!newMediaTitle || !newMediaUrl) return;
-        const newItem = { id: Math.random().toString(36).substr(2, 9), title: newMediaTitle, url: newMediaUrl };
-        const next = [...playlist, newItem];
-        setPlaylist(next);
-        localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
-        setNewMediaTitle(''); setNewMediaUrl('');
+    const handleAISearchMedia = async () => {
+        if (!mediaSearchQuery.trim()) return;
+        setIsSearchingMedia(true);
+
+        try {
+            const result = await geminiService.findYoutubeVideo(mediaSearchQuery);
+            
+            if (result && result.url) {
+                // Convert Standard URL to Embed URL
+                let embedUrl = result.url;
+                
+                // Regex to extract video ID from various YouTube URL formats
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                const match = result.url.match(regExp);
+
+                if (match && match[2].length === 11) {
+                    embedUrl = `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
+                }
+
+                const newItem = { 
+                    id: Math.random().toString(36).substr(2, 9), 
+                    title: result.title, 
+                    url: embedUrl 
+                };
+
+                const next = [...playlist, newItem];
+                setPlaylist(next);
+                localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
+                setMediaSearchQuery('');
+            } else {
+                alert("AI tidak dapat menemukan video yang sesuai. Coba kata kunci lain.");
+            }
+        } catch (error) {
+            alert("Gagal mencari media. Pastikan API Key valid.");
+        } finally {
+            setIsSearchingMedia(false);
+        }
     };
 
     const deleteFromPlaylist = (id: string) => {
@@ -138,7 +171,6 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         localStorage.setItem('nexus_media_playlist', JSON.stringify(next));
     };
 
-    // KODE GS YANG SUDAH DIPERBAIKI (ANTI-CRASH)
     const appsScriptCode = `function doPost(e) {
   // Cegah error jika diklik "Jalankan" manual di editor
   if (!e || !e.postData) {
@@ -302,21 +334,60 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                         </div>
                     </div>
 
+                    {/* Media Hub - AI Enhanced */}
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-[2.5rem] shadow-soft border border-ice-100 dark:border-gray-700">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-4 bg-rose-50 dark:bg-rose-900/30 rounded-2xl text-rose-600"><Youtube size={28}/></div>
                             <h3 className="font-bold text-2xl text-slate-800 dark:text-white">Media Hub</h3>
                         </div>
-                        <div className="space-y-3">
+                        
+                        {/* AI Search Bar */}
+                        <div className="mb-6 relative">
+                            <label className="text-[10px] font-bold text-rose-400 uppercase tracking-widest block mb-2">AI Media Search</label>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input 
+                                        type="text"
+                                        value={mediaSearchQuery}
+                                        onChange={e => setMediaSearchQuery(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleAISearchMedia()}
+                                        placeholder="Cari lagu/video (Contoh: 'Lofi hip hop radio')"
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 dark:text-white"
+                                        disabled={isSearchingMedia}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={handleAISearchMedia}
+                                    disabled={isSearchingMedia || !mediaSearchQuery}
+                                    className="bg-rose-500 hover:bg-rose-600 text-white p-3 rounded-xl shadow-lg shadow-rose-200 dark:shadow-rose-900/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSearchingMedia ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} fill="currentColor" className="text-white" />}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-2 italic">
+                                *AI akan mencari link YouTube dan otomatis menambahkannya ke playlist.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-2">
                             {playlist.map(p => (
-                                <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200' : 'bg-white border-ice-50'}`}>
-                                    <p className="text-sm font-bold truncate flex-1">{p.title}</p>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => onUpdateMedia?.(p.url)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg"><Play size={16}/></button>
-                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><X size={16}/></button>
+                                <div key={p.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${currentMediaUrl === p.url ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800' : 'bg-white border-ice-50 dark:bg-gray-900 dark:border-gray-800'}`}>
+                                    <div className="flex-1 min-w-0 pr-2">
+                                        <p className="text-sm font-bold truncate text-gray-800 dark:text-gray-200">{p.title}</p>
+                                    </div>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button onClick={() => onUpdateMedia?.(p.url)} className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"><Play size={16} fill="currentColor"/></button>
+                                        <button onClick={() => deleteFromPlaylist(p.id)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"><X size={16}/></button>
                                     </div>
                                 </div>
                             ))}
+                            {playlist.length === 0 && (
+                                <div className="text-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
+                                    <Music className="mx-auto text-gray-300 mb-2" size={24} />
+                                    <p className="text-xs text-gray-400">Playlist kosong</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

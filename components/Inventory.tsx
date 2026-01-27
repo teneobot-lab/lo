@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
 import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2 } from 'lucide-react';
@@ -112,19 +113,17 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const target = evt.target as FileReader;
-        const arrayBuffer = target?.result;
+        const data = reader.result;
         
-        if (!arrayBuffer || typeof arrayBuffer === 'string') return;
+        if (!data || typeof data === 'string') return;
 
-        // FIX: Cast arrayBuffer to any to resolve "Argument of type 'unknown' is not assignable to parameter of type 'string'"
-        const wb = XLSX.read(arrayBuffer as any, { type: 'array' });
+        const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]]; 
-        const data = XLSX.utils.sheet_to_json(ws) as any[];
+        const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
         
         setIsImporting(true);
-        for (let i = 0; i < data.length; i += 5) {
-            const chunk = data.slice(i, i + 5);
+        for (let i = 0; i < sheetData.length; i += 5) {
+            const chunk = sheetData.slice(i, i + 5);
             await Promise.all(chunk.map(async (row) => {
                 const sku = String(row.SKU || row.sku).trim(); const existing = items.find(item => item.sku === sku);
                 const newItem: InventoryItem = { id: existing ? existing.id : crypto.randomUUID(), sku: sku, name: row.Name || row.name || (existing?.name || 'Unnamed'), category: row.Category || row.category || 'General', price: Number(row.Price || row.price || 0), location: row.Location || row.location || 'A-01', unit: row.Unit || row.unit || 'Pcs', stock: Number(row.Stock || row.stock || 0), minLevel: Number(row.MinLevel || row.minLevel || 0), active: true };

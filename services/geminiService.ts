@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { InventoryItem, Transaction } from "../types";
 
 export const geminiService = {
@@ -9,7 +9,6 @@ export const geminiService = {
     recentTransactions: Transaction[]
   ): Promise<string> => {
     
-    // FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}) directly as per guidelines.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     // Ringkasan data biar AI tetap punya konteks gudang tapi hemat memori
@@ -38,19 +37,17 @@ export const geminiService = {
     `;
 
     try {
-      // FIX: Use ai.models.generateContent to query GenAI with both the model name and prompt.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview', 
         contents: prompt,
         config: {
           systemInstruction: systemInstruction,
-          temperature: 0.9, // Ditingkatkan biar lebih kreatif dan nggak kaku
+          temperature: 0.9, 
           topP: 0.95,
           topK: 64,
         }
       });
       
-      // FIX: The response features a text property (not a method, so do not call text()).
       return response.text || "Waduh, otak saya lagi nge-blank bentar Bang. Coba tanya lagi deh.";
     } catch (error: any) {
       console.error("Gemini Error:", error);
@@ -60,7 +57,6 @@ export const geminiService = {
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
-    // FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}) directly as per guidelines.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     const prompt = `
@@ -69,16 +65,45 @@ export const geminiService = {
     `;
 
     try {
-      // FIX: Use ai.models.generateContent to query GenAI.
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { systemInstruction: "Kamu adalah Business Analyst handal." }
       });
-      // FIX: Access the extracted string output using the .text property.
       return response.text || "Gagal dapet insight.";
     } catch (error) {
       return "Gagal generate laporan.";
+    }
+  },
+
+  findYoutubeVideo: async (query: string): Promise<{ title: string, url: string } | null> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Using 2.5 flash as it supports grounding consistently
+        contents: `Find the official YouTube video URL for: "${query}". Return the specific video URL, not a channel or search result.`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING, description: "The exact title of the video found" },
+              url: { type: Type.STRING, description: "The full YouTube URL (e.g., https://www.youtube.com/watch?v=...)" }
+            },
+            required: ["title", "url"]
+          }
+        }
+      });
+
+      if (response.text) {
+        return JSON.parse(response.text);
+      }
+      return null;
+    } catch (error) {
+      console.error("AI Search Error:", error);
+      return null;
     }
   }
 };
