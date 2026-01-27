@@ -1,4 +1,3 @@
-
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -58,6 +57,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     // Return the children props when no error is caught.
-    return this.props.children;
+    // Fix: Explicitly casting this to any to avoid "Property 'props' does not exist" error
+    // which happens in some TS configurations with React.Component
+    return (this as any).props.children;
   }
 }

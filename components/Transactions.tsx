@@ -121,78 +121,95 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type (basic check)
     if (!file.type.includes('pdf') && !file.type.includes('image')) {
         notify("Format file tidak didukung. Harap gunakan PDF atau Gambar.", 'warning');
         return;
     }
 
     setIsAnalyzing(true);
+    // Important: Don't clear value yet if we were just using onChange, 
+    // but standard practice to allow re-uploading same file is to clear it.
+    // We will clear it in finally block or right away.
+    const input = e.target;
+
     try {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = async () => {
-            const base64Str = (reader.result as string).split(',')[1];
-            const mimeType = file.type;
-            
-            const data = await geminiService.parseTransactionDocument(base64Str, mimeType);
-            
-            if (data.supplier) setSupplier(data.supplier);
-            if (data.poNumber) setPoNumber(data.poNumber);
-            if (data.date) setCustomDate(data.date);
-            
-            if (data.items && Array.isArray(data.items)) {
-                const newItems: TransactionItem[] = [];
-                let matchedCount = 0;
+        const base64Str = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = error => reject(error);
+        });
 
-                for (const importedItem of data.items) {
-                    // Normalize for matching
-                    const importSku = String(importedItem.sku || '').toUpperCase().trim();
-                    const importName = String(importedItem.name || '').toLowerCase().trim();
+        const mimeType = file.type;
+        let data = await geminiService.parseTransactionDocument(base64Str, mimeType);
+        
+        // Robustness: Handle if AI returns an array (some models do this despite schema)
+        if (Array.isArray(data)) {
+            data = data[0];
+        }
 
-                    // Try matching by SKU first, then Name
-                    const existingItem = items.find(i => 
-                        (importSku && i.sku.toUpperCase() === importSku) || 
-                        (importName && i.name.toLowerCase().includes(importName))
-                    );
-                    
-                    if (existingItem) {
-                         const qtyVal = Number(importedItem.qty) || 0;
-                         const unitPriceVal = Number(importedItem.unitPrice) || existingItem.price;
-                         const uomVal = importedItem.uom || existingItem.unit;
-                         
-                         // Simple conversion check if uom matches a known alternate unit
-                         const ratio = getConversionFactor(existingItem, uomVal);
-                         const baseQty = qtyVal * ratio;
+        if (!data || typeof data !== 'object') {
+            throw new Error("Format data tidak valid dari AI.");
+        }
+        
+        if (data.supplier) setSupplier(String(data.supplier));
+        if (data.poNumber) setPoNumber(String(data.poNumber));
+        if (data.date) setCustomDate(String(data.date));
+        
+        if (data.items && Array.isArray(data.items)) {
+            const newItems: TransactionItem[] = [];
+            let matchedCount = 0;
 
-                         newItems.push({
-                             itemId: existingItem.id,
-                             sku: existingItem.sku,
-                             name: existingItem.name,
-                             qty: baseQty,
-                             uom: uomVal,
-                             unitPrice: unitPriceVal,
-                             total: baseQty * unitPriceVal 
-                         });
-                         matchedCount++;
-                    }
+            for (const importedItem of data.items) {
+                const importSku = String(importedItem.sku || '').toUpperCase().trim();
+                const importName = String(importedItem.name || '').toLowerCase().trim();
+
+                // Try matching by SKU first, then Name
+                const existingItem = items.find(i => 
+                    (importSku && i.sku.toUpperCase() === importSku) || 
+                    (importName && i.name.toLowerCase().includes(importName))
+                );
+                
+                if (existingItem) {
+                     const qtyVal = Number(importedItem.qty) || 1; // Default to 1 if parsed 0 or null
+                     const unitPriceVal = Number(importedItem.unitPrice) || existingItem.price;
+                     const uomVal = importedItem.uom || existingItem.unit;
+                     
+                     const ratio = getConversionFactor(existingItem, uomVal);
+                     const baseQty = qtyVal * ratio;
+
+                     newItems.push({
+                         itemId: existingItem.id,
+                         sku: existingItem.sku,
+                         name: existingItem.name,
+                         qty: baseQty,
+                         uom: uomVal,
+                         unitPrice: unitPriceVal,
+                         total: baseQty * unitPriceVal 
+                     });
+                     matchedCount++;
                 }
-
-                if (newItems.length > 0) {
-                    setCart(prev => [...prev, ...newItems]);
-                    notify(`Berhasil import ${matchedCount} item dari dokumen.`, 'success');
-                } else {
-                    notify("Dokumen terbaca, namun tidak ada item yang cocok dengan Master Data.", 'warning');
-                }
-            } else {
-                notify("Tidak dapat membaca daftar item dari dokumen.", 'warning');
             }
-        };
+
+            if (newItems.length > 0) {
+                setCart(prev => [...prev, ...newItems]);
+                notify(`Berhasil import ${matchedCount} item dari dokumen.`, 'success');
+            } else {
+                if (data.items.length > 0) {
+                    notify(`Dokumen terbaca (${data.items.length} item), namun tidak ada yang cocok dengan Master Data.`, 'warning');
+                } else {
+                    notify("Dokumen terbaca namun tidak ada daftar barang.", 'warning');
+                }
+            }
+        } else {
+            notify("Header berhasil dibaca, namun detail barang tidak ditemukan.", 'info');
+        }
     } catch (err: any) {
-        notify("Gagal memproses dokumen: " + err.message, 'error');
+        console.error("PDF Import Error:", err);
+        notify("Gagal memproses dokumen: " + (err.message || "Error tidak diketahui"), 'error');
     } finally {
         setIsAnalyzing(false);
-        e.target.value = ''; // Reset input
+        input.value = ''; 
     }
   };
 

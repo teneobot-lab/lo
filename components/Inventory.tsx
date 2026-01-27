@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
 import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2 } from 'lucide-react';
@@ -118,7 +117,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         if (!data || typeof data === 'string') return;
 
         // Use data directly as it's ArrayBuffer
-        const wb = XLSX.read(data, { type: 'array' });
+        // Fix: Cast data to any to avoid type mismatch if inferred as unknown/string
+        const wb = XLSX.read(data as any, { type: 'array' });
         const sheetName = wb.SheetNames[0];
         if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
         
