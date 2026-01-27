@@ -10,15 +10,16 @@ import {
   LogOut, 
   Menu, 
   Cloud,
-  CloudOff,
-  AlertTriangle,
-  Hexagon,
   Activity,
   Moon,
   Sun,
   Music,
-  X,
-  Minimize2
+  Minimize2,
+  Hexagon,
+  ChevronLeft,
+  ChevronRight,
+  User as UserIcon,
+  Bell
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -39,7 +40,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
   const [latency, setLatency] = useState(24);
   const [isPlayerOpen, setIsPlayerOpen] = useState(true);
 
-  // Responsive check
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
@@ -51,7 +51,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Simulate Latency Fluctuation
   useEffect(() => {
     const latencyInterval = setInterval(() => {
       const baseLatency = Math.floor(Math.random() * (45 - 20) + 20);
@@ -60,63 +59,52 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
     return () => clearInterval(latencyInterval);
   }, []);
 
-  const getLatencyColor = (ms: number) => {
-    if (ms < 100) return 'bg-ice-100 text-ice-600 border-ice-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400';
-    if (ms < 200) return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-400';
-    return 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-400';
-  };
-
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'inventory', label: 'Inventory', icon: Package },
-    { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
-    { id: 'reject', label: 'Reject Mgmt', icon: AlertTriangle },
-    { id: 'history', label: 'History', icon: History },
-    { id: 'ai', label: 'AI Assistant', icon: Bot },
-    { id: 'admin', label: 'Admin & Media', icon: Settings },
+    { id: 'transactions', label: 'Transaksi', icon: ArrowRightLeft },
+    { id: 'reject', label: 'Barang Reject', icon: Hexagon },
+    { id: 'history', label: 'Riwayat & Laporan', icon: History },
+    { id: 'ai', label: 'Smart Assistant', icon: Bot },
+    { id: 'admin', label: 'Pengaturan', icon: Settings },
   ];
 
-  // Helper to construct YouTube URL properly
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
-    // YouTube Embed requires certain parameters for reliable playback
     const separator = url.includes('?') ? '&' : '?';
-    // Mute is often required by browsers to allow autoplay
     return `${url}${separator}autoplay=1&mute=0&rel=0&enablejsapi=1`;
   };
 
   return (
-    <div className="flex h-screen bg-background dark:bg-gray-900 text-dark dark:text-white font-sans overflow-hidden transition-colors duration-500">
-      {/* Mobile Overlay */}
+    <div className="flex h-screen bg-[#F4F5F7] dark:bg-gray-900 text-[#172B4D] dark:text-gray-100 font-sans overflow-hidden">
       {isMobile && isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50 z-40"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Enterprise Style (Deep Blue) */}
       <aside 
-        className={`fixed lg:relative z-50 h-full bg-[#FCFCFC] dark:bg-gray-800 border-r border-ice-200 dark:border-gray-700 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-64' : 'w-20'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
+        className={`fixed lg:relative z-50 h-full bg-[#003A6D] dark:bg-gray-800 transition-all duration-300 flex flex-col shadow-xl ${isSidebarOpen ? 'w-64' : 'w-16'} ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}`}
       >
-        <div className="h-20 flex items-center justify-center border-b border-ice-100 dark:border-gray-700 bg-gradient-to-br from-ice-50 to-[#FCFCFC] dark:from-gray-800 dark:to-gray-900">
-            <div className={`flex items-center gap-3 transition-all duration-300 ${isSidebarOpen ? 'px-4' : 'px-0'}`}>
-                <div className="relative group cursor-pointer">
-                    <div className="absolute -inset-2 bg-ice-300/50 rounded-full blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                    <div className="relative w-10 h-10 bg-gradient-to-br from-ice-200 to-ice-400 dark:from-indigo-600 dark:to-purple-600 rounded-xl flex items-center justify-center shadow-lg text-ice-600 dark:text-white">
-                        <Hexagon size={20} strokeWidth={2.5} className="text-white dark:text-white/90" />
-                    </div>
+        {/* Brand Header */}
+        <div className="h-16 flex items-center px-4 bg-[#002B52] dark:bg-gray-900 border-b border-[#004685] dark:border-gray-700">
+            <div className="flex items-center gap-3 w-full">
+                <div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center text-white flex-shrink-0">
+                    <Hexagon size={20} fill="currentColor" className="text-white" />
                 </div>
                 {isSidebarOpen && (
-                    <div className="flex flex-col animate-in fade-in slide-in-from-left-4 duration-300">
-                        <span className="font-bold text-xl text-slate-800 dark:text-white tracking-tight leading-none">NEXUS</span>
-                        <span className="text-[9px] font-bold text-ice-600 dark:text-ice-400 tracking-[0.25em] uppercase mt-0.5">Systems</span>
+                    <div className="flex flex-col overflow-hidden">
+                        <span className="font-bold text-lg leading-tight tracking-wide text-white">NEXUS<span className="text-corporate-300">WMS</span></span>
+                        <span className="text-[10px] text-gray-300 tracking-wider">Enterprise Edition</span>
                     </div>
                 )}
             </div>
         </div>
 
-        <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto custom-scrollbar">
+        {/* Navigation */}
+        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
           {menuItems.map((item) => (
             <button
               key={item.id}
@@ -124,89 +112,103 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                 onNavigate(item.id);
                 if (isMobile) setIsSidebarOpen(false);
               }}
-              className={`w-full flex items-center px-3 py-3 rounded-xl transition-all duration-300 group ${
+              className={`w-full flex items-center px-3 py-2.5 rounded transition-all duration-200 group text-sm ${
                 activePage === item.id 
-                  ? 'bg-ice-gradient dark:bg-ice-gradient-dark shadow-md text-slate-800 dark:text-ice-100 font-semibold' 
-                  : 'text-slate-500 dark:text-gray-400 hover:bg-ice-50 dark:hover:bg-gray-700 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-corporate-600 dark:bg-gray-700 text-white shadow-sm' 
+                  : 'text-gray-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <item.icon 
-                size={22} 
-                strokeWidth={1.5} 
-                className={`transition-colors ${activePage === item.id ? 'text-slate-700 dark:text-ice-200' : 'text-slate-400 dark:text-gray-500 group-hover:text-ice-500 dark:group-hover:text-gray-300'}`} 
+                size={20} 
+                strokeWidth={1.5}
+                className={`${activePage === item.id ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} 
               />
-              {isSidebarOpen && <span className="ml-3">{item.label}</span>}
+              {isSidebarOpen && <span className="ml-3 font-medium truncate">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-ice-100 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800">
+        {/* User Footer */}
+        <div className="p-4 border-t border-[#004685] dark:border-gray-700 bg-[#002B52] dark:bg-gray-900">
             <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
                 {isSidebarOpen && (
-                    <div className="flex flex-col">
-                        <span className="text-sm font-semibold truncate w-32 text-slate-700 dark:text-gray-200">{user.name}</span>
-                        <span className="text-xs text-slate-400 capitalize">{user.role}</span>
+                    <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-8 h-8 rounded bg-corporate-500 flex items-center justify-center text-xs font-bold text-white uppercase">
+                            {user.name.charAt(0)}
+                        </div>
+                        <div className="flex flex-col truncate">
+                            <span className="text-xs font-bold text-white truncate">{user.name}</span>
+                            <span className="text-[10px] text-gray-400 capitalize truncate">{user.role}</span>
+                        </div>
                     </div>
                 )}
-                <button onClick={onLogout} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg" title="Logout">
-                    <LogOut size={20} />
+                <button onClick={onLogout} className="text-gray-400 hover:text-white transition-colors" title="Keluar">
+                    <LogOut size={18} />
                 </button>
             </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#EEF2F6] dark:bg-gray-900">
-        <header className="h-16 bg-white/60 dark:bg-gray-800/80 backdrop-blur-xl border-b border-ice-200 dark:border-gray-700 sticky top-0 z-30 flex items-center justify-between px-6 transition-colors">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#F4F5F7] dark:bg-gray-900">
+        
+        {/* Topbar - White, Clean, Corporate */}
+        <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 shadow-sm z-30">
             <div className="flex items-center gap-4">
                 <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="p-2 hover:bg-ice-50 dark:hover:bg-gray-700 rounded-lg text-slate-500 dark:text-gray-400 transition-colors"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
                 >
                     <Menu size={20} />
                 </button>
-                <h2 className="text-lg font-medium text-slate-800 dark:text-white capitalize tracking-tight">{activePage}</h2>
+                <div>
+                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">{activePage === 'ai' ? 'Smart Assistant' : menuItems.find(m => m.id === activePage)?.label}</h2>
+                    <p className="text-xs text-gray-500 hidden sm:block">Nexus Warehouse Management System</p>
+                </div>
             </div>
 
             <div className="flex items-center gap-3">
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded text-xs font-medium border border-green-200 dark:border-green-800">
+                    <Cloud size={14} />
+                    <span>Online</span>
+                </div>
+                
+                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+
                 {mediaUrl && (
                     <button 
                         onClick={() => setIsPlayerOpen(!isPlayerOpen)}
-                        className={`p-2 rounded-full transition-all ${isPlayerOpen ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : 'hover:bg-ice-50 dark:hover:bg-gray-700 text-slate-400'}`}
-                        title="Toggle Music Player"
+                        className={`p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-all ${isPlayerOpen ? 'text-corporate-600' : 'text-gray-500'}`}
                     >
                         <Music size={18} />
                     </button>
                 )}
+                
                 <button 
                   onClick={toggleTheme}
-                  className="p-2 rounded-full hover:bg-ice-50 dark:hover:bg-gray-700 text-slate-400 dark:text-yellow-400 transition-all"
-                  title="Toggle Theme"
+                  className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-yellow-400 transition-all"
                 >
                   {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-500 ${getLatencyColor(latency)}`}>
-                    <Activity size={14} className={latency > 200 ? 'animate-pulse' : ''} />
-                    <span className="hidden sm:inline">VPS: {latency} ms</span>
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors bg-ice-100 text-ice-600 border-ice-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-400`}>
-                    <Cloud size={14} />
-                    <span className="hidden sm:inline">System Online</span>
+                
+                <div className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 cursor-pointer">
+                    <Bell size={18} />
                 </div>
             </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-gradient-to-br from-[#EBF3FA] via-[#F5F7FA] to-[#F9FAFB] dark:from-gray-900 dark:to-gray-900 relative">
+        {/* Page Content */}
+        <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
             {children}
         </div>
 
-        {/* Global Persistent Media Player */}
+        {/* Media Player Overlay */}
         {mediaUrl && (
              <div 
-                className={`fixed bottom-4 right-4 z-50 transition-all duration-500 ease-in-out bg-black rounded-2xl shadow-2xl overflow-hidden border border-slate-700 ${isPlayerOpen ? 'w-80 h-48 opacity-100 translate-y-0' : 'w-80 h-48 opacity-0 translate-y-[150%] pointer-events-none'}`}
+                className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ease-in-out bg-black rounded shadow-2xl overflow-hidden border border-gray-700 ${isPlayerOpen ? 'w-72 h-40 opacity-100 translate-y-0' : 'w-72 h-40 opacity-0 translate-y-[150%] pointer-events-none'}`}
              >
-                 <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-end p-2 opacity-0 hover:opacity-100 transition-opacity">
-                     <button onClick={() => setIsPlayerOpen(false)} className="text-white/80 hover:text-white bg-black/50 rounded-full p-1"><Minimize2 size={14}/></button>
+                 <div className="absolute top-0 right-0 p-1 z-10 opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-b from-black/80 to-transparent w-full flex justify-end">
+                     <button onClick={() => setIsPlayerOpen(false)} className="text-white hover:text-gray-300 bg-black/50 rounded p-1"><Minimize2 size={14}/></button>
                  </div>
                  <iframe 
                     width="100%" 
@@ -214,7 +216,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activePage, onNa
                     src={getEmbedUrl(mediaUrl)}
                     title="Nexus Media Player" 
                     frameBorder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                     allowFullScreen
                     className="w-full h-full"
                 ></iframe>

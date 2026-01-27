@@ -9,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       // Browser Shim Configuration
-      // Note: API_KEY is now handled via Environment Variables (Vercel / .env)
       window.process = {
         env: {
           NODE_ENV: 'development'
@@ -24,30 +23,30 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
-              // Updated Palette - Softer/Dimmer for Eye Comfort
-              ice: {
-                50: '#EBF3FA',  // Was #F4F9FF (Too bright) -> Softer Blue-Grey
-                100: '#DDE8F3', // Was #deecf7 -> Slightly deeper
-                200: '#CEDBEE', // Was #dde8f8
-                300: '#BFD4EB', // Was #d9e8f7
-                400: '#AECBE8', // Was #d0e2f6
-                500: '#84ADD8', // Darker shade for text/accents
-                600: '#5a8cc2',
+              // Enterprise Blue Palette (Accurate-like)
+              corporate: {
+                50: '#F0F7FF',
+                100: '#E0EFFE',
+                200: '#BADCFE',
+                300: '#7CC2FD',
+                400: '#36A4FC',
+                500: '#0C87F2',
+                600: '#0066CC', // Primary Action
+                700: '#0052A3', // Sidebar / Active States
+                800: '#004685',
+                900: '#003A6D',
               },
-              primary: '#4F8CFF',
-              secondary: '#6A5CFF',
-              background: '#EEF2F6', // Was #F8FAFC -> Darker/Softer Grey-Blue base
-              dark: '#1F2937',
-              muted: '#6B7280',
-              border: '#E2E8F0', // Slightly darker border for contrast on softer bg
+              primary: '#0066CC',
+              secondary: '#0C87F2',
+              background: '#F4F5F7', // Neutral ERP background
+              surface: '#FFFFFF',
+              dark: '#172B4D',
+              muted: '#6B778C',
+              border: '#DFE1E6',
             },
             boxShadow: {
-              'soft': '0 4px 20px -5px rgba(0,0,0,0.05)', // Reduced shadow intensity
-              'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.05)',
-            },
-            backgroundImage: {
-              'ice-gradient': 'linear-gradient(135deg, #deecf7 0%, #dde8f8 33%, #d9e8f7 66%, #d0e2f6 100%)',
-              'ice-gradient-dark': 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
+              'card': '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
+              'menu': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
             }
           }
         }
@@ -55,41 +54,48 @@
     </script>
     <style>
       body {
-        background-color: #EEF2F6; /* Softer base color */
+        background-color: #F4F5F7;
+        color: #172B4D;
       }
       .dark body {
         background-color: #111827;
+        color: #F9FAFB;
       }
-      /* Custom Scrollbar */
+      /* Compact Scrollbar for Data Tables */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
+        width: 10px;
+        height: 10px;
       }
       ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      .dark ::-webkit-scrollbar-track {
-        background: #1f2937;
+        background: #F4F5F7;
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 4px;
-      }
-      .dark ::-webkit-scrollbar-thumb {
-        background: #4b5563;
+        background: #C1C7D0;
+        border-radius: 5px;
+        border: 2px solid #F4F5F7;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+        background: #A5ADBA;
       }
       
-      /* Hide Number Spinners */
+      /* Enterprise Table Styles */
+      .enterprise-table th {
+        background-color: #EBECF0;
+        color: #42526E;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        border-bottom: 2px solid #DFE1E6;
+      }
+      .enterprise-table td {
+        border-bottom: 1px solid #EBECF0;
+      }
+      
       input[type=number]::-webkit-inner-spin-button, 
       input[type=number]::-webkit-outer-spin-button { 
         -webkit-appearance: none; 
         margin: 0; 
-      }
-      input[type=number] {
-        -moz-appearance: textfield;
       }
     </style>
 <script type="importmap">
@@ -118,7 +124,7 @@
 }
 </script>
 </head>
-  <body class="transition-colors duration-300 antialiased selection:bg-ice-200 selection:text-ice-600">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
   </body>

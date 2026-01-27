@@ -1,5 +1,4 @@
-
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -11,7 +10,6 @@ interface State {
   error: Error | null;
 }
 
-// FIX: Extend React.Component explicitly to ensure correct type inheritance for props and state, resolving 'props' not existing on ErrorBoundary.
 export class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
