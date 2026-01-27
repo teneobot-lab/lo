@@ -117,7 +117,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         
         if (!data || typeof data === 'string') return;
 
-        const wb = XLSX.read(data as any, { type: 'array' });
+        // Use data directly as it's ArrayBuffer
+        const wb = XLSX.read(data, { type: 'array' });
         const sheetName = wb.SheetNames[0];
         if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
         

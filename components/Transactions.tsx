@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { geminiService } from '../services/geminiService';
+import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon, ScanText } from 'lucide-react';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -35,6 +36,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [notes, setNotes] = useState('');
   const [documentImages, setDocumentImages] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -115,6 +117,85 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     reader.readAsArrayBuffer(file as any);
   };
 
+  const handlePdfImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate type (basic check)
+    if (!file.type.includes('pdf') && !file.type.includes('image')) {
+        notify("Format file tidak didukung. Harap gunakan PDF atau Gambar.", 'warning');
+        return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            const base64Str = (reader.result as string).split(',')[1];
+            const mimeType = file.type;
+            
+            const data = await geminiService.parseTransactionDocument(base64Str, mimeType);
+            
+            if (data.supplier) setSupplier(data.supplier);
+            if (data.poNumber) setPoNumber(data.poNumber);
+            if (data.date) setCustomDate(data.date);
+            
+            if (data.items && Array.isArray(data.items)) {
+                const newItems: TransactionItem[] = [];
+                let matchedCount = 0;
+
+                for (const importedItem of data.items) {
+                    // Normalize for matching
+                    const importSku = String(importedItem.sku || '').toUpperCase().trim();
+                    const importName = String(importedItem.name || '').toLowerCase().trim();
+
+                    // Try matching by SKU first, then Name
+                    const existingItem = items.find(i => 
+                        (importSku && i.sku.toUpperCase() === importSku) || 
+                        (importName && i.name.toLowerCase().includes(importName))
+                    );
+                    
+                    if (existingItem) {
+                         const qtyVal = Number(importedItem.qty) || 0;
+                         const unitPriceVal = Number(importedItem.unitPrice) || existingItem.price;
+                         const uomVal = importedItem.uom || existingItem.unit;
+                         
+                         // Simple conversion check if uom matches a known alternate unit
+                         const ratio = getConversionFactor(existingItem, uomVal);
+                         const baseQty = qtyVal * ratio;
+
+                         newItems.push({
+                             itemId: existingItem.id,
+                             sku: existingItem.sku,
+                             name: existingItem.name,
+                             qty: baseQty,
+                             uom: uomVal,
+                             unitPrice: unitPriceVal,
+                             total: baseQty * unitPriceVal 
+                         });
+                         matchedCount++;
+                    }
+                }
+
+                if (newItems.length > 0) {
+                    setCart(prev => [...prev, ...newItems]);
+                    notify(`Berhasil import ${matchedCount} item dari dokumen.`, 'success');
+                } else {
+                    notify("Dokumen terbaca, namun tidak ada item yang cocok dengan Master Data.", 'warning');
+                }
+            } else {
+                notify("Tidak dapat membaca daftar item dari dokumen.", 'warning');
+            }
+        };
+    } catch (err: any) {
+        notify("Gagal memproses dokumen: " + err.message, 'error');
+    } finally {
+        setIsAnalyzing(false);
+        e.target.value = ''; // Reset input
+    }
+  };
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files; if (!files) return;
       Array.from(files).forEach((file: File) => { const reader = new FileReader(); reader.onload = (evt) => setDocumentImages(prev => [...prev, evt.target?.result as string]); reader.readAsDataURL(file); });
@@ -185,11 +266,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
              <div><label className="text-xs font-bold text-gray-500 uppercase">Catatan</label><input value={notes} onChange={e => setNotes(e.target.value)} className="w-full mt-1 p-2 border border-gray-300 rounded text-sm" placeholder="Keterangan"/></div>
           </div>
           
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex gap-2 flex-wrap">
              <div className="relative">
                 <input type="file" accept=".xlsx, .xls" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <button className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-xs font-bold text-gray-600 hover:bg-gray-50"><FileSpreadsheet size={14}/> Import Excel</button>
+                <button disabled={isImporting} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                    {isImporting ? <Loader2 size={14} className="animate-spin"/> : <FileSpreadsheet size={14}/>} Import Excel
+                </button>
              </div>
+             
+             {type === 'inbound' && (
+                 <div className="relative">
+                    <input type="file" accept=".pdf, image/*" onChange={handlePdfImport} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isAnalyzing} />
+                    <button disabled={isAnalyzing} className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
+                        {isAnalyzing ? <Loader2 size={14} className="animate-spin"/> : <ScanText size={14}/>} Import PO (PDF/Img)
+                    </button>
+                 </div>
+             )}
+
              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer">
                 <Camera size={14}/> Lampirkan Foto
                 <input type="file" multiple accept="image/*" onChange={handlePhotoUpload} className="hidden" />

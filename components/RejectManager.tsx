@@ -142,7 +142,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     if (rejectLogs.length === 0) return alert("Tidak ada data log reject untuk diexport.");
 
     // 1. Kumpulkan semua tanggal unik dan urutkan
-    const uniqueDates = Array.from(new Set(rejectLogs.map(l => l.date))).sort();
+    const uniqueDates = Array.from(new Set(rejectLogs.map(l => l.date))).sort() as string[];
 
     // 2. Mapping data per SKU
     const itemMap: Record<string, { sku: string, name: string, unit: string, qtyByDate: Record<string, number> }> = {};

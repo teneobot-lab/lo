@@ -109,5 +109,72 @@ export const geminiService = {
       console.error("AI Search Error:", error);
       return [];
     }
+  },
+
+  parseTransactionDocument: async (base64Data: string, mimeType: string): Promise<any> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
+    try {
+      const prompt = `
+        Analyze this Purchase Order / Invoice document. Extract the following details:
+        - Supplier Name (field: supplier)
+        - PO Number (field: poNumber)
+        - Date (field: date) - Convert strictly to YYYY-MM-DD format.
+        - Items (field: items) - A list containing:
+          - sku (Item Code/Kode Barang)
+          - name (Item Name/Nama Barang)
+          - qty (Quantity) - as Number
+          - uom (Unit/Satuan)
+          - unitPrice (Price per unit) - as Number
+
+        Ensure numeric values are parsed correctly (remove commas if used as thousands separators).
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType, data: base64Data } }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              supplier: { type: Type.STRING },
+              poNumber: { type: Type.STRING },
+              date: { type: Type.STRING },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    sku: { type: Type.STRING },
+                    name: { type: Type.STRING },
+                    qty: { type: Type.NUMBER },
+                    uom: { type: Type.STRING },
+                    unitPrice: { type: Type.NUMBER }
+                  },
+                  required: ["name", "qty"]
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (response.text) {
+        return JSON.parse(response.text);
+      }
+      return {};
+    } catch (error) {
+      console.error("Gemini Document Parse Error:", error);
+      throw new Error("Gagal menganalisis dokumen.");
+    }
   }
 };
