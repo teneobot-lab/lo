@@ -1,4 +1,5 @@
 
+
 export type Role = 'admin' | 'staff' | 'viewer';
 
 export interface User {
@@ -47,9 +48,10 @@ export interface TransactionItem {
 
 export interface Transaction {
   id: string;
-  type: 'inbound' | 'outbound';
+  type: 'inbound' | 'outbound' | 'transfer'; // Added transfer
   date: string; // ISO string
-  warehouse: string; // New: Warehouse ID/Name
+  warehouse: string; // Source Warehouse
+  targetWarehouse?: string; // Target Warehouse (for transfers)
   items: TransactionItem[];
   totalValue: number;
   // Specific to Inbound

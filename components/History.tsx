@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save, CheckSquare, Square, FileSpreadsheet } from 'lucide-react';
+import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save, CheckSquare, Square, FileSpreadsheet, Settings2, ArrowRight } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 
@@ -22,6 +23,12 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
+  // Column Visibility State
+  const [visibleColumns, setVisibleColumns] = useState({
+      select: true, id: true, type: true, date: true, supplier: true, items: true, warehouse: true, docs: true, total: true, action: true
+  });
+  const [showColMenu, setShowColMenu] = useState(false);
 
   // Photo Preview State
   const [previewDocs, setPreviewDocs] = useState<string[]>([]);
@@ -83,8 +90,9 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
               "ID Transaksi": tx.id,
               "Tanggal": tx.date.split('T')[0],
               "Waktu": new Date(tx.date).toLocaleTimeString(),
-              "Tipe": tx.type === 'inbound' ? 'Masuk' : 'Keluar',
-              "Gudang": tx.warehouse || 'Gudang Utama',
+              "Tipe": tx.type === 'inbound' ? 'Masuk' : (tx.type === 'outbound' ? 'Keluar' : 'Transfer'),
+              "Gudang Asal": tx.warehouse || 'Gudang Utama',
+              "Gudang Tujuan": tx.targetWarehouse || '-',
               "Supplier / Customer": tx.supplier || '-',
               "No. Referensi (PO)": tx.poNumber || '-',
               "No. Surat Jalan": tx.deliveryNote || '-',
@@ -174,7 +182,7 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 </div>
             </div>
             <div className="relative">
-                <select className="pl-3 pr-8 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option></select>
+                <select className="pl-3 pr-8 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer dark:text-white" value={filterType} onChange={(e) => setFilterType(e.target.value)}><option value="all">Semua Tipe</option><option value="inbound">Inbound</option><option value="outbound">Outbound</option><option value="transfer">Transfer</option></select>
                 <Filter className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={12} />
             </div>
             <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-md">
@@ -182,6 +190,22 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
                 <input type="date" className="bg-transparent text-xs outline-none w-24 dark:text-white dark:invert" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 <span className="text-xs text-gray-400">-</span>
                 <input type="date" className="bg-transparent text-xs outline-none w-24 dark:text-white dark:invert" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="relative">
+                <button onClick={() => setShowColMenu(!showColMenu)} className="p-2 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300" title="Atur Kolom">
+                    <Settings2 size={16} />
+                </button>
+                {showColMenu && (
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded shadow-lg border border-gray-200 dark:border-gray-700 z-50 p-2">
+                        {Object.keys(visibleColumns).map((key) => (
+                            key !== 'select' && key !== 'action' && (
+                                <label key={key} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer text-xs text-gray-700 dark:text-gray-300 capitalize">
+                                    <input type="checkbox" checked={(visibleColumns as any)[key]} onChange={() => setVisibleColumns(prev => ({ ...prev, [key]: !(prev as any)[key] }))} className="rounded text-indigo-600" /> {key === 'items' ? 'Items' : key}
+                                </label>
+                            )
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
@@ -203,53 +227,80 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
               <tr>
-                <th className="p-3 w-10 text-center">
-                    <button onClick={toggleSelectAll} className="text-gray-500 hover:text-indigo-600">
-                        {selectedIds.size === filtered.length && filtered.length > 0 ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} />}
-                    </button>
-                </th>
-                <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">ID Transaksi</th>
-                <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-24 text-center">Tipe</th>
-                <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-40">Tanggal</th>
-                <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-40">Supplier / PO</th>
-                <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Detail Barang</th>
-                <th className="p-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider w-20">Dokumen</th>
-                <th className="p-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Total</th>
-                <th className="p-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-24">Aksi</th>
+                {visibleColumns.select && (
+                    <th className="p-3 w-10 text-center">
+                        <button onClick={toggleSelectAll} className="text-gray-500 hover:text-indigo-600">
+                            {selectedIds.size === filtered.length && filtered.length > 0 ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} />}
+                        </button>
+                    </th>
+                )}
+                {visibleColumns.id && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">ID Transaksi</th>}
+                {visibleColumns.type && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-24 text-center">Tipe</th>}
+                {visibleColumns.date && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Tanggal</th>}
+                {visibleColumns.warehouse && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-40">Gudang</th>}
+                {visibleColumns.supplier && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Supplier / Ref</th>}
+                {visibleColumns.items && <th className="p-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Detail Barang</th>}
+                {visibleColumns.docs && <th className="p-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider w-20">Dokumen</th>}
+                {visibleColumns.total && <th className="p-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Total</th>}
+                {visibleColumns.action && <th className="p-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-24">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filtered.map((t, idx) => (
                   <tr key={t.id} className={`hover:bg-indigo-50/30 dark:hover:bg-gray-700/30 transition-colors text-sm ${selectedIds.has(t.id) ? 'bg-indigo-50 dark:bg-indigo-900/20' : idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50/30 dark:bg-gray-800/50'}`}>
-                      <td className="p-3 text-center">
-                          <button onClick={() => toggleSelectOne(t.id)}>
-                             {selectedIds.has(t.id) ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} className="text-gray-300" />}
-                          </button>
-                      </td>
-                      <td className="p-3 font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">{t.id}</td>
-                      <td className="p-3 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${t.type === 'inbound' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{t.type === 'inbound' ? 'Masuk' : 'Keluar'}</span></td>
-                      <td className="p-3 text-xs text-gray-600 dark:text-gray-300">{new Date(t.date).toLocaleString('id-ID')}</td>
-                      <td className="p-3 text-xs text-gray-500">{t.supplier || t.poNumber || '-'}</td>
-                      <td className="p-3 text-xs">
-                          <div className="flex flex-col gap-0.5">
-                              {t.items.slice(0, 2).map((it, i) => (<span key={i} className="text-gray-600 dark:text-gray-400 font-medium">• {it.name} <span className="text-gray-400">({getDisplayQty(it)} {it.uom})</span></span>))}
-                              {t.items.length > 2 && <span className="text-[10px] text-gray-400 italic">+{t.items.length - 2} lainnya...</span>}
-                          </div>
-                      </td>
-                      <td className="p-3 text-center">
-                          {t.documents && t.documents.length > 0 ? (
-                              <button onClick={() => handlePreview(t.documents!)} className="text-indigo-500 hover:bg-indigo-50 p-1.5 rounded transition-all">
-                                  <Eye size={16} />
+                      {visibleColumns.select && (
+                          <td className="p-3 text-center">
+                              <button onClick={() => toggleSelectOne(t.id)}>
+                                 {selectedIds.has(t.id) ? <CheckSquare size={16} className="text-indigo-600" /> : <Square size={16} className="text-gray-300" />}
                               </button>
-                          ) : <span className="text-gray-300">-</span>}
-                      </td>
-                      <td className="p-3 text-right font-bold text-gray-700 dark:text-gray-200">Rp {t.totalValue.toLocaleString('id-ID')}</td>
-                      <td className="p-3 text-right">
-                          <div className="flex justify-end gap-1">
-                              <button onClick={() => { setEditingTransaction(t); setIsEditModalOpen(true); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded transition-all"><Edit2 size={14} /></button>
-                              <button onClick={() => handleDelete(t.id)} className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"><Trash2 size={14} /></button>
-                          </div>
-                      </td>
+                          </td>
+                      )}
+                      {visibleColumns.id && <td className="p-3 font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">{t.id}</td>}
+                      {visibleColumns.type && (
+                          <td className="p-3 text-center">
+                              {t.type === 'inbound' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700">Masuk</span>}
+                              {t.type === 'outbound' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-100 text-rose-700">Keluar</span>}
+                              {t.type === 'transfer' && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 text-blue-700">Transfer</span>}
+                          </td>
+                      )}
+                      {visibleColumns.date && <td className="p-3 text-xs text-gray-600 dark:text-gray-300">{new Date(t.date).toLocaleString('id-ID')}</td>}
+                      {visibleColumns.warehouse && (
+                          <td className="p-3 text-xs text-gray-600 dark:text-gray-300">
+                              {t.type === 'transfer' ? (
+                                  <div className="flex flex-col">
+                                      <span>{t.warehouse}</span>
+                                      <span className="text-[10px] text-blue-500 flex items-center gap-1"><ArrowRight size={10}/> {t.targetWarehouse}</span>
+                                  </div>
+                              ) : t.warehouse}
+                          </td>
+                      )}
+                      {visibleColumns.supplier && <td className="p-3 text-xs text-gray-500">{t.supplier || t.poNumber || '-'}</td>}
+                      {visibleColumns.items && (
+                          <td className="p-3 text-xs">
+                              <div className="flex flex-col gap-0.5">
+                                  {t.items.slice(0, 2).map((it, i) => (<span key={i} className="text-gray-600 dark:text-gray-400 font-medium">• {it.name} <span className="text-gray-400">({getDisplayQty(it)} {it.uom})</span></span>))}
+                                  {t.items.length > 2 && <span className="text-[10px] text-gray-400 italic">+{t.items.length - 2} lainnya...</span>}
+                              </div>
+                          </td>
+                      )}
+                      {visibleColumns.docs && (
+                          <td className="p-3 text-center">
+                              {t.documents && t.documents.length > 0 ? (
+                                  <button onClick={() => handlePreview(t.documents!)} className="text-indigo-500 hover:bg-indigo-50 p-1.5 rounded transition-all">
+                                      <Eye size={16} />
+                                  </button>
+                              ) : <span className="text-gray-300">-</span>}
+                          </td>
+                      )}
+                      {visibleColumns.total && <td className="p-3 text-right font-bold text-gray-700 dark:text-gray-200">Rp {t.totalValue.toLocaleString('id-ID')}</td>}
+                      {visibleColumns.action && (
+                          <td className="p-3 text-right">
+                              <div className="flex justify-end gap-1">
+                                  <button onClick={() => { setEditingTransaction(t); setIsEditModalOpen(true); }} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded transition-all"><Edit2 size={14} /></button>
+                                  <button onClick={() => handleDelete(t.id)} className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"><Trash2 size={14} /></button>
+                              </div>
+                          </td>
+                      )}
                   </tr>
               ))}
             </tbody>

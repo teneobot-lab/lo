@@ -1,4 +1,5 @@
 
+
 import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog } from '../types';
 import CryptoJS from 'crypto-js';
 
@@ -171,9 +172,12 @@ export const storageService = {
         if (itemIndex >= 0) {
             if (transaction.type === 'inbound') {
                 items[itemIndex].stock += tItem.qty;
-            } else {
+            } else if (transaction.type === 'outbound') {
                 items[itemIndex].stock -= tItem.qty;
             }
+            // For 'transfer', stock remains same globally in this simple schema
+            // unless we track per warehouse, which this simple local version doesn't.
+            // It just records the movement.
         }
     });
     safeSet(KEYS.ITEMS, items);
@@ -199,9 +203,9 @@ export const storageService = {
           oldTx.items.forEach(oldItem => {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === oldItem.itemId);
               if (iIdx >= 0) {
-                  // If inbound was +qty, revert means -qty.
                   if (oldTx.type === 'inbound') items[iIdx].stock -= oldItem.qty;
-                  else items[iIdx].stock += oldItem.qty;
+                  else if (oldTx.type === 'outbound') items[iIdx].stock += oldItem.qty;
+                  // Transfer revert = no op
               }
           });
 
@@ -210,7 +214,8 @@ export const storageService = {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === newItem.itemId);
               if (iIdx >= 0) {
                   if (newTx.type === 'inbound') items[iIdx].stock += newItem.qty;
-                  else items[iIdx].stock -= newItem.qty;
+                  else if (newTx.type === 'outbound') items[iIdx].stock -= newItem.qty;
+                  // Transfer apply = no op
               }
           });
           
@@ -231,7 +236,8 @@ export const storageService = {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === item.itemId);
               if (iIdx >= 0) {
                   if (txToDelete.type === 'inbound') items[iIdx].stock -= item.qty;
-                  else items[iIdx].stock += item.qty;
+                  else if (txToDelete.type === 'outbound') items[iIdx].stock += item.qty;
+                  // Transfer revert = no op
               }
           });
           safeSet(KEYS.ITEMS, items);

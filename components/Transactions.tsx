@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
 import { geminiService } from '../services/geminiService';
-import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon, ScanText, Building2 } from 'lucide-react';
+import { Plus, Trash, ShoppingCart, Upload, Search, FileSpreadsheet, Calendar, ArrowDownCircle, ArrowUpCircle, Loader2, Camera, X, FileText, Image as ImageIcon, ScanText, Building2, ArrowRightLeft, ArrowLeft } from 'lucide-react';
 import { ToastType } from './Toast';
 import * as XLSX from 'xlsx';
 
@@ -14,10 +15,13 @@ interface TransactionsProps {
   notify: (msg: string, type: ToastType) => void;
 }
 
+type TransactionMode = 'menu' | 'inbound' | 'outbound' | 'transfer';
+
 export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
-  const [type, setType] = useState<'inbound' | 'outbound'>('outbound');
-  const [cart, setCart] = useState<TransactionItem[]>([]);
+  const [mode, setMode] = useState<TransactionMode>('menu');
   
+  // Transaction State
+  const [cart, setCart] = useState<TransactionItem[]>([]);
   const [itemSearch, setItemSearch] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -26,13 +30,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
 
-  // CHANGED: Initialized to empty string instead of 0
   const [qty, setQty] = useState<number | ''>('');
   const [selectedUOM, setSelectedUOM] = useState(''); 
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Warehouse State
   const [warehouse, setWarehouse] = useState('Gudang Utama');
+  const [targetWarehouse, setTargetWarehouse] = useState('Gudang Cabang A');
 
   const [supplier, setSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
@@ -79,7 +83,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
     if (!selectedItemData || qty === '' || qty <= 0) return;
     const conversionRatio = getConversionFactor(selectedItemData, selectedUOM);
     const actualQtyToDeduct = parseFloat((qty * conversionRatio).toFixed(2));
-    if (type === 'outbound' && actualQtyToDeduct > selectedItemData.stock) { notify("Stok tidak mencukupi", 'error'); return; }
+    
+    // Check Stock for Outbound
+    if (mode === 'outbound' && actualQtyToDeduct > selectedItemData.stock) { 
+        notify("Stok tidak mencukupi", 'error'); return; 
+    }
+    
+    // Check Stock for Transfer (Assuming we check global stock for now)
+    if (mode === 'transfer' && actualQtyToDeduct > selectedItemData.stock) {
+        notify("Stok tidak mencukupi untuk dipindahkan", 'error'); return;
+    }
     
     setCart([...cart, { itemId: selectedItemData.id, sku: selectedItemData.sku, name: selectedItemData.name, qty: actualQtyToDeduct, uom: selectedUOM, unitPrice: selectedItemData.price, total: parseFloat((actualQtyToDeduct * selectedItemData.price).toFixed(2)) }]);
     setQty(''); setSelectedItemId(''); setItemSearch(''); setSelectedUOM(''); setActiveIndex(-1);
@@ -195,11 +208,19 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
+
+    if (mode === 'transfer' && warehouse === targetWarehouse) {
+        notify("Gudang Asal dan Tujuan tidak boleh sama!", 'error');
+        return;
+    }
+
+    // Prepare Transaction Data
     const transaction: Transaction = { 
         id: storageService.generateTransactionId(), 
-        type, 
+        type: mode as 'inbound' | 'outbound' | 'transfer', 
         date: `${customDate} ${new Date().toTimeString().split(' ')[0]}`, 
-        warehouse, // Include Warehouse
+        warehouse, // Source Warehouse
+        targetWarehouse: mode === 'transfer' ? targetWarehouse : undefined,
         items: cart, 
         totalValue: cart.reduce((acc, curr) => acc + curr.total, 0), 
         userId: user.id || 'admin', 
@@ -209,6 +230,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         notes, 
         documents: documentImages 
     };
+
     try { 
         await storageService.saveTransaction(transaction); 
         notify(`Transaksi ${transaction.id} berhasil`, 'success');
@@ -223,29 +245,74 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       const ratio = getConversionFactor(master, tItem.uom); return parseFloat((tItem.qty / ratio).toFixed(2));
   };
 
+  // --- MENU VIEW ---
+  if (mode === 'menu') {
+      return (
+        <div className="h-[calc(100vh-100px)] flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
+            <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-8">Pilih Jenis Transaksi</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
+                <button onClick={() => setMode('inbound')} className="group relative bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-transparent hover:border-emerald-500 hover:shadow-emerald-500/10 transition-all flex flex-col items-center gap-4">
+                    <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+                        <ArrowDownCircle size={40} />
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Barang Masuk</h3>
+                        <p className="text-sm text-gray-500">Inbound / Pembelian</p>
+                    </div>
+                </button>
+                
+                <button onClick={() => setMode('outbound')} className="group relative bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-transparent hover:border-rose-500 hover:shadow-rose-500/10 transition-all flex flex-col items-center gap-4">
+                    <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/30 rounded-2xl flex items-center justify-center text-rose-500 group-hover:scale-110 transition-transform">
+                        <ArrowUpCircle size={40} />
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Barang Keluar</h3>
+                        <p className="text-sm text-gray-500">Outbound / Penjualan</p>
+                    </div>
+                </button>
+
+                <button onClick={() => setMode('transfer')} className="group relative bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-lg border border-transparent hover:border-blue-500 hover:shadow-blue-500/10 transition-all flex flex-col items-center gap-4">
+                    <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                        <ArrowRightLeft size={40} />
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1">Transfer Gudang</h3>
+                        <p className="text-sm text-gray-500">Mutasi Antar Gudang</p>
+                    </div>
+                </button>
+            </div>
+        </div>
+      );
+  }
+
+  // --- FORM VIEW ---
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-100px)]">
       {/* Left Panel: Entry Form */}
       <div className="lg:col-span-2 flex flex-col gap-4 overflow-y-auto pr-1">
         <div className="bg-white dark:bg-gray-800 p-6 rounded shadow-card border border-gray-200 dark:border-gray-700">
           
-          {/* Header Controls: Type & Warehouse */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <div className="flex-1 flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
-                <button onClick={() => { setType('inbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'inbound' ? 'bg-white shadow text-corporate-600' : 'text-gray-500 hover:text-gray-700'}`}>
-                    <ArrowDownCircle size={16} /> Masuk (Inbound)
-                </button>
-                <button onClick={() => { setType('outbound'); setCart([]); }} className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${type === 'outbound' ? 'bg-white shadow text-red-600' : 'text-gray-500 hover:text-gray-700'}`}>
-                    <ArrowUpCircle size={16} /> Keluar (Outbound)
-                </button>
-              </div>
-              <div className="w-full md:w-64">
+          {/* Header Controls */}
+          <div className="flex items-center gap-3 mb-6">
+              <button onClick={() => setMode('menu')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors">
+                  <ArrowLeft size={20} className="text-gray-600"/>
+              </button>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                  {mode === 'inbound' && <span className="text-emerald-600 flex items-center gap-2"><ArrowDownCircle/> Barang Masuk</span>}
+                  {mode === 'outbound' && <span className="text-rose-600 flex items-center gap-2"><ArrowUpCircle/> Barang Keluar</span>}
+                  {mode === 'transfer' && <span className="text-blue-600 flex items-center gap-2"><ArrowRightLeft/> Transfer Gudang</span>}
+              </h2>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-200 dark:border-gray-600">
+              <div className="w-full">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{mode === 'transfer' ? 'Dari Gudang (Asal)' : 'Gudang'}</label>
                 <div className="relative">
                     <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                     <select 
                         value={warehouse} 
                         onChange={e => setWarehouse(e.target.value)}
-                        className="w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-corporate-500 appearance-none font-bold"
+                        className="w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-corporate-500 appearance-none font-bold"
                     >
                         <option value="Gudang Utama">Gudang Utama</option>
                         <option value="Gudang Cabang A">Gudang Cabang A</option>
@@ -254,6 +321,33 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     </select>
                 </div>
               </div>
+              
+              {mode === 'transfer' && (
+                  <div className="flex items-center justify-center pt-5">
+                      <div className="bg-blue-100 dark:bg-blue-900/50 p-2 rounded-full text-blue-600">
+                          <ArrowRightLeft size={20} />
+                      </div>
+                  </div>
+              )}
+
+              {mode === 'transfer' && (
+                  <div className="w-full">
+                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Ke Gudang (Tujuan)</label>
+                    <div className="relative">
+                        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
+                        <select 
+                            value={targetWarehouse} 
+                            onChange={e => setTargetWarehouse(e.target.value)}
+                            className="w-full pl-10 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-corporate-500 appearance-none font-bold"
+                        >
+                            <option value="Gudang Utama">Gudang Utama</option>
+                            <option value="Gudang Cabang A">Gudang Cabang A</option>
+                            <option value="Gudang Cabang B">Gudang Cabang B</option>
+                            <option value="Gudang Reject">Gudang Reject</option>
+                        </select>
+                    </div>
+                  </div>
+              )}
           </div>
 
           {/* Quick Item Entry */}
@@ -303,7 +397,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                 </button>
              </div>
              
-             {type === 'inbound' && (
+             {mode === 'inbound' && (
                  <div className="relative">
                     <input type="file" accept=".pdf, image/*" onChange={handlePdfImport} className="absolute inset-0 opacity-0 cursor-pointer" disabled={isAnalyzing} />
                     <button disabled={isAnalyzing} className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
@@ -334,7 +428,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                     <tr>
                         <th className="p-3 text-xs font-bold text-gray-500 uppercase border-b">Item</th>
                         <th className="p-3 text-xs font-bold text-gray-500 uppercase border-b text-center">Qty</th>
-                        <th className="p-3 text-xs font-bold text-gray-500 uppercase border-b text-right">Subtotal</th>
                         <th className="p-3 border-b w-8"></th>
                     </tr>
                 </thead>
@@ -348,24 +441,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                             <td className="p-3 text-center text-sm">
                                 <span className="font-medium text-corporate-600">{getDisplayQty(item)}</span> <span className="text-xs text-gray-400">{item.uom}</span>
                             </td>
-                            <td className="p-3 text-right text-sm font-medium text-gray-800">
-                                {item.total.toLocaleString()}
-                            </td>
                             <td className="p-3 text-center">
                                 <button onClick={() => removeFromCart(idx)} className="text-gray-400 hover:text-red-500"><Trash size={14}/></button>
                             </td>
                         </tr>
                     ))}
-                    {cart.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-400 text-sm italic">Belum ada item ditambahkan.</td></tr>}
+                    {cart.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-gray-400 text-sm italic">Belum ada item ditambahkan.</td></tr>}
                 </tbody>
             </table>
         </div>
 
         <div className="p-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-                <span className="text-sm font-bold text-gray-500 uppercase">Total Estimasi</span>
-                <span className="text-2xl font-bold text-gray-800">Rp {cart.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
-            </div>
             <button onClick={handleSubmit} disabled={cart.length === 0} className="w-full py-3 bg-corporate-600 text-white font-bold rounded shadow hover:bg-corporate-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 <FileText size={18} /> Simpan Transaksi
             </button>
