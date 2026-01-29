@@ -8,8 +8,8 @@ export const geminiService = {
     inventory: InventoryItem[], 
     recentTransactions: Transaction[]
   ): Promise<string> => {
-    
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    // Correct initialization with named parameter
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     // Ringkasan data biar AI tetap punya konteks gudang tapi hemat memori
     const inventorySummary = inventory.slice(0, 50).map(i => 
@@ -48,6 +48,7 @@ export const geminiService = {
         }
       });
       
+      // Correct extraction of text from GenerateContentResponse
       return response.text || "Waduh, otak saya lagi nge-blank bentar Bang. Coba tanya lagi deh.";
     } catch (error: any) {
       console.error("Gemini Error:", error);
@@ -57,7 +58,7 @@ export const geminiService = {
   },
 
   generateInsights: async (inventory: InventoryItem[]): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const prompt = `
       Data: ${JSON.stringify(inventory.slice(0, 20).map(i => ({ n: i.name, s: i.stock })))}
@@ -77,32 +78,30 @@ export const geminiService = {
   },
 
   searchYoutubeVideos: async (query: string): Promise<Array<{ title: string, channel: string, url: string }>> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
+      // For searching real-time data, use googleSearch grounding. 
+      // Do not use responseMimeType: "application/json" with googleSearch as per guidelines.
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', 
-        contents: `Search for top 5 YouTube videos matching: "${query}". Return the song/video title, the channel name (artist), and the URL.`,
+        model: 'gemini-3-flash-preview', 
+        contents: `Search for top 5 YouTube videos matching: "${query}".`,
         config: {
           tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING, description: "Title of the video/song" },
-                channel: { type: Type.STRING, description: "Channel name or Artist name" },
-                url: { type: Type.STRING, description: "YouTube link" }
-              },
-              required: ["title", "channel", "url"]
-            }
-          }
         }
       });
 
-      if (response.text) {
-        return JSON.parse(response.text);
+      // Extract website URLs from groundingChunks as required by guidelines
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks && Array.isArray(chunks)) {
+        return chunks
+          .filter(chunk => chunk.web)
+          .map(chunk => ({
+            title: chunk.web.title || "YouTube Video",
+            channel: "Google Search",
+            url: chunk.web.uri || ""
+          }))
+          .filter(item => item.url.includes('youtube.com') || item.url.includes('youtu.be'));
       }
       return [];
     } catch (error) {
@@ -112,7 +111,7 @@ export const geminiService = {
   },
 
   parseTransactionDocument: async (base64Data: string, mimeType: string): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     try {
       const prompt = `
@@ -130,17 +129,15 @@ export const geminiService = {
         Ensure numeric values are parsed correctly (remove commas if used as thousands separators).
       `;
 
+      // Simplified contents structure for multimodal input
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType, data: base64Data } }
-            ]
-          }
-        ],
+        model: 'gemini-3-flash-preview',
+        contents: {
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType, data: base64Data } }
+          ]
+        },
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -169,7 +166,7 @@ export const geminiService = {
       });
 
       if (response.text) {
-        return JSON.parse(response.text);
+        return JSON.parse(response.text.trim());
       }
       return {};
     } catch (error) {

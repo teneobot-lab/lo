@@ -113,13 +113,14 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const data = reader.result;
+        // Fix: Explicitly cast and check reader.result to satisfy strict TS
+        const rawData = reader.result;
+        if (!rawData || typeof rawData === 'string') {
+          return;
+        }
         
-        if (!data || typeof data === 'string') return;
-
-        // Use data directly as it's ArrayBuffer
-        // Fix: Cast data to any to avoid type mismatch if inferred as unknown/string
-        const wb = XLSX.read(data as any, { type: 'array' });
+        const data = rawData as ArrayBuffer;
+        const wb = XLSX.read(data, { type: 'array' });
         const sheetName = wb.SheetNames[0];
         if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
         
