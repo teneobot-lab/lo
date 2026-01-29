@@ -22,8 +22,11 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+// Helper untuk membersihkan parameter query dari 'undefined'
+const cleanParams = (arr) => arr.map(p => p === undefined ? null : p);
+
 async function query(sql, params) {
-    const [rows] = await pool.execute(sql, params);
+    const [rows] = await pool.execute(sql, cleanParams(params || []));
     return rows;
 }
 
@@ -62,14 +65,6 @@ app.post('/api/users', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/users/:id', async (req, res) => {
-    try {
-        if (req.params.id === 'admin') return res.status(403).json({ error: "Cannot delete super admin" });
-        await query('DELETE FROM users WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 /* ================= ITEMS API ================= */
 app.get('/api/items', async (req, res) => {
     try {
@@ -89,6 +84,7 @@ app.get('/api/items', async (req, res) => {
 app.post('/api/items', async (req, res) => {
     const i = req.body;
     try {
+        // Menggunakan cleanParams di helper 'query' memastikan i.unit2 dsb yang undefined jadi null
         await query(
             `INSERT INTO items (id, sku, name, category, price, location, unit, stock, min_level, active, unit2, ratio2, op2, unit3, ratio3, op3)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -139,7 +135,7 @@ app.post('/api/transactions', async (req, res) => {
         await conn.execute(
             `INSERT INTO transactions (id, type, date, total_value, user_id, supplier, po_number, delivery_note, notes, documents)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [t.id, t.type, t.date, t.totalValue || 0, t.userId || 'admin', t.supplier || '', t.poNumber || '', t.deliveryNote || '', t.notes || '', docsJson]
+            cleanParams([t.id, t.type, t.date, t.totalValue || 0, t.userId || 'admin', t.supplier || '', t.poNumber || '', t.deliveryNote || '', t.notes || '', docsJson])
         );
 
         for (const item of t.items) {
@@ -150,7 +146,7 @@ app.post('/api/transactions', async (req, res) => {
             await conn.execute(
                 `INSERT INTO transaction_items (transaction_id, item_id, sku, name, qty, uom, unit_price, total)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [t.id, item.itemId, item.sku, item.name, qty, item.uom, price, total]
+                cleanParams([t.id, item.itemId, item.sku, item.name, qty, item.uom, price, total])
             );
             
             const stockOp = t.type === 'inbound' ? '+' : '-';
@@ -166,27 +162,22 @@ app.post('/api/transactions', async (req, res) => {
     }
 });
 
-// BARU: Endpoint DELETE Transaksi (Sinkronisasi Stok)
 app.delete('/api/transactions/:id', async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        // 1. Ambil data lama untuk revert stok
         const [txs] = await conn.execute('SELECT * FROM transactions WHERE id = ?', [req.params.id]);
         if (txs.length === 0) throw new Error("Transaction not found");
         const tx = txs[0];
 
         const [items] = await conn.execute('SELECT * FROM transaction_items WHERE transaction_id = ?', [req.params.id]);
         
-        // 2. Revert stok barang
         for (const item of items) {
             const stockOp = tx.type === 'inbound' ? '-' : '+';
             await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [item.qty, item.item_id]);
         }
 
-        // 3. Hapus record (otomatis hapus item karena CASCADE)
         await conn.execute('DELETE FROM transactions WHERE id = ?', [req.params.id]);
-        
         await conn.commit();
         res.json({ success: true });
     } catch (e) {
@@ -197,36 +188,35 @@ app.delete('/api/transactions/:id', async (req, res) => {
     }
 });
 
-// BARU: Endpoint PUT Transaksi (Sinkronisasi Stok)
 app.put('/api/transactions/:id', async (req, res) => {
     const { oldTx, newTx } = req.body;
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
 
-        // 1. Kembalikan stok lama (Revert)
+        // 1. Revert stok lama
         for (const item of oldTx.items) {
             const stockOp = oldTx.type === 'inbound' ? '-' : '+';
             await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [item.qty, item.itemId]);
         }
 
-        // 2. Update Header Transaksi
+        // 2. Update Header
         const docsJson = JSON.stringify(newTx.documents || []);
         await conn.execute(
             `UPDATE transactions SET type=?, date=?, total_value=?, supplier=?, po_number=?, delivery_note=?, notes=?, documents=? WHERE id=?`,
-            [newTx.type, newTx.date, newTx.totalValue, newTx.supplier || '', newTx.poNumber || '', newTx.deliveryNote || '', newTx.notes || '', docsJson, req.params.id]
+            cleanParams([newTx.type, newTx.date, newTx.totalValue, newTx.supplier || '', newTx.poNumber || '', newTx.deliveryNote || '', newTx.notes || '', docsJson, req.params.id])
         );
 
-        // 3. Update Detail Items (Hapus yang lama, insert yang baru)
+        // 3. Update Detail Items
         await conn.execute('DELETE FROM transaction_items WHERE transaction_id = ?', [req.params.id]);
         for (const item of newTx.items) {
             const qty = Number(item.qty) || 0;
             await conn.execute(
                 `INSERT INTO transaction_items (transaction_id, item_id, sku, name, qty, uom, unit_price, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.params.id, item.itemId, item.sku, item.name, qty, item.uom, item.unitPrice, item.total]
+                cleanParams([req.params.id, item.itemId, item.sku, item.name, qty, item.uom, item.unitPrice, item.total])
             );
 
-            // 4. Kurangi stok baru
+            // 4. Apply stok baru
             const stockOp = newTx.type === 'inbound' ? '+' : '-';
             await conn.execute(`UPDATE items SET stock = stock ${stockOp} ? WHERE id = ?`, [qty, item.itemId]);
         }

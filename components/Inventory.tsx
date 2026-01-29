@@ -91,17 +91,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     notify("Template XLSX berhasil diunduh!", "info");
   };
 
-  const handleSyncToSheets = async () => {
-    const webhookUrl = localStorage.getItem('nexus_sheet_webhook');
-    if (!webhookUrl) { notify("Konfigurasi Cloud belum diatur!", 'warning'); return; }
-    setIsSyncing(true);
-    try {
-      const syncData = items.map(i => ({ SKU: i.sku, Nama: i.name, Kategori: i.category, Stok: i.stock, Satuan: i.unit, Harga: i.price, Lokasi: i.location }));
-      await googleSheetsService.sync(webhookUrl, { type: 'Inventory', data: syncData });
-      notify("Sync Berhasil!", 'success');
-    } catch (e: any) { notify("Sync Gagal", 'error'); } finally { setIsSyncing(false); }
-  };
-
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; 
     if (!file) return;
@@ -112,7 +101,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         const rawData = reader.result;
         if (!rawData) return;
         
-        // Membaca XLSX sebagai Uint8Array untuk keakuratan pembacaan format binary
         const data = new Uint8Array(rawData as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
         
@@ -131,24 +119,30 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         for (let i = 0; i < sheetData.length; i += 10) {
             const chunk = sheetData.slice(i, i + 10);
             await Promise.all(chunk.map(async (row: any) => {
-                // Mendukung mapping header fleksibel (Nama, SKU, Stok, dll)
                 const sku = String(row.SKU || row.sku || row.Sku || row['Kode Barang'] || '').trim();
                 if (!sku) return;
 
                 const existing = items.find(item => item.sku === sku);
                 
-                // Jika kolom kosong di Excel, gunakan default atau data lama
+                // CRITICAL FIX: Pastikan semua properti yang dikirim ke API TIDAK UNDEFINED
+                // Gunakan ?? null agar driver mysql tidak error
                 const newItem: InventoryItem = { 
                   id: existing ? existing.id : (window.crypto.randomUUID() as string), 
                   sku: sku, 
-                  name: row.Nama || row.nama || row.Name || row.name || (existing?.name || 'Item Baru'), 
-                  category: row.Kategori || row.kategori || row.Category || row.category || (existing?.category || 'General'), 
-                  price: Number(row.Harga || row.harga || row.Price || row.price || (existing?.price || 0)), 
-                  location: row.Lokasi || row.lokasi || row.Location || row.location || (existing?.location || 'A-01'), 
-                  unit: row.Satuan || row.satuan || row.Unit || row.unit || (existing?.unit || 'Pcs'), 
-                  stock: Number(row.Stok || row.stok || row.Stock || row.stock || (existing?.stock || 0)), 
-                  minLevel: Number(row.Minimal_Stok || row.MinimalStok || row.minLevel || row.MinLevel || (existing?.minLevel || 0)), 
-                  active: existing ? existing.active : true 
+                  name: row.Nama || row.nama || row.Name || row.name || (existing?.name ?? 'Item Baru'), 
+                  category: row.Kategori || row.kategori || row.Category || row.category || (existing?.category ?? 'General'), 
+                  price: Number(row.Harga || row.harga || row.Price || row.price || (existing?.price ?? 0)), 
+                  location: row.Lokasi || row.lokasi || row.Location || row.location || (existing?.location ?? 'A-01'), 
+                  unit: row.Satuan || row.satuan || row.Unit || row.unit || (existing?.unit ?? 'Pcs'), 
+                  stock: Number(row.Stok || row.stok || row.Stock || row.stock || (existing?.stock ?? 0)), 
+                  minLevel: Number(row.Minimal_Stok || row.MinimalStok || row.minLevel || row.MinLevel || (existing?.minLevel ?? 0)), 
+                  active: existing ? existing.active : true,
+                  unit2: row.unit2 ?? null,
+                  ratio2: row.ratio2 ? Number(row.ratio2) : null,
+                  op2: row.op2 ?? null,
+                  unit3: row.unit3 ?? null,
+                  ratio3: row.ratio3 ? Number(row.ratio3) : null,
+                  op3: row.op3 ?? null
                 };
                 
                 successCount++;
@@ -156,11 +150,11 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             }));
         }
         
-        notify(`Berhasil import ${successCount} item dari XLSX!`, 'success'); 
+        notify(`Berhasil mengimpor ${successCount} item.`, 'success'); 
         onRefresh();
       } catch (err: any) { 
         console.error("XLSX Import Error:", err);
-        notify("Format file tidak didukung atau rusak. Pastikan pakai XLSX.", 'error'); 
+        notify("Gagal mengimpor file. Pastikan format benar (XLSX).", 'error'); 
       } finally { 
         setIsImporting(false); 
       }
@@ -180,32 +174,20 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             <select className="pl-3 pr-8 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-paper-blue dark:text-white appearance-none cursor-pointer" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <button onClick={() => setShowColMenu(!showColMenu)} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300">
-                <Settings2 size={18} />
-            </button>
         </div>
 
         {role !== 'viewer' && (
           <div className="flex items-center gap-2">
-            {selectedIds.size > 0 ? (
-               <button className="bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-rose-100 flex items-center gap-2 transition-all"><Trash2 size={14} /> Hapus ({selectedIds.size})</button>
-            ) : (
-              <>
-                <button onClick={downloadTemplate} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300" title="Download Template Excel">
-                    <Download size={18} />
+            <button onClick={downloadTemplate} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300" title="Download Template Excel">
+                <Download size={18} />
+            </button>
+            <div className="relative">
+                <input type="file" accept=".xlsx" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
+                <button className="bg-white text-slate-600 border border-gray-300 px-4 py-2 rounded-lg font-bold text-xs hover:bg-gray-50 flex items-center gap-2 transition-all">
+                    {isImporting ? <Loader2 className="animate-spin w-3 h-3" /> : <FileSpreadsheet size={16} />} Import XLSX
                 </button>
-                <button onClick={handleSyncToSheets} disabled={isSyncing} className="bg-white text-emerald-600 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-emerald-50 flex items-center gap-2 transition-all">
-                    {isSyncing ? <Loader2 className="animate-spin w-3 h-3" /> : <Table size={16} />} Sync
-                </button>
-                <div className="relative">
-                    <input type="file" accept=".xlsx" onChange={handleBulkImport} className="absolute inset-0 opacity-0 cursor-pointer w-full" />
-                    <button className="bg-white text-slate-600 border border-gray-300 px-4 py-2 rounded-lg font-bold text-xs hover:bg-gray-50 flex items-center gap-2 transition-all">
-                        {isImporting ? <Loader2 className="animate-spin w-3 h-3" /> : <FileSpreadsheet size={16} />} Import XLSX
-                    </button>
-                </div>
-                <button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="bg-paper-blue text-white px-6 py-2 rounded-lg font-bold text-xs hover:bg-paper-blueHover flex items-center gap-2 shadow-sm transition-all active:scale-95"><Plus size={16} /> Tambah Barang</button>
-              </>
-            )}
+            </div>
+            <button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="bg-paper-blue text-white px-6 py-2 rounded-lg font-bold text-xs hover:bg-paper-blueHover flex items-center gap-2 shadow-sm transition-all active:scale-95"><Plus size={16} /> Tambah Barang</button>
           </div>
         )}
       </div>
@@ -223,7 +205,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                 <th className="p-4">Kategori</th>
                 <th className="p-4 text-right">Harga</th>
                 <th className="p-4 text-center">Stok</th>
-                <th className="p-4 text-center">Status</th>
                 <th className="p-4 text-right">Aksi</th>
               </tr>
             </thead>
@@ -239,9 +220,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                   <td className="p-4 text-right font-bold text-slate-700 dark:text-gray-200">Rp {item.price.toLocaleString()}</td>
                   <td className="p-4 text-center">
                     <span className={`font-bold ${item.stock <= item.minLevel ? 'text-rose-500' : 'text-emerald-500'}`}>{item.stock} {item.unit}</span>
-                  </td>
-                  <td className="p-4 text-center">
-                    <button onClick={() => role !== 'viewer' && storageService.saveItem({...item, active: !item.active}).then(onRefresh)}>{item.active ? <ToggleRight size={24} className="text-emerald-500" /> : <ToggleLeft size={24} className="text-slate-300" />}</button>
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
