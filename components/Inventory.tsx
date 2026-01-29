@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2, Download } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { ToastType } from './Toast';
@@ -79,6 +79,36 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     setSelectedIds(next);
   };
 
+  const downloadTemplate = () => {
+    const template = [
+      {
+        SKU: 'ITEM-001',
+        Name: 'Produk Contoh A',
+        Category: 'Elektronik',
+        Price: 50000,
+        Location: 'A-01',
+        Unit: 'Pcs',
+        Stock: 100,
+        MinLevel: 10
+      },
+      {
+        SKU: 'ITEM-002',
+        Name: 'Produk Contoh B',
+        Category: 'Makanan',
+        Price: 15000,
+        Location: 'B-05',
+        Unit: 'Pack',
+        Stock: 50,
+        MinLevel: 5
+      }
+    ];
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Inventory");
+    XLSX.writeFile(wb, "Nexus_Template_Inventory.xlsx");
+    notify("Template berhasil diunduh!", "info");
+  };
+
   const handleSyncToSheets = async () => {
     const webhookUrl = localStorage.getItem('nexus_sheet_webhook');
     if (!webhookUrl) { notify("Konfigurasi Google Sheets belum diatur!", 'warning'); return; }
@@ -113,16 +143,14 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        // Fix: Explicitly cast and check reader.result to satisfy strict TS
         const rawData = reader.result;
-        if (!rawData || typeof rawData === 'string') {
-          return;
-        }
+        if (!rawData || typeof rawData === 'string') return;
         
         const data = rawData as ArrayBuffer;
         const wb = XLSX.read(data, { type: 'array' });
-        const sheetName = wb.SheetNames[0];
-        if (typeof sheetName !== 'string') throw new Error("Format Excel tidak valid");
+        // Fix: Explicitly cast sheetName to string to avoid 'unknown' type error in environments where SheetNames can be inferred loosely.
+        const sheetName = wb.SheetNames[0] as string;
+        if (typeof sheetName !== 'string' || !sheetName) throw new Error("Format Excel tidak valid");
         
         const ws = wb.Sheets[sheetName]; 
         const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
@@ -131,8 +159,21 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         for (let i = 0; i < sheetData.length; i += 5) {
             const chunk = sheetData.slice(i, i + 5);
             await Promise.all(chunk.map(async (row) => {
-                const sku = String(row.SKU || row.sku).trim(); const existing = items.find(item => item.sku === sku);
-                const newItem: InventoryItem = { id: existing ? existing.id : (crypto.randomUUID() as string), sku: sku, name: row.Name || row.name || (existing?.name || 'Unnamed'), category: row.Category || row.category || 'General', price: Number(row.Price || row.price || 0), location: row.Location || row.location || 'A-01', unit: row.Unit || row.unit || 'Pcs', stock: Number(row.Stock || row.stock || 0), minLevel: Number(row.MinLevel || row.minLevel || 0), active: true };
+                const sku = String(row.SKU || row.sku || '').trim(); 
+                if (!sku) return;
+                const existing = items.find(item => item.sku === sku);
+                const newItem: InventoryItem = { 
+                  id: existing ? existing.id : (crypto.randomUUID() as string), 
+                  sku: sku, 
+                  name: row.Name || row.name || (existing?.name || 'Unnamed'), 
+                  category: row.Category || row.category || 'General', 
+                  price: Number(row.Price || row.price || 0), 
+                  location: row.Location || row.location || 'A-01', 
+                  unit: row.Unit || row.unit || 'Pcs', 
+                  stock: Number(row.Stock || row.stock || 0), 
+                  minLevel: Number(row.MinLevel || row.minLevel || 0), 
+                  active: true 
+                };
                 return storageService.saveItem(newItem);
             }));
         }
@@ -140,6 +181,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
       } catch (e: any) { notify("Gagal import", 'error'); } finally { setIsImporting(false); }
     };
     reader.readAsArrayBuffer(file);
+    e.target.value = ''; // Reset input
   };
 
   const calculateDisplayStock = (baseStock: number, ratio: number, op: 'multiply' | 'divide') => {
@@ -184,6 +226,9 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                <button onClick={handleBulkDelete} className="bg-red-50 text-red-600 border border-red-200 px-3 py-2 rounded font-bold text-xs hover:bg-red-100 flex items-center gap-2"><Trash2 size={14} /> Hapus ({selectedIds.size})</button>
             ) : (
               <>
+                <button onClick={downloadTemplate} className="p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300" title="Download Template Excel">
+                    <Download size={16} />
+                </button>
                 <button onClick={handleSyncToSheets} disabled={isSyncing} className="bg-white text-green-600 border border-green-200 px-3 py-2 rounded font-medium text-xs hover:bg-green-50 flex items-center gap-2">
                     {isSyncing ? <div className="animate-spin w-3 h-3 border-2 border-current border-t-transparent rounded-full" /> : <Table size={14} />} Sync
                 </button>
@@ -224,7 +269,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                 <tr key={item.id} className={`hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors text-sm ${selectedIds.has(item.id) ? 'bg-blue-50 dark:bg-blue-900/20' : idx % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-[#F9FAFB] dark:bg-gray-800/50'}`}>
                   {visibleColumns.select && role !== 'viewer' && (
                     <td className="p-2 text-center border-r border-gray-200 dark:border-gray-700 sticky left-0 bg-inherit z-10">
-                      <button onClick={() => toggleSelectItem(item.id)}>{selectedIds.has(item.id) ? <CheckSquare size={16} className="text-corporate-600" /> : <Square size={16} className="text-gray-300" />}</button>
+                      <button onClick={() => toggleSelectItem(item.id)}>{selectedIds.has(item.id) ? <CheckSquare size={16} className="text-corporate-600" /> : <Square size={16} text-gray-300 />}</button>
                     </td>
                   )}
                   {visibleColumns.sku && <td className="p-2 font-mono text-xs font-bold text-corporate-700 dark:text-corporate-400">{item.sku}</td>}
@@ -274,7 +319,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 };
 
 const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onClose: () => void, onSave: (i: InventoryItem) => void }) => {
-    // CHANGED: Numeric fields initialized to '' if new item
     const [formData, setFormData] = useState<any>(item ? { ...item } : { sku: '', name: '', category: '', location: '', active: true, stock: '', minLevel: '', price: '', unit: 'Pcs' });
     const handleChange = (e: any) => setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
     const handleSubmit = (e: React.FormEvent) => {
