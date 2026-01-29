@@ -34,41 +34,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
   }, [items]);
 
   return (
-    <div className="space-y-8 max-w-[1600px] mx-auto">
+    <div className="space-y-8 max-w-[1600px] mx-auto animate-in fade-in duration-500">
         
         {/* User Greeting & Verification (Mock) */}
         <div className="flex flex-col">
             <div className="flex items-center gap-2 mb-1">
-                <span className="font-bold text-gray-700 text-lg">Hi, User</span>
+                <span className="font-bold text-gray-700 dark:text-white text-lg">Hi, User</span>
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
                 Belum Verifikasi Dokumen Usaha <a href="#" className="text-green-500 font-semibold hover:underline">Verifikasi Sekarang</a>
             </div>
         </div>
 
         {/* Filter Section */}
         <div className="space-y-2">
-            <h3 className="font-semibold text-gray-700">Filter Produk</h3>
-            <div className="flex flex-wrap items-end gap-6 bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-200">Filter Produk</h3>
+            <div className="flex flex-wrap items-end gap-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 transition-colors">
                 <div className="space-y-1">
-                    <label className="text-sm font-semibold text-gray-600 block">Dari:</label>
+                    <label className="text-sm font-semibold text-gray-600 dark:text-gray-400 block">Dari:</label>
                     <div className="relative">
                          <input 
                             type="date" 
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                            className="border-b border-gray-300 pb-1 pt-1 pr-8 outline-none text-gray-600 font-medium w-48 focus:border-paper-blue transition-colors bg-transparent"
+                            className="border-b border-gray-300 dark:border-gray-600 pb-1 pt-1 pr-8 outline-none text-gray-600 dark:text-gray-200 font-medium w-48 focus:border-paper-blue transition-colors bg-transparent dark:[color-scheme:dark]"
                          />
                     </div>
                 </div>
                 <div className="space-y-1">
-                    <label className="text-sm font-semibold text-gray-600 block">Sampai:</label>
+                    <label className="text-sm font-semibold text-gray-600 dark:text-gray-400 block">Sampai:</label>
                     <div className="relative">
                          <input 
                             type="date" 
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
-                            className="border-b border-gray-300 pb-1 pt-1 pr-8 outline-none text-gray-600 font-medium w-48 focus:border-paper-blue transition-colors bg-transparent"
+                            className="border-b border-gray-300 dark:border-gray-600 pb-1 pt-1 pr-8 outline-none text-gray-600 dark:text-gray-200 font-medium w-48 focus:border-paper-blue transition-colors bg-transparent dark:[color-scheme:dark]"
                          />
                     </div>
                 </div>
@@ -113,10 +113,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
             
             {/* Left: Chart */}
             <div className="space-y-4">
-                <h3 className="font-semibold text-gray-700">Grafik Quantity Movement</h3>
-                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 min-h-[400px]">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-200">Grafik Quantity Movement</h3>
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 min-h-[400px] transition-colors">
                     <div className="flex items-center gap-2 mb-6">
-                        <button className="text-sm font-semibold text-gray-600 flex items-center gap-1">
+                        <button className="text-sm font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1 hover:text-paper-blue transition-colors">
                             <Filter size={14} /> Filter by Monthly
                         </button>
                     </div>
@@ -129,26 +129,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
                                         <stop offset="95%" stopColor="#5BA4E6" stopOpacity={0}/>
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" strokeOpacity={0.5} />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#94A3B8'}} />
-                                <Tooltip />
+                                <Tooltip contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6', borderRadius: '8px' }} />
                                 <Area type="monotone" dataKey="value" stroke="#5BA4E6" strokeWidth={2} fillOpacity={1} fill="url(#colorVal)" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
                     {/* Placeholder for empty state if needed */}
-                    <div className="mt-4 border-t border-gray-100 pt-4">
-                        <div className="h-px w-full bg-gray-100 relative top-1/2"></div>
+                    <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                        <div className="h-px w-full bg-gray-100 dark:bg-gray-700 relative top-1/2"></div>
                     </div>
                 </div>
             </div>
 
             {/* Right: Trending Products Table */}
             <div className="space-y-4">
-                <h3 className="font-semibold text-gray-700">Produk Terlaku</h3>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 min-h-[400px] flex flex-col">
-                    <div className="grid grid-cols-2 p-4 bg-gray-50/50 border-b border-gray-100 font-semibold text-sm text-gray-600">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-200">Produk Terlaku</h3>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 min-h-[400px] flex flex-col transition-colors">
+                    <div className="grid grid-cols-2 p-4 bg-gray-50/50 dark:bg-gray-700/30 border-b border-gray-100 dark:border-gray-700 font-semibold text-sm text-gray-600 dark:text-gray-300">
                         <div>Produk</div>
                         <div>Terkirim</div>
                     </div>
@@ -161,9 +161,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ items, transactions, stats
                         ) : (
                             <div className="space-y-4">
                                 {topProducts.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                                        <div className="text-sm font-medium text-gray-700">{item.name}</div>
-                                        <div className="text-sm font-bold text-gray-800">0.00</div> 
+                                    <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{item.name}</div>
+                                        <div className="text-sm font-bold text-gray-800 dark:text-white">0.00</div> 
                                     </div>
                                 ))}
                             </div>
