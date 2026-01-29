@@ -61,6 +61,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     return result;
   }, [items, searchTerm, categoryFilter, statusFilter, sortConfig]);
 
+  // Fix: Corrected type annotation for direction to use a union type instead of an invalid ternary expression
   const handleSort = (key: keyof InventoryItem) => {
       let direction: 'asc' | 'desc' = 'asc';
       if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -133,31 +134,45 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         if (!sheetName) throw new Error("Format Excel tidak valid");
         const ws = wb.Sheets[sheetName]; 
         const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
+        
         setIsImporting(true);
+        let successCount = 0;
+
         for (let i = 0; i < sheetData.length; i += 5) {
             const chunk = sheetData.slice(i, i + 5);
             await Promise.all(chunk.map(async (row: any) => {
+                // Mendukung Case Insensitive header dari Template
                 const sku = String(row.SKU || row.sku || '').trim(); 
                 if (!sku) return;
+
                 const existing = items.find(item => item.sku === sku);
-                // Fix: Ensure id is always treated as string and randomUUID is called safely from window.crypto
+                
+                // Logic: Jika kolom kosong, gunakan default atau data lama
                 const newItem: InventoryItem = { 
                   id: existing ? existing.id : (window.crypto.randomUUID() as string), 
                   sku: sku, 
-                  name: row.Name || row.name || (existing?.name || 'Unnamed'), 
-                  category: row.Category || row.category || 'General', 
-                  price: Number(row.Price || row.price || 0), 
-                  location: row.Location || row.location || 'A-01', 
-                  unit: row.Unit || row.unit || 'Pcs', 
-                  stock: Number(row.Stock || row.stock || 0), 
-                  minLevel: Number(row.MinLevel || row.minLevel || 0), 
-                  active: true 
+                  name: row.Name || row.name || row.Nama || row.nama || (existing?.name || 'Produk Tanpa Nama'), 
+                  category: row.Category || row.category || row.Kategori || row.kategori || (existing?.category || 'General'), 
+                  price: Number(row.Price || row.price || row.Harga || row.harga || (existing?.price || 0)), 
+                  location: row.Location || row.location || row.Lokasi || row.lokasi || (existing?.location || 'A-01'), 
+                  unit: row.Unit || row.unit || row.Satuan || row.satuan || (existing?.unit || 'Pcs'), 
+                  stock: Number(row.Stock || row.stock || row.Stok || row.stok || (existing?.stock || 0)), 
+                  minLevel: Number(row.MinLevel || row.minLevel || (existing?.minLevel || 0)), 
+                  active: existing ? existing.active : true 
                 };
+                
+                successCount++;
                 return storageService.saveItem(newItem);
             }));
         }
-        notify('Import berhasil', 'success'); onRefresh();
-      } catch (e: any) { notify("Gagal import", 'error'); } finally { setIsImporting(false); }
+        
+        notify(`Berhasil import ${successCount} data!`, 'success'); 
+        onRefresh();
+      } catch (e: any) { 
+        notify("Gagal membaca file Excel. Pastikan format benar.", 'error'); 
+      } finally { 
+        setIsImporting(false); 
+      }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = ''; 
@@ -293,7 +308,6 @@ const ItemModal = ({ item, onClose, onSave }: { item: InventoryItem | null, onCl
     const handleChange = (e: any) => setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Fix: Ensure id is always treated as string and randomUUID is called safely from window.crypto with string cast
         onSave({ id: item?.id || (window.crypto.randomUUID() as string), sku: formData.sku, name: formData.name, category: formData.category || 'General', location: formData.location || 'A-01', price: Number(formData.price), unit: formData.unit || 'Pcs', stock: Number(formData.stock), minLevel: Number(formData.minLevel), active: Boolean(formData.active), unit2: formData.unit2 || null, ratio2: formData.ratio2 ? Number(formData.ratio2) : null, op2: formData.op2 || 'multiply', unit3: formData.unit3 || null, ratio3: formData.ratio3 ? Number(formData.ratio3) : null, op3: formData.op3 || 'multiply' });
     };
     return (
