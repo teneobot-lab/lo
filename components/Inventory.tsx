@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2, Download, Package, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2, Download, Package, Loader2, Layers, Calculator } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { ToastType } from './Toast';
@@ -124,8 +124,6 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
                 const existing = items.find(item => item.sku === sku);
                 
-                // CRITICAL FIX: Pastikan semua properti yang dikirim ke API TIDAK UNDEFINED
-                // Gunakan ?? null agar driver mysql tidak error
                 const newItem: InventoryItem = { 
                   id: existing ? existing.id : (window.crypto.randomUUID() as string), 
                   sku: sku, 
@@ -219,7 +217,15 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                   <td className="p-4 text-xs font-medium text-slate-400">{item.category}</td>
                   <td className="p-4 text-right font-bold text-slate-700 dark:text-gray-200">Rp {item.price.toLocaleString()}</td>
                   <td className="p-4 text-center">
-                    <span className={`font-bold ${item.stock <= item.minLevel ? 'text-rose-500' : 'text-emerald-500'}`}>{item.stock} {item.unit}</span>
+                    <div className="flex flex-col items-center">
+                        <span className={`font-bold ${item.stock <= item.minLevel ? 'text-rose-500' : 'text-emerald-500'}`}>{item.stock} {item.unit}</span>
+                        {/* Show secondary units info if exists */}
+                        {(item.unit2 && item.ratio2) && (
+                            <span className="text-[10px] text-slate-400">
+                                1 {item.unit2} = {item.ratio2} {item.unit}
+                            </span>
+                        )}
+                    </div>
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
@@ -240,25 +246,95 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 };
 
 const ItemModal = ({ item, onClose, onSave }: any) => {
-    const [formData, setFormData] = useState<any>(item ? { ...item } : { sku: '', name: '', category: '', location: '', active: true, stock: '', minLevel: '', price: '', unit: 'Pcs' });
+    const [formData, setFormData] = useState<any>(item ? { ...item } : { sku: '', name: '', category: '', location: '', active: true, stock: '', minLevel: '', price: '', unit: 'Pcs', unit2: '', ratio2: '', op2: 'multiply', unit3: '', ratio3: '', op3: 'multiply' });
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-xl flex flex-col border border-white/10 animate-in zoom-in duration-300">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-white/10 animate-in zoom-in duration-300">
                 <div className="p-6 border-b border-slate-100 dark:border-gray-800 flex justify-between items-center bg-slate-50 dark:bg-gray-800">
                     <h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-3"><Package size={22} className="text-paper-blue"/> {item ? 'Perbarui Barang' : 'Barang Baru'}</h3>
                     <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-all text-slate-400"><X size={24}/></button>
                 </div>
-                <form className="p-8 space-y-6" onSubmit={(e) => { e.preventDefault(); onSave(formData); }}>
+                
+                <form className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar" onSubmit={(e) => { e.preventDefault(); onSave(formData); }}>
+                    {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">SKU</label><input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Nama Produk</label><input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
                     </div>
+                    
                     <div className="grid grid-cols-3 gap-6">
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Stok</label><input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Stok (Base)</label><input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Harga</label><input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Unit</label><input required value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Unit Dasar</label><input required value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white font-bold text-center" /></div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-6"><button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button><button type="submit" className="px-8 py-3 bg-paper-blue text-white font-bold rounded-xl shadow-lg hover:bg-paper-blueHover transition-all active:scale-95">Simpan Data</button></div>
+
+                    {/* Multi-Unit Conversion Section */}
+                    <div className="bg-slate-50 dark:bg-gray-800/50 p-6 rounded-2xl border border-slate-100 dark:border-gray-700 space-y-4">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <Layers size={14}/> Multi-Satuan (Konversi)
+                        </h4>
+                        
+                        {/* Unit 2 */}
+                        <div className="grid grid-cols-7 gap-4 items-end">
+                            <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Satuan Level 2</label>
+                                <input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Cth: Lusin" className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white" />
+                            </div>
+                            <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Operasi</label>
+                                <select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white appearance-none">
+                                    <option value="multiply">Dikali (x)</option>
+                                    <option value="divide">Dibagi (/)</option>
+                                </select>
+                            </div>
+                            <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Rasio</label>
+                                <input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: e.target.value})} placeholder="Cth: 12" className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white" />
+                            </div>
+                            <div className="col-span-1 flex items-center justify-center pb-2">
+                                {formData.unit2 && formData.ratio2 && (
+                                    <span className="text-[10px] text-paper-blue font-bold whitespace-nowrap" title="Preview">
+                                        1 {formData.unit2} = {formData.ratio2} {formData.unit}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Unit 3 */}
+                        <div className="grid grid-cols-7 gap-4 items-end">
+                            <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Satuan Level 3</label>
+                                <input value={formData.unit3 || ''} onChange={e => setFormData({...formData, unit3: e.target.value})} placeholder="Cth: Karton" className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white" />
+                            </div>
+                             <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Operasi</label>
+                                <select value={formData.op3 || 'multiply'} onChange={e => setFormData({...formData, op3: e.target.value})} className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white appearance-none">
+                                    <option value="multiply">Dikali (x)</option>
+                                    <option value="divide">Dibagi (/)</option>
+                                </select>
+                            </div>
+                            <div className="col-span-2 space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 block ml-1">Rasio</label>
+                                <input type="number" value={formData.ratio3 || ''} onChange={e => setFormData({...formData, ratio3: e.target.value})} placeholder="Cth: 24" className="w-full border border-slate-200 dark:border-gray-600 p-2.5 rounded-lg text-xs outline-none dark:bg-gray-700 dark:text-white" />
+                            </div>
+                             <div className="col-span-1 flex items-center justify-center pb-2">
+                                {formData.unit3 && formData.ratio3 && (
+                                    <span className="text-[10px] text-paper-blue font-bold whitespace-nowrap" title="Preview">
+                                        1 {formData.unit3} = {formData.ratio3} {formData.unit}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 italic mt-2">* Gunakan fitur ini jika barang dijual dalam berbagai satuan (pcs, lusin, box) namun stok tercatat dalam satuan dasar.</p>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-6 border-t border-slate-100 dark:border-gray-800">
+                        <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 dark:hover:bg-gray-700 dark:text-gray-400 rounded-xl transition-all">Batal</button>
+                        <button type="submit" className="px-8 py-3 bg-paper-blue text-white font-bold rounded-xl shadow-lg hover:bg-paper-blueHover transition-all active:scale-95 flex items-center gap-2">
+                            <CheckSquare size={18} /> Simpan Data
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
