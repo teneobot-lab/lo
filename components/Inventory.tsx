@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { InventoryItem, Role } from '../types';
-import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2, Download, Package } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Filter, ToggleLeft, ToggleRight, X, FileSpreadsheet, CheckSquare, Square, Table, CloudUpload, ArrowUpDown, Settings2, Download, Package, Loader2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 import { ToastType } from './Toast';
@@ -81,8 +81,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   const downloadTemplate = () => {
     const template = [
-      { SKU: 'SKU-001', Nama: 'Barang Contoh A', Kategori: 'Elektronik', Harga: 50000, Lokasi: 'A-01', Satuan: 'Pcs', Stok: 100, Minimal_Stok: 10 },
-      { SKU: 'SKU-002', Nama: 'Barang Contoh B', Kategori: 'ATK', Harga: 5000, Lokasi: 'B-02', Satuan: 'Box', Stok: 20, Minimal_Stok: 5 }
+      { SKU: 'SKU-001', Nama: 'Produk A', Kategori: 'Elektronik', Harga: 50000, Lokasi: 'A-01', Satuan: 'Pcs', Stok: 100, Minimal_Stok: 10 },
+      { SKU: 'SKU-002', Nama: 'Produk B', Kategori: 'Lainnya', Harga: 10000, Lokasi: 'B-02', Satuan: 'Pcs', Stok: 50, Minimal_Stok: 5 }
     ];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
@@ -96,53 +96,48 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
     if (!webhookUrl) { notify("Konfigurasi Cloud belum diatur!", 'warning'); return; }
     setIsSyncing(true);
     try {
-      const syncData = items.map(i => ({ SKU: i.sku, Nama: i.name, Kategori: i.category, Stok: i.stock, Satuan: i.unit, Harga: i.price, Lokasi: i.location, Status: i.active ? 'Active' : 'Inactive' }));
+      const syncData = items.map(i => ({ SKU: i.sku, Nama: i.name, Kategori: i.category, Stok: i.stock, Satuan: i.unit, Harga: i.price, Lokasi: i.location }));
       await googleSheetsService.sync(webhookUrl, { type: 'Inventory', data: syncData });
-      notify("Sinkronisasi Cloud Berhasil!", 'success');
-    } catch (e: any) { notify("Gagal sinkronisasi", 'error'); } finally { setIsSyncing(false); }
+      notify("Sync Berhasil!", 'success');
+    } catch (e: any) { notify("Sync Gagal", 'error'); } finally { setIsSyncing(false); }
   };
 
   const handleBulkImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; 
     if (!file) return;
 
-    // Pastikan extensi XLSX
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'xlsx' && ext !== 'xls') {
-        notify("Hanya mendukung format .xlsx atau .xls (Excel)", 'error');
-        e.target.value = '';
-        return;
-    }
-
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
         const rawData = reader.result;
         if (!rawData) return;
+        
+        // Membaca XLSX sebagai Uint8Array untuk keakuratan pembacaan format binary
         const data = new Uint8Array(rawData as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]]; 
-        const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
         
+        if (!wb.SheetNames.length) throw new Error("File Excel kosong.");
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const sheetData = XLSX.utils.sheet_to_json(ws) as any[];
+
         if (sheetData.length === 0) {
-            notify("File Excel kosong atau format salah.", 'warning');
+            notify("Data di file Excel tidak ditemukan.", 'warning');
             return;
         }
 
         setIsImporting(true);
         let successCount = 0;
 
-        // Proses batch untuk performa
         for (let i = 0; i < sheetData.length; i += 10) {
             const chunk = sheetData.slice(i, i + 10);
             await Promise.all(chunk.map(async (row: any) => {
-                // Mencari header SKU dengan berbagai variasi penulisan
+                // Mendukung mapping header fleksibel (Nama, SKU, Stok, dll)
                 const sku = String(row.SKU || row.sku || row.Sku || row['Kode Barang'] || '').trim();
                 if (!sku) return;
 
                 const existing = items.find(item => item.sku === sku);
                 
-                // Normalisasi Data - Gunakan nilai default jika kolom kosong/null
+                // Jika kolom kosong di Excel, gunakan default atau data lama
                 const newItem: InventoryItem = { 
                   id: existing ? existing.id : (window.crypto.randomUUID() as string), 
                   sku: sku, 
@@ -161,11 +156,11 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
             }));
         }
         
-        notify(`Impor ${successCount} item berhasil!`, 'success'); 
+        notify(`Berhasil import ${successCount} item dari XLSX!`, 'success'); 
         onRefresh();
-      } catch (err) { 
-        console.error("Import Error:", err);
-        notify("Terjadi kesalahan saat memproses file XLSX.", 'error'); 
+      } catch (err: any) { 
+        console.error("XLSX Import Error:", err);
+        notify("Format file tidak didukung atau rusak. Pastikan pakai XLSX.", 'error'); 
       } finally { 
         setIsImporting(false); 
       }
@@ -176,17 +171,16 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] space-y-4 animate-in fade-in duration-300">
-      {/* Search & Tool Area */}
       <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-paper border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-3">
         <div className="flex items-center gap-2 w-full md:w-auto">
             <div className="relative flex-1 md:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input type="text" placeholder="Cari berdasarkan SKU atau Nama..." className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-paper-blue outline-none dark:text-white transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                <input type="text" placeholder="Cari SKU / Nama Produk..." className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-paper-blue outline-none transition-all dark:text-white" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <select className="pl-3 pr-8 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-paper-blue dark:text-white appearance-none cursor-pointer" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <button onClick={() => setShowColMenu(!showColMenu)} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300 transition-colors">
+            <button onClick={() => setShowColMenu(!showColMenu)} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300">
                 <Settings2 size={18} />
             </button>
         </div>
@@ -194,10 +188,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         {role !== 'viewer' && (
           <div className="flex items-center gap-2">
             {selectedIds.size > 0 ? (
-               <button onClick={() => {}} className="bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-rose-100 flex items-center gap-2 transition-all"><Trash2 size={14} /> Hapus ({selectedIds.size})</button>
+               <button className="bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-rose-100 flex items-center gap-2 transition-all"><Trash2 size={14} /> Hapus ({selectedIds.size})</button>
             ) : (
               <>
-                <button onClick={downloadTemplate} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300" title="Template XLSX">
+                <button onClick={downloadTemplate} className="p-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-100 text-slate-600 dark:text-gray-300" title="Download Template Excel">
                     <Download size={18} />
                 </button>
                 <button onClick={handleSyncToSheets} disabled={isSyncing} className="bg-white text-emerald-600 border border-emerald-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-emerald-50 flex items-center gap-2 transition-all">
@@ -216,17 +210,16 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         )}
       </div>
 
-      {/* Main Grid View */}
       <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-paper border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
           <table className="w-full text-left border-collapse enterprise-table">
             <thead>
               <tr className="sticky top-0 bg-gray-50 dark:bg-gray-800 z-20">
                 <th className="p-4 w-12 text-center border-r border-gray-200 dark:border-gray-700">
-                    <button onClick={toggleSelectAll} className="text-slate-400">{selectedIds.size === filteredItems.length ? <CheckSquare size={18} className="text-paper-blue" /> : <Square size={18} />}</button>
+                    <button onClick={toggleSelectAll} className="text-slate-400">{selectedIds.size === filteredItems.length && filteredItems.length > 0 ? <CheckSquare size={18} className="text-paper-blue" /> : <Square size={18} />}</button>
                 </th>
                 <th className="p-4">SKU</th>
-                <th className="p-4">Nama Barang</th>
+                <th className="p-4">Nama Produk</th>
                 <th className="p-4">Kategori</th>
                 <th className="p-4 text-right">Harga</th>
                 <th className="p-4 text-center">Stok</th>
@@ -240,7 +233,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
                   <td className="p-4 text-center border-r border-slate-100 dark:border-gray-700">
                     <button onClick={() => toggleSelectItem(item.id)}>{selectedIds.has(item.id) ? <CheckSquare size={18} className="text-paper-blue" /> : <Square size={18} className="text-slate-200" />}</button>
                   </td>
-                  <td className="p-4 font-mono text-xs font-bold text-slate-500">{item.sku}</td>
+                  <td className="p-4 font-mono text-xs font-bold text-slate-500 uppercase">{item.sku}</td>
                   <td className="p-4 font-bold text-slate-800 dark:text-gray-100">{item.name}</td>
                   <td className="p-4 text-xs font-medium text-slate-400">{item.category}</td>
                   <td className="p-4 text-right font-bold text-slate-700 dark:text-gray-200">Rp {item.price.toLocaleString()}</td>
@@ -263,12 +256,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, role, onRefresh, no
         </div>
       </div>
 
-      {isModalOpen && <ItemModal item={editingItem} onClose={() => setIsModalOpen(false)} onSave={async (item) => { await storageService.saveItem(item); onRefresh(); setIsModalOpen(false); notify('Data berhasil disimpan', 'success'); }} />}
+      {isModalOpen && <ItemModal item={editingItem} onClose={() => setIsModalOpen(false)} onSave={async (item: InventoryItem) => { await storageService.saveItem(item); onRefresh(); setIsModalOpen(false); notify('Data barang disimpan', 'success'); }} />}
     </div>
   );
 };
-
-const Loader2 = ({className}: {className: string}) => <Package className={className + " animate-spin"} size={16} />;
 
 const ItemModal = ({ item, onClose, onSave }: any) => {
     const [formData, setFormData] = useState<any>(item ? { ...item } : { sku: '', name: '', category: '', location: '', active: true, stock: '', minLevel: '', price: '', unit: 'Pcs' });
@@ -277,17 +268,17 @@ const ItemModal = ({ item, onClose, onSave }: any) => {
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-xl flex flex-col border border-white/10 animate-in zoom-in duration-300">
                 <div className="p-6 border-b border-slate-100 dark:border-gray-800 flex justify-between items-center bg-slate-50 dark:bg-gray-800">
                     <h3 className="font-bold text-xl text-slate-800 dark:text-white flex items-center gap-3"><Package size={22} className="text-paper-blue"/> {item ? 'Perbarui Barang' : 'Barang Baru'}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-all"><X size={24} className="text-slate-400"/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-all text-slate-400"><X size={24}/></button>
                 </div>
                 <form className="p-8 space-y-6" onSubmit={(e) => { e.preventDefault(); onSave(formData); }}>
                     <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">SKU</label><input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Nama</label><input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">SKU</label><input required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Nama Produk</label><input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
                     </div>
                     <div className="grid grid-cols-3 gap-6">
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Stok</label><input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Harga</label><input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Unit</label><input required value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Stok</label><input type="number" required value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Harga</label><input type="number" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Unit</label><input required value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full border border-slate-200 dark:border-gray-700 p-3 rounded-xl text-sm outline-none dark:bg-gray-800 dark:text-white" /></div>
                     </div>
                     <div className="flex justify-end gap-3 pt-6"><button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button><button type="submit" className="px-8 py-3 bg-paper-blue text-white font-bold rounded-xl shadow-lg hover:bg-paper-blueHover transition-all active:scale-95">Simpan Data</button></div>
                 </form>

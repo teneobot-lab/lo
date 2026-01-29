@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { Transaction, InventoryItem, TransactionItem } from '../types';
-import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save, CheckSquare, Square, FileSpreadsheet, Settings2, ArrowRight } from 'lucide-react';
+import { Download, Calendar, Search, X, Edit2, Trash2, Loader2, Table, Filter, Eye, Plus, Save, CheckSquare, Square, FileSpreadsheet, Settings2, ArrowRight, Package, ShoppingCart } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { googleSheetsService } from '../services/googleSheetsService';
 
@@ -247,6 +247,184 @@ export const History: React.FC<HistoryProps> = ({ transactions, items, onRefresh
               </div>
           </div>
       )}
+
+      {isEditModalOpen && editingTransaction && (
+          <EditTransactionModal 
+            transaction={editingTransaction} 
+            inventoryItems={items}
+            onClose={() => { setIsEditModalOpen(false); setEditingTransaction(null); }} 
+            onSave={handleEditSave} 
+          />
+      )}
     </div>
   );
+};
+
+// --- Edit Transaction Modal Component ---
+const EditTransactionModal = ({ transaction, inventoryItems, onClose, onSave }: { transaction: Transaction, inventoryItems: InventoryItem[], onClose: () => void, onSave: (t: Transaction) => void }) => {
+    const [formData, setFormData] = useState<Transaction>({ ...transaction });
+    const [itemSearch, setItemSearch] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+
+    const filteredMasters = inventoryItems.filter(i => 
+        i.name.toLowerCase().includes(itemSearch.toLowerCase()) || 
+        i.sku.toLowerCase().includes(itemSearch.toLowerCase())
+    ).slice(0, 5);
+
+    const handleAddItem = (item: InventoryItem) => {
+        const newItem: TransactionItem = {
+            itemId: item.id,
+            sku: item.sku,
+            name: item.name,
+            qty: 1,
+            uom: item.unit,
+            unitPrice: item.price,
+            total: item.price
+        };
+        const updatedItems = [...formData.items, newItem];
+        const totalValue = updatedItems.reduce((acc, curr) => acc + curr.total, 0);
+        setFormData({ ...formData, items: updatedItems, totalValue });
+        setItemSearch('');
+        setShowDropdown(false);
+    };
+
+    const handleUpdateItemQty = (idx: number, newQty: number) => {
+        const updatedItems = [...formData.items];
+        updatedItems[idx].qty = newQty;
+        updatedItems[idx].total = newQty * updatedItems[idx].unitPrice;
+        const totalValue = updatedItems.reduce((acc, curr) => acc + curr.total, 0);
+        setFormData({ ...formData, items: updatedItems, totalValue });
+    };
+
+    const handleRemoveItem = (idx: number) => {
+        const updatedItems = formData.items.filter((_, i) => i !== idx);
+        const totalValue = updatedItems.reduce((acc, curr) => acc + curr.total, 0);
+        setFormData({ ...formData, items: updatedItems, totalValue });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-white/10 animate-in zoom-in duration-300">
+                <div className="p-8 border-b border-slate-100 dark:border-gray-800 flex justify-between items-center bg-slate-50 dark:bg-gray-800">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-paper-blue rounded-2xl text-white shadow-lg">
+                            <ShoppingCart size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Edit Transaksi {formData.id}</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update Data Mutasi & Penyesuaian Stok</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-3 hover:bg-white rounded-full transition-all text-slate-400"><X size={28}/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
+                    {/* Basic Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Supplier / Customer</label>
+                            <input value={formData.supplier || ''} onChange={e => setFormData({...formData, supplier: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-paper-blue rounded-2xl outline-none font-bold text-slate-700 dark:text-white" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Waktu Transaksi</label>
+                            <input type="datetime-local" value={formData.date.slice(0,16)} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-paper-blue rounded-2xl outline-none font-bold text-slate-700 dark:text-white" />
+                        </div>
+                    </div>
+
+                    {/* Type & Warehouse */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Tipe Mutasi</label>
+                            <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-paper-blue rounded-2xl outline-none font-bold text-slate-700 dark:text-white appearance-none cursor-pointer">
+                                <option value="inbound">Barang Masuk (Inbound)</option>
+                                <option value="outbound">Barang Keluar (Outbound)</option>
+                                <option value="transfer">Mutasi (Transfer)</option>
+                            </select>
+                        </div>
+                        <div className="md:col-span-2 space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Gudang / Lokasi</label>
+                            <input value={formData.warehouse || ''} onChange={e => setFormData({...formData, warehouse: e.target.value})} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-paper-blue rounded-2xl outline-none font-bold text-slate-700 dark:text-white" />
+                        </div>
+                    </div>
+
+                    {/* Item Management Section */}
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-end">
+                            <label className="text-[10px] font-bold text-paper-blue uppercase tracking-[0.2em] block ml-2">Daftar Barang Mutasi</label>
+                            <div className="relative w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                <input 
+                                    placeholder="Tambah Barang..." 
+                                    className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-paper-blue"
+                                    value={itemSearch}
+                                    onChange={e => { setItemSearch(e.target.value); setShowDropdown(true); }}
+                                />
+                                {showDropdown && itemSearch && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-100 z-50 max-h-40 overflow-auto">
+                                        {filteredMasters.map(item => (
+                                            <div key={item.id} onClick={() => handleAddItem(item)} className="p-3 hover:bg-slate-50 cursor-pointer border-b last:border-0 border-slate-50 flex justify-between items-center group">
+                                                <div><p className="text-xs font-bold text-slate-800 group-hover:text-paper-blue">{item.name}</p><p className="text-[10px] text-slate-400 font-mono">{item.sku}</p></div>
+                                                <Plus size={14} className="text-slate-300 group-hover:text-paper-blue" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-gray-800/50 rounded-[2rem] border border-slate-100 dark:border-gray-700 overflow-hidden shadow-inner">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-100 dark:bg-gray-800 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                    <tr><th className="p-5">Informasi Produk</th><th className="p-5 text-center">Jumlah</th><th className="p-5 text-right">Harga Satuan</th><th className="p-5 text-right">Total</th><th className="p-5"></th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-gray-700">
+                                    {formData.items.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-white transition-colors group">
+                                            <td className="p-5">
+                                                <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
+                                                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">{item.sku}</div>
+                                            </td>
+                                            <td className="p-5">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <input 
+                                                        type="number" 
+                                                        value={item.qty} 
+                                                        onChange={e => handleUpdateItemQty(idx, Number(e.target.value))}
+                                                        className="w-16 p-2 bg-white dark:bg-gray-900 border border-slate-200 rounded-lg text-center font-bold text-sm outline-none focus:ring-2 focus:ring-paper-blue" 
+                                                    />
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{item.uom}</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-5 text-right font-medium text-slate-500 text-xs">Rp {item.unitPrice.toLocaleString()}</td>
+                                            <td className="p-5 text-right font-black text-slate-800 dark:text-white text-sm">Rp {item.total.toLocaleString()}</td>
+                                            <td className="p-5 text-right"><button onClick={() => handleRemoveItem(idx)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={16}/></button></td>
+                                        </tr>
+                                    ))}
+                                    {formData.items.length === 0 && <tr><td colSpan={5} className="p-10 text-center italic text-slate-300 text-sm">Belum ada barang dipilih.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Summary Footer */}
+                    <div className="p-8 bg-paper-blue/5 rounded-[2rem] border-2 border-paper-blue/10 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="space-y-1">
+                            <p className="text-[10px] font-black text-paper-blue uppercase tracking-[0.2em]">Total Nilai Transaksi</p>
+                            <h4 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Rp {formData.totalValue.toLocaleString()}</h4>
+                        </div>
+                        <div className="flex gap-4">
+                            <button onClick={onClose} className="px-10 py-4 text-slate-400 font-black hover:bg-slate-100 rounded-2xl uppercase tracking-widest text-xs transition-all">Batal</button>
+                            <button 
+                                onClick={() => onSave(formData)} 
+                                disabled={formData.items.length === 0}
+                                className="px-12 py-4 bg-paper-blue text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 hover:bg-paper-blueHover transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest text-xs flex items-center gap-3"
+                            >
+                                <Save size={18}/> Update Mutasi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
