@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Search, Calendar, ArrowDownCircle, ArrowUpCircle, X, FileText, Building2, ArrowRightLeft, ArrowLeft, User as UserIcon, FileSpreadsheet, Clipboard, Calculator } from 'lucide-react';
+import { Plus, Trash, ShoppingCart, Search, Calendar, ArrowDownCircle, ArrowUpCircle, X, FileText, Building2, ArrowRightLeft, ArrowLeft, User as UserIcon, FileSpreadsheet, Clipboard, Calculator, Upload, Image as ImageIcon, Camera } from 'lucide-react';
 import { ToastType } from './Toast';
 
 interface TransactionsProps {
@@ -16,15 +16,16 @@ type TransactionMode = 'menu' | 'inbound' | 'outbound' | 'transfer';
 
 export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
   const [mode, setMode] = useState<TransactionMode>('menu');
-  const [cart, setCart] = useState<any[]>([]); // Using any to store extra display fields like inputQty, inputUnit
+  const [cart, setCart] = useState<any[]>([]); 
   
   // Header Information State
   const [warehouse, setWarehouse] = useState('Gudang Utama');
   const [targetWarehouse, setTargetWarehouse] = useState('Gudang Cabang A');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
-  const [supplier, setSupplier] = useState(''); // Also serves as Customer for outbound
-  const [refNumber, setRefNumber] = useState(''); // PO or Delivery Note
+  const [supplier, setSupplier] = useState(''); 
+  const [refNumber, setRefNumber] = useState(''); 
   const [notes, setNotes] = useState('');
+  const [documentImages, setDocumentImages] = useState<string[]>([]); // New State for Images
   
   // Item Selection State
   const [itemSearch, setItemSearch] = useState('');
@@ -36,12 +37,41 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [conversionRatio, setConversionRatio] = useState<number>(1);
 
+  // Refs for Focus Management
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
+
   const filteredItems = useMemo(() => {
       if (!itemSearch) return [];
       return items.filter(i => i.active && (i.name.toLowerCase().includes(itemSearch.toLowerCase()) || i.sku.toLowerCase().includes(itemSearch.toLowerCase()))).slice(0, 6);
   }, [items, itemSearch]);
 
-  // Reset fields when item selected
+  // Effect to focus Qty when item is selected
+  useEffect(() => {
+      if (selectedItem && qtyInputRef.current) {
+          qtyInputRef.current.focus();
+      }
+  }, [selectedItem]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          // Explicitly type 'file' as File (which extends Blob) to avoid 'unknown' type error
+          Array.from(e.target.files).forEach((file) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  if (reader.result) {
+                      setDocumentImages(prev => [...prev, reader.result as string]);
+                  }
+              };
+              reader.readAsDataURL(file as Blob);
+          });
+      }
+  };
+
+  const removeImage = (index: number) => {
+      setDocumentImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSelectItem = (item: InventoryItem) => {
       setSelectedItem(item);
       setItemSearch(item.name);
@@ -51,7 +81,23 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setInputQty('');
   };
 
-  // Handle Unit Change & Calculate Ratio
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          // If dropdown is open and there are results, select the first one
+          if (filteredItems.length > 0) {
+              handleSelectItem(filteredItems[0]);
+          }
+      }
+  };
+
+  const handleQtyKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          addToCart();
+      }
+  };
+
   const handleUnitChange = (unitName: string) => {
       if (!selectedItem) return;
       setSelectedUnit(unitName);
@@ -70,33 +116,29 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const addToCart = () => {
     if (!selectedItem || !inputQty || Number(inputQty) <= 0) return;
 
-    // Calculate Base Qty for System (Stock Deduction)
     const baseQty = Number(inputQty) * conversionRatio;
 
     const newItem = { 
         itemId: selectedItem.id, 
         sku: selectedItem.sku, 
         name: selectedItem.name, 
-        
-        // Display Fields (Apa yang diinput user)
         inputQty: Number(inputQty),
-        inputUnit: selectedUnit,
-        
-        // System Fields (Apa yang disimpan ke DB)
-        qty: baseQty, // Total Base Unit
-        uom: selectedItem.unit, // Base Unit Name
-        
+        inputUnit: selectedUnit, 
+        qty: baseQty, 
+        uom: selectedItem.unit, 
         unitPrice: selectedItem.price, 
         total: baseQty * selectedItem.price 
     };
 
     setCart([...cart, newItem]);
     
-    // Reset Input Section
+    // Reset Input Section & Focus back to search
     setSelectedItem(null);
     setItemSearch('');
     setInputQty('');
-    notify('Item ditambahkan ke daftar', 'info');
+    if (searchInputRef.current) {
+        searchInputRef.current.focus();
+    }
   };
 
   const removeFromCart = (idx: number) => {
@@ -117,17 +159,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
             itemId: c.itemId,
             sku: c.sku,
             name: c.name,
-            qty: c.qty, // Sending Base Qty to backend
-            uom: c.inputUnit, // Saving the unit name used for transaction record (optional preference)
+            qty: c.qty, 
+            uom: c.inputUnit, 
             unitPrice: c.unitPrice,
             total: c.total
         })), 
         totalValue: cart.reduce((acc, curr) => acc + curr.total, 0), 
         userId: user.id || 'admin', 
         supplier, 
-        deliveryNote: refNumber, // Using Delivery Note field for Surat Jalan
+        deliveryNote: refNumber, 
         notes, 
-        documents: [] 
+        documents: documentImages 
     };
 
     try { 
@@ -176,7 +218,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           </h2>
       </div>
 
-      {/* SECTION 1: Detail Informasi (Layout 1) */}
+      {/* SECTION 1: Detail Informasi */}
       <div className="bg-white dark:bg-gray-800 p-8 rounded-[2rem] shadow-paper border border-slate-200 dark:border-gray-700 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10"><FileText size={100} /></div>
           <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-gray-700 pb-2">I. Informasi Transaksi</h3>
@@ -217,16 +259,37 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
               </div>
           </div>
           
-          <div className="mt-4 space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Catatan Tambahan (Opsional)</label>
-              <div className="relative">
-                  <Clipboard className="absolute left-4 top-3 text-slate-400" size={16}/>
-                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-paper-blue dark:text-white resize-none" placeholder="Keterangan kondisi barang atau instruksi khusus..." />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+               <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Catatan Tambahan (Opsional)</label>
+                  <div className="relative">
+                      <Clipboard className="absolute left-4 top-3 text-slate-400" size={16}/>
+                      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-paper-blue dark:text-white resize-none" placeholder="Keterangan kondisi barang..." />
+                  </div>
+              </div>
+
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Dokumen Pendukung / Foto</label>
+                  <div className="w-full p-4 bg-slate-50 dark:bg-gray-900 border border-dashed border-slate-300 dark:border-gray-700 rounded-xl min-h-[105px]">
+                      <div className="flex flex-wrap gap-3">
+                          {documentImages.map((img, idx) => (
+                              <div key={idx} className="relative w-16 h-16 group">
+                                  <img src={img} alt={`doc-${idx}`} className="w-full h-full object-cover rounded-lg border border-slate-200 dark:border-gray-700" />
+                                  <button onClick={() => removeImage(idx)} className="absolute -top-2 -right-2 bg-rose-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
+                              </div>
+                          ))}
+                          <label className="w-16 h-16 flex flex-col items-center justify-center border-2 border-dashed border-paper-blue/30 rounded-lg cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
+                              <Camera size={20} className="text-paper-blue mb-1"/>
+                              <span className="text-[8px] text-paper-blue font-bold">ADD</span>
+                              <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
+                          </label>
+                      </div>
+                  </div>
               </div>
           </div>
       </div>
 
-      {/* SECTION 2: Cart & Input (Layout 2) */}
+      {/* SECTION 2: Cart & Input */}
       <div className="bg-white dark:bg-gray-800 p-8 rounded-[2rem] shadow-paper border border-slate-200 dark:border-gray-700 flex flex-col min-h-[400px]">
           <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-gray-700 pb-2 flex justify-between items-center">
               <span>II. Input Barang & Keranjang</span>
@@ -239,18 +302,20 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                   
                   {/* Search Bar */}
                   <div className="flex-1 w-full relative z-20">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Cari Barang</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Cari Barang (Enter untuk Pilih)</label>
                       <div className="relative">
                           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
                           <input 
+                            ref={searchInputRef}
                             type="text" 
                             className={`w-full pl-12 pr-4 py-3 border ${selectedItem ? 'border-paper-blue bg-blue-50/50 dark:bg-blue-900/20 text-paper-blue font-bold' : 'border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-800 dark:text-white'} rounded-xl text-sm focus:ring-2 focus:ring-paper-blue outline-none transition-all`} 
                             value={itemSearch} 
                             onChange={e => { setItemSearch(e.target.value); setSelectedItem(null); setShowDropdown(true); }} 
+                            onKeyDown={handleSearchKeyDown}
                             placeholder="Ketik SKU atau Nama Barang..." 
                           />
                           {selectedItem && (
-                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-200 dark:bg-gray-700 rounded-full text-slate-500 hover:text-rose-500"><X size={14}/></button>
+                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); if(searchInputRef.current) searchInputRef.current.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-200 dark:bg-gray-700 rounded-full text-slate-500 hover:text-rose-500"><X size={14}/></button>
                           )}
                       </div>
                       {showDropdown && itemSearch && !selectedItem && (
@@ -276,7 +341,15 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       <div className="flex gap-4 w-full lg:w-auto animate-in fade-in slide-in-from-left-4">
                           <div className="w-24">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Qty</label>
-                              <input type="number" value={inputQty} onChange={e => setInputQty(e.target.value === '' ? '' : Number(e.target.value))} className="w-full p-3 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-black text-center text-paper-blue focus:ring-2 focus:ring-paper-blue outline-none dark:bg-gray-800" placeholder="0" />
+                              <input 
+                                ref={qtyInputRef}
+                                type="number" 
+                                value={inputQty} 
+                                onChange={e => setInputQty(e.target.value === '' ? '' : Number(e.target.value))} 
+                                onKeyDown={handleQtyKeyDown}
+                                className="w-full p-3 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-black text-center text-paper-blue focus:ring-2 focus:ring-paper-blue outline-none dark:bg-gray-800" 
+                                placeholder="0" 
+                              />
                           </div>
                           
                           <div className="w-32">
@@ -319,7 +392,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                           <th className="p-4">Barang</th>
                           <th className="p-4 text-center bg-blue-50/50 dark:bg-blue-900/10 text-paper-blue">Qty Input</th>
                           <th className="p-4 text-center">Qty Base (Sistem)</th>
-                          <th className="p-4 text-right">Total Nilai</th>
                           <th className="p-4 text-right">Aksi</th>
                       </tr>
                   </thead>
@@ -340,9 +412,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                                      <span className="font-bold text-slate-700 dark:text-gray-300 text-sm">{item.qty} {item.uom}</span>
                                   </div>
                               </td>
-                              <td className="p-4 text-right font-medium text-slate-600 dark:text-gray-400 text-sm">
-                                  Rp {item.total.toLocaleString()}
-                              </td>
                               <td className="p-4 text-right">
                                   <button onClick={() => removeFromCart(idx)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"><Trash size={16}/></button>
                               </td>
@@ -350,7 +419,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       ))}
                       {cart.length === 0 && (
                           <tr>
-                              <td colSpan={5} className="p-12 text-center">
+                              <td colSpan={4} className="p-12 text-center">
                                   <div className="flex flex-col items-center gap-3 opacity-50">
                                       <ShoppingCart size={48} className="text-slate-300"/>
                                       <p className="text-sm font-medium text-slate-400">Keranjang transaksi masih kosong.</p>
