@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InventoryItem, Transaction, TransactionItem, User } from '../types';
 import { storageService } from '../services/storageService';
-import { Plus, Trash, ShoppingCart, Search, Calendar, ArrowDownCircle, ArrowUpCircle, X, FileText, Building2, ArrowRightLeft, ArrowLeft, User as UserIcon, FileSpreadsheet, Clipboard, Calculator, Upload, Image as ImageIcon, Camera } from 'lucide-react';
+// Added ArrowLeft, Zap, and Package to the imports
+import { Plus, Trash, ShoppingCart, Search, Calendar, ArrowDownCircle, ArrowLeft, ArrowUpCircle, X, FileText, Building2, User as UserIcon, FileSpreadsheet, Clipboard, Calculator, Camera, ChevronRight, Zap, Package } from 'lucide-react';
 import { ToastType } from './Toast';
 
 interface TransactionsProps {
@@ -12,7 +13,7 @@ interface TransactionsProps {
   notify: (msg: string, type: ToastType) => void;
 }
 
-type TransactionMode = 'menu' | 'inbound' | 'outbound' | 'transfer';
+type TransactionMode = 'menu' | 'inbound' | 'outbound';
 
 export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
   const [mode, setMode] = useState<TransactionMode>('menu');
@@ -20,17 +21,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   
   // Header Information State
   const [warehouse, setWarehouse] = useState('Gudang Utama');
-  const [targetWarehouse, setTargetWarehouse] = useState('Gudang Cabang A');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [supplier, setSupplier] = useState(''); 
   const [refNumber, setRefNumber] = useState(''); 
   const [notes, setNotes] = useState('');
-  const [documentImages, setDocumentImages] = useState<string[]>([]); // New State for Images
+  const [documentImages, setDocumentImages] = useState<string[]>([]);
   
   // Item Selection State
   const [itemSearch, setItemSearch] = useState('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   
   // Input Qty State
   const [inputQty, setInputQty] = useState<number | ''>('');
@@ -40,22 +41,27 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   // Refs for Focus Management
   const searchInputRef = useRef<HTMLInputElement>(null);
   const qtyInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredItems = useMemo(() => {
-      if (!itemSearch) return [];
-      return items.filter(i => i.active && (i.name.toLowerCase().includes(itemSearch.toLowerCase()) || i.sku.toLowerCase().includes(itemSearch.toLowerCase()))).slice(0, 6);
-  }, [items, itemSearch]);
+      if (!itemSearch || selectedItem) return [];
+      const query = itemSearch.toLowerCase();
+      return items.filter(i => i.active && (i.name.toLowerCase().includes(query) || i.sku.toLowerCase().includes(query))).slice(0, 8);
+  }, [items, itemSearch, selectedItem]);
 
-  // Effect to focus Qty when item is selected
+  // Handle Click Outside Dropdown
   useEffect(() => {
-      if (selectedItem && qtyInputRef.current) {
-          qtyInputRef.current.focus();
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
       }
-  }, [selectedItem]);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
-          // Explicitly type 'file' as File (which extends Blob) to avoid 'unknown' type error
           Array.from(e.target.files).forEach((file) => {
               const reader = new FileReader();
               reader.onloadend = () => {
@@ -63,7 +69,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       setDocumentImages(prev => [...prev, reader.result as string]);
                   }
               };
-              reader.readAsDataURL(file as Blob);
+              reader.readAsDataURL(file);
           });
       }
   };
@@ -76,18 +82,29 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setSelectedItem(item);
       setItemSearch(item.name);
       setShowDropdown(false);
+      setFocusedIndex(-1);
       setSelectedUnit(item.unit);
       setConversionRatio(1);
       setInputQty('');
+      // Auto focus qty input after selection
+      setTimeout(() => qtyInputRef.current?.focus(), 50);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
+      if (!showDropdown || filteredItems.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
           e.preventDefault();
-          // If dropdown is open and there are results, select the first one
-          if (filteredItems.length > 0) {
-              handleSelectItem(filteredItems[0]);
-          }
+          setFocusedIndex(prev => (prev < filteredItems.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setFocusedIndex(prev => (prev > 0 ? prev - 1 : filteredItems.length - 1));
+      } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const target = focusedIndex >= 0 ? filteredItems[focusedIndex] : filteredItems[0];
+          if (target) handleSelectItem(target);
+      } else if (e.key === 'Escape') {
+          setShowDropdown(false);
       }
   };
 
@@ -130,15 +147,14 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         total: baseQty * selectedItem.price 
     };
 
-    setCart([...cart, newItem]);
+    setCart([newItem, ...cart]); // Newest item on top
     
-    // Reset Input Section & Focus back to search
+    // Reset Input Section & Focus back to search for speed
     setSelectedItem(null);
     setItemSearch('');
     setInputQty('');
-    if (searchInputRef.current) {
-        searchInputRef.current.focus();
-    }
+    setFocusedIndex(-1);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
   };
 
   const removeFromCart = (idx: number) => {
@@ -147,14 +163,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
   const handleSubmit = async () => {
     if (cart.length === 0) { notify("Keranjang masih kosong", 'error'); return; }
-    if (!supplier && mode !== 'transfer') { notify("Nama Supplier/Customer wajib diisi", 'warning'); return; }
+    if (!supplier) { notify("Nama Supplier/Customer wajib diisi", 'warning'); return; }
 
     const transaction: Transaction = { 
         id: storageService.generateTransactionId(), 
-        type: mode as 'inbound' | 'outbound' | 'transfer', 
+        type: mode as 'inbound' | 'outbound', 
         date: `${customDate} ${new Date().toTimeString().split(' ')[0]}`, 
         warehouse, 
-        targetWarehouse: mode === 'transfer' ? targetWarehouse : undefined,
         items: cart.map(c => ({
             itemId: c.itemId,
             sku: c.sku,
@@ -182,22 +197,17 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   if (mode === 'menu') {
       return (
         <div className="h-[calc(100vh-100px)] flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-10 tracking-tight">Apa jenis transaksi hari ini?</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-10 tracking-tighter uppercase">Pilih Tipe Transaksi</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full max-w-4xl">
                 <MenuButton 
-                    title="Barang Masuk" sub="Inbound / Restock" 
-                    icon={<ArrowDownCircle size={48}/>} color="emerald"
+                    title="Barang Masuk" sub="Restock / Purchase Order" 
+                    icon={<ArrowDownCircle size={64}/>} color="emerald"
                     onClick={() => setMode('inbound')}
                 />
                 <MenuButton 
-                    title="Barang Keluar" sub="Outbound / Sales" 
-                    icon={<ArrowUpCircle size={48}/>} color="rose"
+                    title="Barang Keluar" sub="Sales / Delivery Order" 
+                    icon={<ArrowUpCircle size={64}/>} color="rose"
                     onClick={() => setMode('outbound')}
-                />
-                <MenuButton 
-                    title="Transfer Stok" sub="Mutasi Antar Rak" 
-                    icon={<ArrowRightLeft size={48}/>} color="blue"
-                    onClick={() => setMode('transfer')}
                 />
             </div>
         </div>
@@ -205,82 +215,88 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20 animate-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-7xl mx-auto space-y-8 pb-24 animate-in slide-in-from-bottom-6 duration-500">
       
       {/* Header Navigation */}
-      <div className="flex items-center gap-4">
-          <button onClick={() => setMode('menu')} className="p-2.5 bg-white dark:bg-gray-800 hover:bg-slate-50 rounded-xl border border-slate-200 dark:border-gray-700 transition-all shadow-sm">
-              <ArrowLeft size={20} className="text-slate-600 dark:text-gray-300"/>
+      <div className="flex items-center gap-6">
+          {/* Fix: Added ArrowLeft from lucide-react to satisfy compiler error */}
+          <button onClick={() => setMode('menu')} className="p-4 bg-white dark:bg-gray-800 hover:bg-slate-50 rounded-[1.5rem] border border-slate-200 dark:border-gray-700 transition-all shadow-md active:scale-95">
+              <ArrowLeft size={24} className="text-slate-600 dark:text-gray-300"/>
           </button>
-          <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
-              {mode === 'inbound' ? <ArrowDownCircle className="text-emerald-500"/> : mode === 'outbound' ? <ArrowUpCircle className="text-rose-500"/> : <ArrowRightLeft className="text-blue-500"/>}
-              Input {mode === 'inbound' ? 'Barang Masuk' : mode === 'outbound' ? 'Barang Keluar' : 'Transfer Stok'}
-          </h2>
+          <div>
+              <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter uppercase flex items-center gap-3">
+                  {mode === 'inbound' ? <ArrowDownCircle className="text-emerald-500" size={32}/> : <ArrowUpCircle className="text-rose-500" size={32}/>}
+                  Input {mode === 'inbound' ? 'Barang Masuk' : 'Barang Keluar'}
+              </h2>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Sistem Pencatatan Mutasi Barang Real-Time</p>
+          </div>
       </div>
 
       {/* SECTION 1: Detail Informasi */}
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-[2rem] shadow-paper border border-slate-200 dark:border-gray-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10"><FileText size={100} /></div>
-          <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-gray-700 pb-2">I. Informasi Transaksi</h3>
+      <div className="bg-white dark:bg-gray-800 p-10 rounded-[3rem] shadow-paper border border-slate-100 dark:border-gray-700 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none"><FileText size={180} /></div>
+          <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.4em] mb-10 border-b border-slate-50 dark:border-gray-700 pb-3 flex items-center gap-3">
+              <FileText size={16} className="text-paper-blue"/> I. Informasi Transaksi Umum
+          </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
-              <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Tanggal</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative z-10">
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">Tanggal</label>
                   <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-paper-blue dark:text-white dark:[color-scheme:dark]" />
+                      <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
+                      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white dark:[color-scheme:dark]" />
                   </div>
               </div>
 
-              <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">{mode === 'inbound' ? 'Nama Supplier' : 'Nama Customer/Tujuan'}</label>
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">{mode === 'inbound' ? 'Nama Supplier' : 'Nama Customer/Tujuan'}</label>
                   <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                      <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-paper-blue dark:text-white" placeholder={mode === 'inbound' ? "PT. Supplier..." : "Customer A..."} />
+                      <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
+                      <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white" placeholder={mode === 'inbound' ? "Ex: PT. Makmur Jaya" : "Ex: Customer Retail A"} />
                   </div>
               </div>
 
-              <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">No. Surat Jalan / Ref</label>
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">No. Surat Jalan / Ref</label>
                   <div className="relative">
-                      <FileSpreadsheet className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                      <input value={refNumber} onChange={e => setRefNumber(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-paper-blue dark:text-white" placeholder="Ex: SJ-001/X/2024" />
+                      <FileSpreadsheet className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
+                      <input value={refNumber} onChange={e => setRefNumber(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white" placeholder="Ex: SJ-001/X/2026" />
                   </div>
               </div>
 
-              <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Lokasi Gudang</label>
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">Lokasi Gudang</label>
                   <div className="relative">
-                      <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                      <select value={warehouse} onChange={e => setWarehouse(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-paper-blue appearance-none cursor-pointer dark:text-white">
-                          <option>Gudang Utama</option><option>Gudang Cabang A</option><option>Gudang Reject</option>
+                      <Building2 className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
+                      <select value={warehouse} onChange={e => setWarehouse(e.target.value)} className="w-full pl-14 pr-10 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner appearance-none cursor-pointer dark:text-white">
+                          <option>Gudang Utama</option><option>Gudang Cabang A</option><option>Gudang Cold Storage</option>
                       </select>
                   </div>
               </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-               <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Catatan Tambahan (Opsional)</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8 relative z-10">
+               <div className="md:col-span-2 space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">Catatan Tambahan</label>
                   <div className="relative">
-                      <Clipboard className="absolute left-4 top-3 text-slate-400" size={16}/>
-                      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-paper-blue dark:text-white resize-none" placeholder="Keterangan kondisi barang..." />
+                      <Clipboard className="absolute left-6 top-5 text-slate-300" size={20}/>
+                      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full pl-14 pr-6 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2.5rem] text-base font-bold outline-none shadow-inner dark:text-white resize-none" placeholder="Masukkan keterangan tambahan jika ada..." />
                   </div>
               </div>
 
-              <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1">Dokumen Pendukung / Foto</label>
-                  <div className="w-full p-4 bg-slate-50 dark:bg-gray-900 border border-dashed border-slate-300 dark:border-gray-700 rounded-xl min-h-[105px]">
-                      <div className="flex flex-wrap gap-3">
+              <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">Lampiran Foto/Dokumen</label>
+                  <div className="w-full p-5 bg-slate-50 dark:bg-gray-900 border-2 border-dashed border-slate-200 dark:border-gray-700 rounded-[2.5rem] min-h-[140px] flex items-center shadow-inner overflow-x-auto no-scrollbar">
+                      <div className="flex flex-nowrap gap-4">
                           {documentImages.map((img, idx) => (
-                              <div key={idx} className="relative w-16 h-16 group">
-                                  <img src={img} alt={`doc-${idx}`} className="w-full h-full object-cover rounded-lg border border-slate-200 dark:border-gray-700" />
-                                  <button onClick={() => removeImage(idx)} className="absolute -top-2 -right-2 bg-rose-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
+                              <div key={idx} className="relative w-20 h-20 group flex-shrink-0">
+                                  <img src={img} alt={`doc-${idx}`} className="w-full h-full object-cover rounded-2xl border-2 border-white shadow-md" />
+                                  <button onClick={() => removeImage(idx)} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
                               </div>
                           ))}
-                          <label className="w-16 h-16 flex flex-col items-center justify-center border-2 border-dashed border-paper-blue/30 rounded-lg cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
-                              <Camera size={20} className="text-paper-blue mb-1"/>
-                              <span className="text-[8px] text-paper-blue font-bold">ADD</span>
+                          <label className="w-20 h-20 flex flex-col items-center justify-center border-2 border-dashed border-paper-blue/30 rounded-2xl cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all active:scale-90 flex-shrink-0">
+                              <Camera size={24} className="text-paper-blue mb-1"/>
+                              <span className="text-[8px] text-paper-blue font-black tracking-widest uppercase">UPLOAD</span>
                               <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
                           </label>
                       </div>
@@ -289,46 +305,61 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
           </div>
       </div>
 
-      {/* SECTION 2: Cart & Input */}
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-[2rem] shadow-paper border border-slate-200 dark:border-gray-700 flex flex-col min-h-[400px]">
-          <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-gray-700 pb-2 flex justify-between items-center">
-              <span>II. Input Barang & Keranjang</span>
-              <span className="text-xs bg-slate-100 dark:bg-gray-700 px-3 py-1 rounded-full text-slate-600 dark:text-gray-300 font-bold">{cart.length} Item</span>
+      {/* SECTION 2: Input & Keranjang */}
+      <div className="bg-white dark:bg-gray-800 p-10 rounded-[3rem] shadow-paper border border-slate-100 dark:border-gray-700 flex flex-col min-h-[500px]">
+          <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.4em] mb-10 border-b border-slate-50 dark:border-gray-700 pb-3 flex justify-between items-center">
+              <span className="flex items-center gap-3"><ShoppingCart size={16} className="text-paper-blue"/> II. Input Barang & Daftar Belanja</span>
+              <span className="bg-paper-blue text-white px-5 py-1.5 rounded-full text-[10px] font-black shadow-lg shadow-blue-500/20">{cart.length} ITEMS READY</span>
           </h3>
 
-          {/* Search & Input Area */}
-          <div className="p-6 bg-slate-50 dark:bg-gray-900/50 border border-slate-200 dark:border-gray-700 rounded-2xl mb-8">
-               <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
+          {/* Quick Input Area */}
+          <div className="p-8 bg-slate-900 dark:bg-gray-900/80 rounded-[2.5rem] mb-10 shadow-2xl relative overflow-hidden group">
+               {/* Fix: Added Zap from lucide-react to satisfy compiler error */}
+               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><Zap size={140} className="text-white"/></div>
+               <div className="flex flex-col lg:flex-row gap-8 items-stretch lg:items-end relative z-10">
                   
-                  {/* Search Bar */}
-                  <div className="flex-1 w-full relative z-20">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Cari Barang (Enter untuk Pilih)</label>
+                  {/* Search Bar with Keyboard Nav */}
+                  <div className="flex-[4] relative" ref={dropdownRef}>
+                      <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] mb-3 block ml-4">Cari Produk (SKU / Nama)</label>
                       <div className="relative">
-                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/30" size={24}/>
                           <input 
                             ref={searchInputRef}
                             type="text" 
-                            className={`w-full pl-12 pr-4 py-3 border ${selectedItem ? 'border-paper-blue bg-blue-50/50 dark:bg-blue-900/20 text-paper-blue font-bold' : 'border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-800 dark:text-white'} rounded-xl text-sm focus:ring-2 focus:ring-paper-blue outline-none transition-all`} 
+                            className={`w-full pl-16 pr-6 py-6 rounded-[2rem] border-2 transition-all outline-none text-xl font-black shadow-lg ${selectedItem ? 'border-paper-blue bg-paper-blue/10 text-paper-blue' : 'border-white/5 bg-white/5 text-white placeholder-white/20 focus:border-white/20 focus:bg-white/10'}`} 
                             value={itemSearch} 
-                            onChange={e => { setItemSearch(e.target.value); setSelectedItem(null); setShowDropdown(true); }} 
+                            onChange={e => { setItemSearch(e.target.value); setSelectedItem(null); setShowDropdown(true); setFocusedIndex(-1); }} 
                             onKeyDown={handleSearchKeyDown}
-                            placeholder="Ketik SKU atau Nama Barang..." 
+                            onFocus={() => setShowDropdown(true)}
+                            placeholder="Ketik produk atau scan barcode..." 
                           />
                           {selectedItem && (
-                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); if(searchInputRef.current) searchInputRef.current.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 bg-slate-200 dark:bg-gray-700 rounded-full text-slate-500 hover:text-rose-500"><X size={14}/></button>
+                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); setFocusedIndex(-1); searchInputRef.current?.focus(); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/10 rounded-full text-white/40 hover:text-white"><X size={20}/></button>
                           )}
                       </div>
-                      {showDropdown && itemSearch && !selectedItem && (
-                          <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-slate-100 dark:border-gray-700 max-h-56 overflow-y-auto">
-                              {filteredItems.map(item => (
-                                  <div key={item.id} onClick={() => handleSelectItem(item)} className="p-4 hover:bg-slate-50 dark:hover:bg-gray-700 cursor-pointer border-b last:border-0 border-slate-50 dark:border-gray-700 flex justify-between items-center group">
-                                      <div>
-                                          <div className="font-bold text-slate-800 dark:text-white group-hover:text-paper-blue">{item.name}</div>
-                                          <div className="text-[10px] font-mono text-slate-400">{item.sku}</div>
+                      
+                      {/* Autocomplete Dropdown */}
+                      {showDropdown && filteredItems.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 mt-4 bg-white dark:bg-gray-800 rounded-[2.5rem] shadow-[0_30px_100px_-15px_rgba(0,0,0,0.5)] border border-slate-100 dark:border-gray-700 z-[100] max-h-96 overflow-y-auto overflow-x-hidden p-3 animate-in fade-in slide-in-from-top-4 duration-200">
+                              {filteredItems.map((item, idx) => (
+                                  <div 
+                                    key={item.id} 
+                                    onClick={() => handleSelectItem(item)} 
+                                    className={`p-6 cursor-pointer rounded-[1.5rem] border-2 mb-2 flex justify-between items-center group transition-all ${focusedIndex === idx ? 'bg-paper-blue border-paper-blue text-white shadow-xl' : 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-gray-700'}`}
+                                  >
+                                      <div className="flex items-center gap-5">
+                                          {/* Fix: Added Package from lucide-react to satisfy compiler error */}
+                                          <div className={`p-4 rounded-2xl ${focusedIndex === idx ? 'bg-white/20' : 'bg-slate-100 dark:bg-gray-700 group-hover:bg-white'}`}>
+                                              <Package size={24} className={focusedIndex === idx ? 'text-white' : 'text-slate-400'}/>
+                                          </div>
+                                          <div>
+                                              <div className={`text-lg font-black uppercase tracking-tight leading-none mb-1 ${focusedIndex === idx ? 'text-white' : 'text-slate-800 dark:text-white'}`}>{item.name}</div>
+                                              <div className={`text-[10px] font-mono tracking-widest ${focusedIndex === idx ? 'text-white/60' : 'text-slate-400'}`}>{item.sku}</div>
+                                          </div>
                                       </div>
-                                      <div className="text-right">
-                                         <div className="text-xs font-bold text-slate-400">Stok: {item.stock} {item.unit}</div>
-                                         {item.unit2 && <div className="text-[10px] text-slate-300">Unit 2: {item.unit2}</div>}
+                                      <div className="text-right flex items-center gap-4">
+                                         <div className={`text-xs font-black uppercase tracking-widest ${focusedIndex === idx ? 'text-white' : 'text-slate-400'}`}>STOK: {item.stock} {item.unit}</div>
+                                         <ChevronRight size={20} className={focusedIndex === idx ? 'text-white' : 'text-slate-200'}/>
                                       </div>
                                   </div>
                               ))}
@@ -336,105 +367,125 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                       )}
                   </div>
 
-                  {/* Quantity & Unit Selection */}
-                  {selectedItem ? (
-                      <div className="flex gap-4 w-full lg:w-auto animate-in fade-in slide-in-from-left-4">
-                          <div className="w-24">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Qty</label>
-                              <input 
-                                ref={qtyInputRef}
-                                type="number" 
-                                value={inputQty} 
-                                onChange={e => setInputQty(e.target.value === '' ? '' : Number(e.target.value))} 
-                                onKeyDown={handleQtyKeyDown}
-                                className="w-full p-3 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-black text-center text-paper-blue focus:ring-2 focus:ring-paper-blue outline-none dark:bg-gray-800" 
-                                placeholder="0" 
-                              />
-                          </div>
-                          
-                          <div className="w-32">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Satuan</label>
-                              <select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full p-3 bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-paper-blue appearance-none cursor-pointer dark:text-white">
-                                  <option value={selectedItem.unit}>{selectedItem.unit} (Base)</option>
-                                  {selectedItem.unit2 && <option value={selectedItem.unit2}>{selectedItem.unit2}</option>}
-                                  {selectedItem.unit3 && <option value={selectedItem.unit3}>{selectedItem.unit3}</option>}
-                              </select>
-                          </div>
-
-                          <div className="w-28 hidden md:block">
-                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Konversi</label>
-                               <div className="p-3 bg-slate-200 dark:bg-gray-700 rounded-xl text-xs font-mono text-slate-600 dark:text-gray-300 text-center flex items-center justify-center h-[46px]">
-                                   {inputQty ? `${Number(inputQty) * conversionRatio} ${selectedItem.unit}` : '-'}
-                               </div>
-                          </div>
-                          
-                          <div className="flex items-end pb-0.5">
-                              <button onClick={addToCart} disabled={!inputQty} className="h-[46px] px-6 bg-paper-blue text-white font-bold rounded-xl shadow-lg hover:bg-paper-blueHover disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2">
-                                  <Plus size={20}/> <span className="hidden md:inline">Tambah</span>
-                              </button>
-                          </div>
+                  {/* Qty & Add Section */}
+                  <div className={`flex-[3] flex gap-5 items-end transition-all duration-300 ${selectedItem ? 'opacity-100 translate-y-0' : 'opacity-20 pointer-events-none translate-y-4'}`}>
+                      <div className="flex-1 space-y-3">
+                          <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] block ml-4">Jml Input</label>
+                          <input 
+                            ref={qtyInputRef}
+                            type="number" 
+                            step="0.001"
+                            value={inputQty} 
+                            onChange={e => setInputQty(e.target.value === '' ? '' : Number(e.target.value))} 
+                            onKeyDown={handleQtyKeyDown}
+                            className="w-full p-6 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-2xl font-black text-center text-white outline-none shadow-inner" 
+                            placeholder="0" 
+                          />
                       </div>
-                  ) : (
-                      <div className="w-full lg:w-auto flex items-end pb-0.5 opacity-50 pointer-events-none">
-                          <button className="h-[46px] px-6 bg-slate-200 text-slate-400 font-bold rounded-xl flex items-center gap-2">
-                              <Plus size={20}/> <span className="hidden md:inline">Tambah</span>
-                          </button>
+                      
+                      <div className="flex-1 space-y-3">
+                          <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] block ml-4">Satuan</label>
+                          <select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full p-6 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-sm font-black outline-none appearance-none cursor-pointer text-center text-white shadow-inner">
+                              <option value={selectedItem?.unit} className="text-slate-900">{selectedItem?.unit} (Dasar)</option>
+                              {selectedItem?.unit2 && <option value={selectedItem.unit2} className="text-slate-900">{selectedItem.unit2}</option>}
+                              {selectedItem?.unit3 && <option value={selectedItem.unit3} className="text-slate-900">{selectedItem.unit3}</option>}
+                          </select>
                       </div>
-                  )}
+                      
+                      <button onClick={addToCart} disabled={!inputQty} className="h-[84px] px-10 bg-paper-blue text-white font-black rounded-[2rem] shadow-2xl shadow-blue-500/40 hover:bg-paper-blueHover disabled:opacity-30 transition-all active:scale-95 flex items-center justify-center gap-4 uppercase tracking-[0.2em] text-xs">
+                          <Plus size={24}/> Tambahkan (Enter)
+                      </button>
+                  </div>
                </div>
           </div>
 
-          {/* Cart Table */}
-          <div className="flex-1 overflow-auto rounded-xl border border-slate-100 dark:border-gray-700">
-              <table className="w-full text-left">
-                  <thead className="bg-slate-50 dark:bg-gray-900 border-b border-slate-100 dark:border-gray-700 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                      <tr>
-                          <th className="p-4">Barang</th>
-                          <th className="p-4 text-center bg-blue-50/50 dark:bg-blue-900/10 text-paper-blue">Qty Input</th>
-                          <th className="p-4 text-center">Qty Base (Sistem)</th>
-                          <th className="p-4 text-right">Aksi</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 dark:divide-gray-700">
-                      {cart.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors">
-                              <td className="p-4">
-                                  <div className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</div>
-                                  <div className="text-[10px] font-mono text-slate-400">{item.sku}</div>
-                              </td>
-                              <td className="p-4 text-center bg-blue-50/30 dark:bg-blue-900/5">
-                                  <div className="font-black text-paper-blue text-sm">{item.inputQty}</div>
-                                  <div className="text-[10px] text-slate-400 font-bold uppercase">{item.inputUnit}</div>
-                              </td>
-                              <td className="p-4 text-center">
-                                  <div className="flex items-center justify-center gap-2">
-                                     <Calculator size={12} className="text-slate-300"/>
-                                     <span className="font-bold text-slate-700 dark:text-gray-300 text-sm">{item.qty} {item.uom}</span>
-                                  </div>
-                              </td>
-                              <td className="p-4 text-right">
-                                  <button onClick={() => removeFromCart(idx)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"><Trash size={16}/></button>
-                              </td>
-                          </tr>
-                      ))}
-                      {cart.length === 0 && (
-                          <tr>
-                              <td colSpan={4} className="p-12 text-center">
-                                  <div className="flex flex-col items-center gap-3 opacity-50">
-                                      <ShoppingCart size={48} className="text-slate-300"/>
-                                      <p className="text-sm font-medium text-slate-400">Keranjang transaksi masih kosong.</p>
-                                  </div>
-                              </td>
-                          </tr>
-                      )}
-                  </tbody>
-              </table>
-          </div>
+          {/* Cart Section - Modern Enterprise Table */}
+          <div className="flex-1 overflow-hidden flex flex-col bg-slate-50 dark:bg-gray-900/50 rounded-[3rem] border border-slate-100 dark:border-gray-700">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+                  {cart.length > 0 ? (
+                      <table className="w-full text-left">
+                        <thead className="bg-white dark:bg-gray-800 border-b border-slate-100 dark:border-gray-700 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th className="p-6 rounded-tl-[1.5rem]">Informasi Produk</th>
+                                <th className="p-6 text-center">Jumlah Input</th>
+                                <th className="p-6 text-center">Dampak Stok Dasar</th>
+                                <th className="p-6 text-right rounded-tr-[1.5rem]">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
+                            {cart.map((item, idx) => (
+                                <tr key={idx} className="group hover:bg-white dark:hover:bg-gray-800 transition-all animate-in slide-in-from-right-8">
+                                    <td className="p-6">
+                                        <div className="flex items-center gap-5">
+                                            {/* Fix: Added Package from lucide-react to satisfy compiler error */}
+                                            <div className="w-12 h-12 bg-slate-100 dark:bg-gray-700 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-paper-blue transition-colors">
+                                                <Package size={20}/>
+                                            </div>
+                                            <div>
+                                                <div className="font-black text-base text-slate-800 dark:text-white uppercase tracking-tight leading-none mb-1.5">{item.name}</div>
+                                                <div className="text-[10px] font-mono text-slate-400 tracking-widest">{item.sku}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="p-6 text-center">
+                                        <div className="inline-flex flex-col items-center px-6 py-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+                                            <div className="font-black text-paper-blue text-lg leading-none">{item.inputQty}</div>
+                                            <div className="text-[9px] text-paper-blue font-black uppercase tracking-widest mt-1">{item.inputUnit}</div>
+                                        </div>
+                                    </td>
+                                    <td className="p-6 text-center">
+                                        <div className="flex flex-col items-center">
+                                           <div className="flex items-center gap-2 font-black text-slate-700 dark:text-gray-300 text-base tracking-tighter">
+                                               <Calculator size={14} className="text-slate-300"/>
+                                               {item.qty.toFixed(3)} {item.uom}
+                                           </div>
+                                           {item.inputUnit !== item.uom && <span className="text-[10px] font-bold text-slate-300 italic uppercase">Konversi Otomatis</span>}
+                                        </div>
+                                    </td>
+                                    <td className="p-6 text-right">
+                                        <button onClick={() => removeFromCart(idx)} className="p-4 text-slate-200 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-2xl transition-all"><Trash size={20}/></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                  ) : (
+                      <div className="h-full flex flex-col items-center justify-center p-24 text-center space-y-8 opacity-20">
+                          <ShoppingCart size={120} />
+                          <div>
+                              <p className="text-xl font-black uppercase tracking-[0.5em] mb-2">Keranjang Kosong</p>
+                              <p className="text-xs font-bold uppercase tracking-widest">Silakan tambahkan barang di atas untuk memulai transaksi.</p>
+                          </div>
+                      </div>
+                  )}
+              </div>
 
-          <div className="mt-8 flex justify-end">
-              <button onClick={handleSubmit} disabled={cart.length === 0} className="px-10 py-4 bg-paper-blue hover:bg-paper-blueHover text-white font-black rounded-2xl shadow-xl shadow-blue-500/20 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 uppercase tracking-widest text-xs">
-                  <FileText size={18}/> Simpan Transaksi
-              </button>
+              {/* Summary Bottom Bar */}
+              <div className="p-10 bg-white dark:bg-gray-800 border-t border-slate-100 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-8">
+                  <div className="flex items-center gap-8">
+                      <div className="p-6 bg-slate-900 rounded-[1.5rem] text-white shadow-2xl">
+                          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mb-2">Total Akumulasi Nilai</p>
+                          <h4 className="text-3xl font-black tracking-tighter leading-none">Rp {cart.reduce((acc, curr) => acc + curr.total, 0).toLocaleString('id-ID')}</h4>
+                      </div>
+                      <div className="hidden lg:block border-l border-slate-100 dark:border-gray-700 pl-8 h-16">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Operator</p>
+                          <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-paper-blue flex items-center justify-center text-[10px] font-black text-white">{user.name.charAt(0)}</div>
+                              <span className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{user.name}</span>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="flex gap-5 w-full md:w-auto">
+                      <button onClick={() => setMode('menu')} className="flex-1 md:flex-none px-10 py-6 text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-gray-700 rounded-[2rem] uppercase tracking-widest text-xs transition-all">Batalkan</button>
+                      <button 
+                          onClick={handleSubmit} 
+                          disabled={cart.length === 0} 
+                          className="flex-[2] md:flex-none px-16 py-6 bg-paper-blue hover:bg-paper-blueHover text-white font-black rounded-[2rem] shadow-[0_20px_60px_-10px_rgba(91,164,230,0.5)] transition-all active:scale-[0.98] disabled:opacity-30 uppercase tracking-[0.3em] text-xs flex items-center justify-center gap-4"
+                      >
+                          <FileText size={24}/> Simpan Transaksi Ke Database
+                      </button>
+                  </div>
+              </div>
           </div>
       </div>
     </div>
@@ -443,16 +494,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
 const MenuButton = ({ title, sub, icon, color, onClick }: any) => {
     const colors: any = {
-        emerald: "bg-emerald-50 text-emerald-500 border-emerald-100 hover:shadow-emerald-500/10 dark:bg-emerald-900/20 dark:border-emerald-900/30",
-        rose: "bg-rose-50 text-rose-500 border-rose-100 hover:shadow-rose-500/10 dark:bg-rose-900/20 dark:border-rose-900/30",
-        blue: "bg-blue-50 text-paper-blue border-blue-100 hover:shadow-blue-500/10 dark:bg-blue-900/20 dark:border-blue-900/30"
+        emerald: "bg-emerald-50 text-emerald-500 border-emerald-100 hover:shadow-emerald-500/20 dark:bg-emerald-900/10 dark:border-emerald-900/20",
+        rose: "bg-rose-50 text-rose-500 border-rose-100 hover:shadow-rose-500/20 dark:bg-rose-900/10 dark:border-rose-900/20",
+        blue: "bg-blue-50 text-paper-blue border-blue-100 hover:shadow-blue-500/20 dark:bg-blue-900/10 dark:border-blue-900/20"
     };
     return (
-        <button onClick={onClick} className={`group bg-white dark:bg-gray-800 p-10 rounded-[2.5rem] shadow-card border-2 border-transparent transition-all flex flex-col items-center gap-6 ${colors[color]} hover:border-current`}>
-            <div className={`p-6 rounded-3xl transition-transform group-hover:scale-110 ${colors[color]}`}>{icon}</div>
+        <button onClick={onClick} className={`group bg-white dark:bg-gray-800 p-16 rounded-[4rem] shadow-card border-4 border-transparent transition-all flex flex-col items-center gap-8 ${colors[color]} hover:border-current hover:-translate-y-2`}>
+            <div className={`p-10 rounded-[2.5rem] transition-transform group-hover:scale-110 group-active:scale-95 shadow-2xl ${colors[color]}`}>{icon}</div>
             <div className="text-center">
-                <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">{title}</h3>
-                <p className="text-sm font-medium text-slate-400 dark:text-gray-400">{sub}</p>
+                <h3 className="text-3xl font-black text-slate-800 dark:text-white mb-3 tracking-tighter uppercase">{title}</h3>
+                <p className="text-sm font-bold text-slate-400 dark:text-gray-400 tracking-widest uppercase">{sub}</p>
             </div>
         </button>
     );
