@@ -23,12 +23,8 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isBackingUp, setIsBackingUp] = useState(false);
+    const [mediaInput, setMediaInput] = useState(currentMediaUrl || '');
     
-    const [playlist, setPlaylist] = useState<any[]>(() => {
-        const saved = localStorage.getItem('nexus_media_playlist');
-        return saved ? JSON.parse(saved) : [{ id: '1', title: 'Nexus Radio Lo-Fi', url: 'https://www.youtube.com/embed/jfKfPfyJRdk' }];
-    });
-
     useEffect(() => {
         refreshUsers();
         setApiUrl(localStorage.getItem('nexus_api_url') || '/api');
@@ -43,6 +39,23 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
         localStorage.setItem('nexus_api_url', apiUrl.trim());
         localStorage.setItem('nexus_sheet_webhook', sheetUrl.trim());
         alert("Konfigurasi Sistem Diperbarui!");
+    };
+
+    const handleSaveMedia = () => {
+        if (!onUpdateMedia) return;
+        let url = mediaInput.trim();
+        
+        // Auto-convert standard YouTube links to embed format
+        if (url.includes('watch?v=')) {
+            const videoId = url.split('watch?v=')[1].split('&')[0];
+            url = `https://www.youtube.com/embed/${videoId}`;
+        } else if (url.includes('youtu.be/')) {
+            const videoId = url.split('youtu.be/')[1].split('?')[0];
+            url = `https://www.youtube.com/embed/${videoId}`;
+        }
+        
+        onUpdateMedia(url);
+        alert("Media Player Diperbarui!");
     };
 
     const handleFullBackup = async () => {
@@ -190,6 +203,27 @@ export const Admin: React.FC<AdminProps> = ({ currentMediaUrl, onUpdateMedia }) 
                                 />
                             </div>
                             <button onClick={handleSaveConfig} className="w-full bg-paper-blue hover:bg-paper-blueHover text-white py-6 rounded-3xl font-black shadow-xl shadow-blue-500/20 transition-all active:scale-95 uppercase tracking-widest text-xs">Reload Core Service</button>
+                        </div>
+                    </div>
+
+                    {/* Media Station Section */}
+                    <div className="bg-indigo-900 p-12 rounded-[3rem] shadow-2xl text-white relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-500/20 to-transparent"></div>
+                        <div className="flex items-center gap-4 mb-10 relative z-10">
+                            <div className="p-5 bg-white/10 rounded-[2rem] text-white"><Play size={32}/></div>
+                            <h3 className="font-black text-2xl uppercase tracking-tighter">Media Station</h3>
+                        </div>
+                        <div className="space-y-8 relative z-10">
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.4em] block ml-1">YouTube URL</label>
+                                <input 
+                                    value={mediaInput} 
+                                    onChange={e => setMediaInput(e.target.value)} 
+                                    placeholder="https://youtube.com/watch?v=..."
+                                    className="w-full p-6 bg-white/5 border border-white/10 rounded-3xl font-mono text-sm text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-400/40" 
+                                />
+                            </div>
+                            <button onClick={handleSaveMedia} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-6 rounded-3xl font-black shadow-xl shadow-indigo-500/20 transition-all active:scale-95 uppercase tracking-widest text-xs">Update Player</button>
                         </div>
                     </div>
                 </div>
