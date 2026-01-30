@@ -1,7 +1,13 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { RejectItem, RejectLog, RejectItemDetail } from '../types';
-import { Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, ChevronRight, AlertTriangle, Settings, ChevronDown, Check, Package, AlertCircle, Upload, Copy, FileSpreadsheet, Download, Layers, Table, Clipboard } from 'lucide-react';
+import { 
+    Plus, Search, Trash2, Edit2, Save, X, Calendar, FileText, 
+    ChevronRight, AlertTriangle, Settings, ChevronDown, Check, 
+    Package, AlertCircle, Upload, Copy, FileSpreadsheet, 
+    Download, Layers, Table, Clipboard, CheckSquare, Square, 
+    Share2, Calculator, FileJson
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface RejectManagerProps {
@@ -29,11 +35,26 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [editingMasterItem, setEditingMasterItem] = useState<RejectItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Selection State
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredLogs = useMemo(() => rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase()))), [rejectLogs, searchTerm]);
   const filteredMaster = useMemo(() => rejectMasterData.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase())), [rejectMasterData, searchTerm]);
+
+  const toggleLogSelection = (id: string) => {
+    const next = new Set(selectedLogIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedLogIds(next);
+  };
+
+  const toggleSelectAllLogs = () => {
+    if (selectedLogIds.size === filteredLogs.length) setSelectedLogIds(new Set());
+    else setSelectedLogIds(new Set(filteredLogs.map(l => l.id)));
+  };
 
   const handleDownloadTemplate = () => {
     const template = [
@@ -56,62 +77,96 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
             const arrayBuffer = evt.target?.result;
             if (!arrayBuffer) return;
             const wb = XLSX.read(arrayBuffer, { type: 'array' });
-            if (!wb.SheetNames.length) return;
             const ws = wb.Sheets[wb.SheetNames[0]];
             const data = XLSX.utils.sheet_to_json(ws);
-            if (!data || data.length === 0) return;
-
-            const newItems: RejectItem[] = [];
-            data.forEach((row: any) => {
-                const sku = row.SKU || row.sku || row['Kode Barang'];
-                const name = row.Nama || row.nama || row['Nama Barang'];
-                if (!sku || !name) return;
-
-                const op2Val = (row.Operasi_2 || row.op2 || 'multiply').toLowerCase();
-                const op3Val = (row.Operasi_3 || row.op3 || 'multiply').toLowerCase();
-
-                const item: RejectItem = {
+            
+            const newItems: RejectItem[] = data.map((row: any) => {
+                const op2 = String(row.Operasi_2 || 'multiply').toLowerCase() === 'divide' ? 'divide' : 'multiply';
+                const op3 = String(row.Operasi_3 || 'multiply').toLowerCase() === 'divide' ? 'divide' : 'multiply';
+                
+                return {
                     id: `REJ-${Math.random().toString(36).substr(2, 9)}`,
-                    sku: String(sku).trim(),
-                    name: String(name).trim(),
+                    sku: String(row.SKU || row.sku || '').trim(),
+                    name: String(row.Nama || row.nama || '').trim(),
                     baseUnit: row.Satuan_Dasar || row.base_unit || 'Pcs',
-                    unit2: row.Satuan_2 || row.unit2 || undefined,
-                    ratio2: (row.Rasio_2 || row.ratio2) && !isNaN(Number(row.Rasio_2 || row.ratio2)) ? Number(row.Rasio_2 || row.ratio2) : undefined,
-                    op2: (op2Val === 'divide' ? 'divide' : 'multiply'),
-                    unit3: row.Satuan_3 || row.unit3 || undefined,
-                    ratio3: (row.Rasio_3 || row.ratio3) && !isNaN(Number(row.Rasio_3 || row.ratio3)) ? Number(row.Rasio_3 || row.ratio3) : undefined,
-                    op3: (op3Val === 'divide' ? 'divide' : 'multiply'),
+                    unit2: row.Satuan_2 || undefined,
+                    ratio2: row.Rasio_2 ? Number(row.Rasio_2) : undefined,
+                    op2: op2 as any,
+                    unit3: row.Satuan_3 || undefined,
+                    ratio3: row.Rasio_3 ? Number(row.Rasio_3) : undefined,
+                    op3: op3 as any,
                     lastUpdated: new Date().toISOString()
                 };
-                newItems.push(item);
-            });
+            }).filter(i => i.sku && i.name);
 
-            const combined = [...rejectMasterData];
-            newItems.forEach(ni => {
-                const idx = combined.findIndex(ex => ex.sku === ni.sku);
-                if (idx >= 0) combined[idx] = { ...combined[idx], ...ni, id: combined[idx].id };
-                else combined.push(ni);
-            });
-            onUpdateMaster(combined);
-        } catch (error) { console.error(error); }
+            onUpdateMaster(newItems);
+            alert(`Berhasil mengimpor ${newItems.length} master barang.`);
+        } catch (error) { alert("Format Excel tidak sesuai."); }
     };
     reader.readAsArrayBuffer(file);
-    e.target.value = ''; 
+    e.target.value = '';
+  };
+
+  const exportFlattenedExcel = () => {
+    const targetLogs = rejectLogs.filter(l => selectedLogIds.has(l.id));
+    if (targetLogs.length === 0) return alert("Pilih minimal satu log untuk diekspor.");
+
+    // 1. Dapatkan semua tanggal unik dan urutkan
+    const uniqueDates = Array.from(new Set(targetLogs.map(l => l.date))).sort();
+    
+    // 2. Kelompokkan data berdasarkan SKU/Barang
+    const matrix: Record<string, { name: string, sku: string, unit: string, values: Record<string, number> }> = {};
+
+    targetLogs.forEach(log => {
+        log.items.forEach(item => {
+            if (!matrix[item.sku]) {
+                matrix[item.sku] = { 
+                    name: item.itemName, 
+                    sku: item.sku, 
+                    unit: item.baseUnit, 
+                    values: {} 
+                };
+            }
+            const currentVal = matrix[item.sku].values[log.date] || 0;
+            matrix[item.sku].values[log.date] = currentVal + item.totalBaseQuantity;
+        });
+    });
+
+    // 3. Konversi ke format Flat untuk SheetJS
+    const exportData = Object.values(matrix).map(row => {
+        const rowData: any = {
+            'SKU': row.sku,
+            'Nama Barang': row.name,
+            'Satuan': row.unit
+        };
+
+        let totalRow = 0;
+        uniqueDates.forEach(date => {
+            const val = row.values[date] || 0;
+            rowData[date] = val;
+            totalRow += val;
+        });
+
+        rowData['TOTAL AKHIR'] = totalRow;
+        return rowData;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Reject_Flattened");
+    XLSX.writeFile(wb, `Report_Reject_Flattened_${new Date().toISOString().slice(0,10)}.xlsx`);
+    
+    alert("Export Berhasil! Data diatur secara horizontal berdasarkan tanggal.");
   };
 
   const copyLogToClipboard = (log: RejectLog) => {
       const d = new Date(log.date);
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yy = String(d.getFullYear()).slice(-2);
-      const dateStr = `${dd}${mm}${yy}`;
+      const dateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '');
       let text = `Data Reject KKL ${dateStr}\n`;
       log.items.forEach(item => {
           text += `- ${item.itemName} ${item.quantity} ${item.unit} ${item.reason}\n`;
       });
-      navigator.clipboard.writeText(text).then(() => {
-          alert("Disalin ke clipboard:\n" + text);
-      });
+      navigator.clipboard.writeText(text).then(() => alert("Disalin ke clipboard!"));
   };
 
   return (
@@ -128,7 +183,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                    <input type="text" placeholder="Cari Log atau Produk..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-paper-blue transition-all dark:text-white" />
                </div>
                
-               {activeTab === 'master' && (
+               {activeTab === 'master' ? (
                    <>
                      <button onClick={handleDownloadTemplate} className="p-3 bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 rounded-xl hover:bg-slate-200" title="Download Template"><Download size={20}/></button>
                      <div className="relative">
@@ -138,6 +193,12 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                         </button>
                      </div>
                    </>
+               ) : (
+                   selectedLogIds.size > 0 && (
+                       <button onClick={exportFlattenedExcel} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg animate-in zoom-in duration-200">
+                           <Share2 size={18} /> Export Flattened ({selectedLogIds.size})
+                       </button>
+                   )
                )}
 
                <button onClick={() => { if (activeTab === 'logs') { setEditingLog(null); setIsLogModalOpen(true); } else { setEditingMasterItem(null); setIsMasterModalOpen(true); } }} className="flex items-center gap-3 bg-paper-blue hover:bg-paper-blueHover text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95"><Plus size={20} /> {activeTab === 'logs' ? 'Catat Reject' : 'Tambah Master'}</button>
@@ -150,7 +211,14 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                    {activeTab === 'master' ? (
                        <tr><th className="p-6">Produk Master</th><th className="p-6">Satuan Dasar</th><th className="p-6">Konversi Unit</th><th className="p-6 text-right">Aksi</th></tr>
                    ) : (
-                       <tr><th className="p-6">ID Log</th><th className="p-6">Waktu Kejadian</th><th className="p-6">Item Reject</th><th className="p-6">Status/Keterangan</th><th className="p-6 text-right">Aksi</th></tr>
+                       <tr>
+                           <th className="p-6 w-12 text-center">
+                               <button onClick={toggleSelectAllLogs} className="text-slate-400">
+                                   {selectedLogIds.size === filteredLogs.length && filteredLogs.length > 0 ? <CheckSquare size={20} className="text-paper-blue" /> : <Square size={20} />}
+                               </button>
+                           </th>
+                           <th className="p-6">ID Log</th><th className="p-6">Waktu Kejadian</th><th className="p-6">Item Reject</th><th className="p-6">Status/Keterangan</th><th className="p-6 text-right">Aksi</th>
+                       </tr>
                    )}
                </thead>
                <tbody className="divide-y divide-slate-100 dark:divide-gray-700">
@@ -173,7 +241,12 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                        ))
                    ) : (
                        filteredLogs.map(log => (
-                           <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors">
+                           <tr key={log.id} className={`hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors ${selectedLogIds.has(log.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
+                               <td className="p-6 text-center">
+                                   <button onClick={() => toggleLogSelection(log.id)}>
+                                       {selectedLogIds.has(log.id) ? <CheckSquare size={20} className="text-paper-blue" /> : <Square size={20} className="text-slate-200" />}
+                                   </button>
+                               </td>
                                <td className="p-6 font-black text-paper-blue text-sm uppercase tracking-tighter">{log.id}</td>
                                <td className="p-6 text-sm font-bold text-slate-500 dark:text-gray-400 uppercase tracking-widest">{new Date(log.date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'})}</td>
                                <td className="p-6">
@@ -183,7 +256,6 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                                <Package size={14} className="text-rose-500"/> {it.itemName} ({it.quantity} {it.unit}) - {it.reason}
                                            </div>
                                        ))}
-                                       {log.items.length > 3 && <span className="text-[10px] text-slate-400 font-bold ml-6">+{log.items.length - 3} LAINNYA</span>}
                                    </div>
                                </td>
                                <td className="p-6 text-xs font-bold text-slate-400 italic uppercase tracking-tighter truncate max-w-xs">{log.notes || 'Reguler Reject'}</td>
@@ -231,8 +303,11 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
         if (unit === selectedMaster.baseUnit) ratio = 1; 
         else if (unit === selectedMaster.unit2) { ratio = selectedMaster.ratio2; op = selectedMaster.op2 || 'multiply'; }
         else if (unit === selectedMaster.unit3) { ratio = selectedMaster.ratio3; op = selectedMaster.op3 || 'multiply'; }
+        
         const numQty = parseFloat(qty);
+        // LOGIC: If input is sub-unit (e.g. PRS) and ratio is 10, then KG = input / 10
         let baseQty = op === 'multiply' ? numQty * ratio : numQty / ratio;
+        
         const newItem: RejectItemDetail = { itemId: selectedMaster.id, itemName: selectedMaster.name, sku: selectedMaster.sku, baseUnit: selectedMaster.baseUnit, quantity: numQty, unit: unit, ratio: ratio, operation: op as any, totalBaseQuantity: baseQty, reason: reason };
         setItems([...items, newItem]);
         setQty('');
@@ -280,6 +355,33 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
 const MasterItemModal = ({ item, onClose, onSave }: any) => {
     const [formData, setFormData] = useState(item || { id: `REJ-${Date.now()}`, sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: '', op2: 'multiply', unit3: '', ratio3: '', op3: 'multiply', lastUpdated: new Date().toISOString() });
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"><div className="bg-white dark:bg-gray-900 p-8 rounded-3xl w-full max-w-lg shadow-2xl"><h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Master Barang Reject</h3><div className="space-y-4"><input value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Barang" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="Satuan Dasar" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><div className="grid grid-cols-3 gap-2"><input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Unit 2" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} placeholder="Rasio" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white"><option value="multiply">Kali</option><option value="divide">Bagi</option></select></div></div><div className="mt-8 flex justify-end gap-3"><button onClick={onClose} className="px-6 py-2 text-slate-500">Batal</button><button onClick={() => onSave(formData)} className="px-6 py-2 bg-paper-blue text-white rounded-xl font-bold">Simpan</button></div></div></div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-gray-900 p-10 rounded-[2.5rem] w-full max-w-lg shadow-2xl border border-white/10 animate-in zoom-in duration-300">
+                <h3 className="text-2xl font-black mb-8 text-slate-800 dark:text-white uppercase tracking-tighter flex items-center gap-3"><Settings className="text-paper-blue"/> Master Barang Reject</h3>
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">SKU</label><input value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU" className="w-full p-4 border-2 border-slate-100 rounded-2xl dark:bg-gray-800 dark:text-white outline-none focus:border-paper-blue" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Satuan Dasar</label><input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="KG/Pcs" className="w-full p-4 border-2 border-slate-100 rounded-2xl dark:bg-gray-800 dark:text-white outline-none focus:border-paper-blue font-bold text-center" /></div>
+                    </div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nama Barang</label><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Lengkap" className="w-full p-4 border-2 border-slate-100 rounded-2xl dark:bg-gray-800 dark:text-white outline-none focus:border-paper-blue font-bold" /></div>
+                    
+                    <div className="p-6 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700">
+                        <p className="text-[10px] font-bold text-paper-blue uppercase mb-4 tracking-widest flex items-center gap-2"><Layers size={12}/> Konversi Satuan Alternatif</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Unit 2" className="p-3 border rounded-xl dark:bg-gray-700 dark:text-white text-xs" />
+                            <input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} placeholder="Rasio" className="p-3 border rounded-xl dark:bg-gray-700 dark:text-white text-xs" />
+                            <select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="p-3 border rounded-xl dark:bg-gray-700 dark:text-white text-xs">
+                                <option value="multiply">Kali (x)</option>
+                                <option value="divide">Bagi (/)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div className="mt-10 flex justify-end gap-4 border-t pt-8">
+                    <button onClick={onClose} className="px-8 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-2xl uppercase tracking-widest text-xs">Batal</button>
+                    <button onClick={() => onSave(formData)} className="px-10 py-3 bg-paper-blue text-white rounded-2xl font-black shadow-xl hover:bg-paper-blueHover transition-all active:scale-95 uppercase tracking-widest text-xs">Simpan Master</button>
+                </div>
+            </div>
+        </div>
     );
 };
