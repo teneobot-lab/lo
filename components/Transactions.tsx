@@ -32,7 +32,6 @@ interface TransactionsProps {
   notify: (msg: string, type: ToastType) => void;
 }
 
-// Hanya ada Masuk dan Keluar sesuai permintaan user
 type TransactionMode = 'menu' | 'inbound' | 'outbound';
 
 export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSuccess, notify }) => {
@@ -71,7 +70,6 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       ).slice(0, 8);
   }, [items, itemSearch, selectedItem]);
 
-  // Handle Click Outside Dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -108,7 +106,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
       setSelectedUnit(item.unit);
       setConversionRatio(1);
       setInputQty('');
-      // Auto focus qty input after selection (Enter di Auto Complete)
+      // Auto focus qty input
       setTimeout(() => qtyInputRef.current?.focus(), 50);
   };
 
@@ -133,7 +131,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   const handleQtyKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
           e.preventDefault();
-          addToCart(); // Enter di Qty Barang Masuk ke List
+          addToCart();
       }
   };
 
@@ -169,9 +167,7 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
         total: baseQty * selectedItem.price 
     };
 
-    setCart([newItem, ...cart]); // Item terbaru di atas
-    
-    // Reset Input Section & Fokus kembali ke cari produk untuk kecepatan input
+    setCart([newItem, ...cart]);
     setSelectedItem(null);
     setItemSearch('');
     setInputQty('');
@@ -219,16 +215,16 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   if (mode === 'menu') {
       return (
         <div className="h-[calc(100vh-100px)] flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-12 tracking-tighter uppercase">Pilih Tipe Transaksi</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full max-w-4xl">
+            <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-8 tracking-tighter uppercase">Mode Transaksi</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-2xl">
                 <MenuButton 
-                    title="Barang Masuk" sub="Inbound / Restock / PO" 
-                    icon={<ArrowDownCircle size={64}/>} color="emerald"
+                    title="Barang Masuk" sub="Inbound / Restock" 
+                    icon={<ArrowDownCircle size={48}/>} color="emerald"
                     onClick={() => setMode('inbound')}
                 />
                 <MenuButton 
-                    title="Barang Keluar" sub="Outbound / Sales / DO" 
-                    icon={<ArrowUpCircle size={64}/>} color="rose"
+                    title="Barang Keluar" sub="Outbound / Penjualan" 
+                    icon={<ArrowUpCircle size={48}/>} color="rose"
                     onClick={() => setMode('outbound')}
                 />
             </div>
@@ -237,159 +233,146 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-24 animate-in slide-in-from-bottom-6 duration-500">
+    <div className="max-w-6xl mx-auto space-y-6 pb-20 animate-in slide-in-from-bottom-6 duration-500 px-4">
       
-      {/* Header Navigation */}
-      <div className="flex items-center gap-6">
-          <button onClick={() => setMode('menu')} className="p-4 bg-white dark:bg-gray-800 hover:bg-slate-50 rounded-[1.5rem] border border-slate-200 dark:border-gray-700 transition-all shadow-md active:scale-95">
-              <ArrowLeft size={24} className="text-slate-600 dark:text-gray-300"/>
+      {/* Header Compact */}
+      <div className="flex items-center gap-4">
+          <button onClick={() => setMode('menu')} className="p-3 bg-white dark:bg-gray-800 hover:bg-slate-50 rounded-xl border border-slate-200 dark:border-gray-700 transition-all shadow-sm active:scale-95">
+              <ArrowLeft size={20} className="text-slate-600 dark:text-gray-300"/>
           </button>
           <div>
-              <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter uppercase flex items-center gap-3">
-                  {mode === 'inbound' ? <ArrowDownCircle className="text-emerald-500" size={32}/> : <ArrowUpCircle className="text-rose-500" size={32}/>}
-                  Input {mode === 'inbound' ? 'Barang Masuk' : 'Barang Keluar'}
+              <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tighter uppercase flex items-center gap-2">
+                  {mode === 'inbound' ? <ArrowDownCircle className="text-emerald-500" size={24}/> : <ArrowUpCircle className="text-rose-500" size={24}/>}
+                  {mode === 'inbound' ? 'Barang Masuk' : 'Barang Keluar'}
               </h2>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Sistem Pencatatan Mutasi Barang Real-Time</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Entry Data Mutasi Persediaan</p>
           </div>
       </div>
 
-      {/* SECTION 1: Detail Informasi */}
-      <div className="bg-white dark:bg-gray-800 p-10 rounded-[3rem] shadow-paper border border-slate-100 dark:border-gray-700 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none"><FileText size={180} /></div>
-          <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.4em] mb-10 border-b border-slate-50 dark:border-gray-700 pb-3 flex items-center gap-3">
-              <FileText size={16} className="text-paper-blue"/> I. INFORMASI TRANSAKSI
+      {/* SECTION 1: Informasi Dasar - Ramping */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-700 relative overflow-hidden">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-b border-slate-50 dark:border-gray-700 pb-2 flex items-center gap-2">
+              <FileText size={14} className="text-paper-blue"/> I. DETAIL TRANSAKSI
           </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative z-10">
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">TANGGAL</label>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative z-10">
+              <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">TANGGAL</label>
                   <div className="relative">
-                      <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
-                      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white dark:[color-scheme:dark]" />
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                      <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} className="w-full pl-10 pr-3 py-2.5 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:border-paper-blue dark:text-white" />
                   </div>
               </div>
 
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">{mode === 'inbound' ? 'NAMA SUPPLIER' : 'NAMA CUSTOMER/TUJUAN'}</label>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">{mode === 'inbound' ? 'SUPPLIER' : 'CUSTOMER'}</label>
                   <div className="relative">
-                      <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
-                      <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white" placeholder={mode === 'inbound' ? "Ex: PT. Makmur Jaya" : "Ex: Customer Retail A"} />
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                      <input value={supplier} onChange={e => setSupplier(e.target.value)} className="w-full pl-10 pr-3 py-2.5 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:border-paper-blue dark:text-white" placeholder="Nama Pihak Kedua" />
                   </div>
               </div>
 
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">NO. SURAT JALAN / REF</label>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">NO. REF / SJ</label>
                   <div className="relative">
-                      <FileSpreadsheet className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
-                      <input value={refNumber} onChange={e => setRefNumber(e.target.value)} className="w-full pl-14 pr-5 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner dark:text-white" placeholder="Ex: SJ-001/X/2026" />
+                      <FileSpreadsheet className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                      <input value={refNumber} onChange={e => setRefNumber(e.target.value)} className="w-full pl-10 pr-3 py-2.5 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none focus:border-paper-blue dark:text-white" placeholder="No. Dokumen" />
                   </div>
               </div>
 
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">LOKASI GUDANG</label>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">GUDANG</label>
                   <div className="relative">
-                      <Building2 className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={20}/>
-                      <select value={warehouse} onChange={e => setWarehouse(e.target.value)} className="w-full pl-14 pr-10 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-base font-black outline-none shadow-inner appearance-none cursor-pointer dark:text-white">
-                          <option>Gudang Utama</option><option>Gudang Cabang A</option><option>Gudang Transit</option>
+                      <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16}/>
+                      <select value={warehouse} onChange={e => setWarehouse(e.target.value)} className="w-full pl-10 pr-6 py-2.5 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-bold outline-none appearance-none cursor-pointer dark:text-white">
+                          <option>Gudang Utama</option><option>Gudang Cabang</option><option>Transit</option>
                       </select>
                   </div>
               </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8 relative z-10">
-               <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">CATATAN TAMBAHAN (OPSIONAL)</label>
-                  <div className="relative">
-                      <Clipboard className="absolute left-6 top-5 text-slate-300" size={20}/>
-                      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full pl-14 pr-6 py-5 bg-slate-50 dark:bg-gray-900 border-2 border-transparent focus:border-paper-blue rounded-[2.5rem] text-base font-bold outline-none shadow-inner dark:text-white resize-none" placeholder="Keterangan kondisi barang..." />
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 relative z-10">
+               <div className="md:col-span-2 space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">CATATAN</label>
+                  <input value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm font-medium outline-none focus:border-paper-blue dark:text-white" placeholder="Opsional..." />
               </div>
 
-              <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-3">DOKUMEN PENDUKUNG / FOTO</label>
-                  <div className="w-full p-5 bg-slate-50 dark:bg-gray-900 border-2 border-dashed border-slate-200 dark:border-gray-700 rounded-[2.5rem] min-h-[140px] flex items-center shadow-inner overflow-x-auto no-scrollbar">
-                      <div className="flex flex-nowrap gap-4">
-                          {documentImages.map((img, idx) => (
-                              <div key={idx} className="relative w-20 h-20 group flex-shrink-0">
-                                  <img src={img} alt={`doc-${idx}`} className="w-full h-full object-cover rounded-2xl border-2 border-white shadow-md" />
-                                  <button onClick={() => removeImage(idx)} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><X size={12}/></button>
-                              </div>
-                          ))}
-                          <label className="w-20 h-20 flex flex-col items-center justify-center border-2 border-dashed border-paper-blue/30 rounded-2xl cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all active:scale-90 flex-shrink-0">
-                              <Camera size={24} className="text-paper-blue mb-1"/>
-                              <span className="text-[8px] text-paper-blue font-black tracking-widest uppercase">ADD</span>
-                              <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
-                          </label>
-                      </div>
+              <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">LAMPIRAN FOTO</label>
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                      {documentImages.map((img, idx) => (
+                          <div key={idx} className="relative w-10 h-10 flex-shrink-0 group">
+                              <img src={img} className="w-full h-full object-cover rounded-lg border border-slate-100" />
+                              <button onClick={() => removeImage(idx)} className="absolute -top-1 -right-1 bg-rose-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100"><X size={8}/></button>
+                          </div>
+                      ))}
+                      <label className="w-10 h-10 flex flex-col items-center justify-center border-2 border-dashed border-paper-blue/20 rounded-lg cursor-pointer hover:bg-blue-50 transition-all flex-shrink-0">
+                          <Camera size={16} className="text-paper-blue"/>
+                          <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
+                      </label>
                   </div>
               </div>
           </div>
       </div>
 
-      {/* SECTION 2: Input & Keranjang */}
-      <div className="bg-white dark:bg-gray-800 p-10 rounded-[3rem] shadow-paper border border-slate-100 dark:border-gray-700 flex flex-col min-h-[550px]">
-          <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.4em] mb-10 border-b border-slate-50 dark:border-gray-700 pb-3 flex justify-between items-center">
-              <span className="flex items-center gap-3"><ShoppingCart size={16} className="text-paper-blue"/> II. INPUT BARANG & KERANJANG</span>
-              <span className="bg-paper-blue text-white px-5 py-1.5 rounded-full text-[10px] font-black shadow-lg shadow-blue-500/20">{cart.length} ITEM</span>
+      {/* SECTION 2: Input & Keranjang - Ramping & Fungsional */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-700 flex flex-col min-h-[400px]">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-6 border-b border-slate-50 dark:border-gray-700 pb-2 flex justify-between items-center">
+              <span className="flex items-center gap-2"><ShoppingCart size={14} className="text-paper-blue"/> II. INPUT & KERANJANG</span>
+              <span className="bg-paper-blue text-white px-3 py-1 rounded-full text-[9px] font-black">{cart.length} ITEM</span>
           </h3>
 
-          {/* Quick Input Area */}
-          <div className="p-8 bg-slate-900 dark:bg-gray-900/80 rounded-[2.5rem] mb-10 shadow-2xl relative overflow-hidden group border border-white/5">
-               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity"><Zap size={140} className="text-white"/></div>
-               <div className="flex flex-col lg:flex-row gap-8 items-stretch lg:items-end relative z-10">
+          {/* Quick Input Area - Ramping */}
+          <div className="p-4 bg-slate-900 dark:bg-gray-900 rounded-2xl mb-6 shadow-md border border-white/5">
+               <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-end">
                   
-                  {/* Search Bar with Keyboard Nav */}
-                  <div className="flex-[4] relative" ref={dropdownRef}>
-                      <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] mb-3 block ml-4">CARI BARANG (ENTER UNTUK PILIH)</label>
+                  {/* Search Bar */}
+                  <div className="flex-[3] relative" ref={dropdownRef}>
+                      <label className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1.5 block ml-3">BARANG (ENTER PILIH)</label>
                       <div className="relative">
-                          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-white/30" size={24}/>
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18}/>
                           <input 
                             ref={searchInputRef}
                             type="text" 
-                            className={`w-full pl-16 pr-6 py-6 rounded-[2rem] border-2 transition-all outline-none text-xl font-black shadow-lg ${selectedItem ? 'border-paper-blue bg-paper-blue/10 text-paper-blue' : 'border-white/5 bg-white/5 text-white placeholder-white/20 focus:border-white/20 focus:bg-white/10'}`} 
+                            className={`w-full pl-11 pr-4 py-2.5 rounded-xl border-2 transition-all outline-none text-sm font-bold ${selectedItem ? 'border-paper-blue bg-paper-blue/10 text-paper-blue' : 'border-white/5 bg-white/5 text-white placeholder-white/20 focus:border-white/10'}`} 
                             value={itemSearch} 
                             onChange={e => { setItemSearch(e.target.value); setSelectedItem(null); setShowDropdown(true); setFocusedIndex(-1); }} 
                             onKeyDown={handleSearchKeyDown}
                             onFocus={() => setShowDropdown(true)}
-                            placeholder="Ketik produk atau scan barcode..." 
+                            placeholder="Cari SKU / Nama..." 
                           />
                           {selectedItem && (
-                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); setFocusedIndex(-1); searchInputRef.current?.focus(); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/10 rounded-full text-white/40 hover:text-white"><X size={20}/></button>
+                              <button onClick={() => { setItemSearch(''); setSelectedItem(null); setInputQty(''); searchInputRef.current?.focus(); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white"><X size={14}/></button>
                           )}
                       </div>
                       
-                      {/* Autocomplete Dropdown */}
+                      {/* Autocomplete Dropdown - Ramping */}
                       {showDropdown && filteredItems.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 mt-4 bg-white dark:bg-gray-800 rounded-[2.5rem] shadow-[0_30px_100px_-15px_rgba(0,0,0,0.5)] border border-slate-100 dark:border-gray-700 z-[100] max-h-96 overflow-y-auto overflow-x-hidden p-3 animate-in fade-in slide-in-from-top-4 duration-200">
+                          <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-100 dark:border-gray-700 z-[100] max-h-64 overflow-y-auto p-1.5 animate-in fade-in slide-in-from-top-2">
                               {filteredItems.map((item, idx) => (
                                   <div 
                                     key={item.id} 
                                     onClick={() => handleSelectItem(item)} 
-                                    className={`p-6 cursor-pointer rounded-[1.5rem] border-2 mb-2 flex justify-between items-center group transition-all ${focusedIndex === idx ? 'bg-paper-blue border-paper-blue text-white shadow-xl' : 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-gray-700'}`}
+                                    className={`p-3 cursor-pointer rounded-lg border-2 mb-1 flex justify-between items-center transition-all ${focusedIndex === idx ? 'bg-paper-blue border-paper-blue text-white' : 'bg-transparent border-transparent hover:bg-slate-50'}`}
                                   >
-                                      <div className="flex items-center gap-5">
-                                          <div className={`p-4 rounded-2xl ${focusedIndex === idx ? 'bg-white/20' : 'bg-slate-100 dark:bg-gray-700 group-hover:bg-white'}`}>
-                                              <Package size={24} className={focusedIndex === idx ? 'text-white' : 'text-slate-400'}/>
-                                          </div>
+                                      <div className="flex items-center gap-3">
+                                          <Package size={16} className={focusedIndex === idx ? 'text-white' : 'text-slate-300'}/>
                                           <div>
-                                              <div className={`text-lg font-black uppercase tracking-tight leading-none mb-1 ${focusedIndex === idx ? 'text-white' : 'text-slate-800 dark:text-white'}`}>{item.name}</div>
-                                              <div className={`text-[10px] font-mono tracking-widest ${focusedIndex === idx ? 'text-white/60' : 'text-slate-400'}`}>{item.sku}</div>
+                                              <div className="text-sm font-bold uppercase">{item.name}</div>
+                                              <div className="text-[9px] font-mono opacity-60 tracking-wider">{item.sku}</div>
                                           </div>
                                       </div>
-                                      <div className="text-right flex items-center gap-4">
-                                         <div className={`text-xs font-black uppercase tracking-widest ${focusedIndex === idx ? 'text-white' : 'text-slate-400'}`}>STOK: {item.stock} {item.unit}</div>
-                                         <ChevronRight size={20} className={focusedIndex === idx ? 'text-white' : 'text-slate-200'}/>
-                                      </div>
+                                      <div className="text-[10px] font-bold opacity-60">STOK: {item.stock}</div>
                                   </div>
                               ))}
                           </div>
                       )}
                   </div>
 
-                  {/* Qty & Add Section */}
-                  <div className={`flex-[3] flex gap-5 items-end transition-all duration-300 ${selectedItem ? 'opacity-100 translate-y-0' : 'opacity-20 pointer-events-none translate-y-4'}`}>
-                      <div className="flex-1 space-y-3">
-                          <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] block ml-4">JML INPUT</label>
+                  {/* Qty & Unit Section - Ramping */}
+                  <div className={`flex-[2] flex gap-3 items-end transition-all ${selectedItem ? 'opacity-100' : 'opacity-20 pointer-events-none'}`}>
+                      <div className="w-24">
+                          <label className="text-[9px] font-black text-white/40 uppercase tracking-widest block ml-3 mb-1.5">JML</label>
                           <input 
                             ref={qtyInputRef}
                             type="number" 
@@ -397,110 +380,90 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
                             value={inputQty} 
                             onChange={e => setInputQty(e.target.value === '' ? '' : Number(e.target.value))} 
                             onKeyDown={handleQtyKeyDown}
-                            className="w-full p-6 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-2xl font-black text-center text-white outline-none shadow-inner" 
+                            className="w-full px-3 py-2.5 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-xl text-lg font-black text-center text-white outline-none shadow-inner" 
                             placeholder="0" 
                           />
                       </div>
                       
-                      <div className="flex-1 space-y-3">
-                          <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em] block ml-4">SATUAN</label>
-                          <select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full p-6 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-[2rem] text-sm font-black outline-none appearance-none cursor-pointer text-center text-white shadow-inner">
-                              <option value={selectedItem?.unit} className="text-slate-900">{selectedItem?.unit} (UTAMA)</option>
+                      <div className="w-28">
+                          <label className="text-[9px] font-black text-white/40 uppercase tracking-widest block ml-3 mb-1.5">SATUAN</label>
+                          <select value={selectedUnit} onChange={(e) => handleUnitChange(e.target.value)} className="w-full px-3 py-2.5 bg-white/10 border-2 border-transparent focus:border-paper-blue rounded-xl text-xs font-bold outline-none appearance-none cursor-pointer text-center text-white">
+                              <option value={selectedItem?.unit} className="text-slate-900">{selectedItem?.unit}</option>
                               {selectedItem?.unit2 && <option value={selectedItem.unit2} className="text-slate-900">{selectedItem.unit2}</option>}
                               {selectedItem?.unit3 && <option value={selectedItem.unit3} className="text-slate-900">{selectedItem.unit3}</option>}
                           </select>
                       </div>
                       
-                      <button onClick={addToCart} disabled={!inputQty} className="h-[84px] px-10 bg-paper-blue text-white font-black rounded-[2rem] shadow-2xl shadow-blue-500/40 hover:bg-paper-blueHover disabled:opacity-30 transition-all active:scale-95 flex items-center justify-center gap-4 uppercase tracking-[0.2em] text-xs">
-                          <Plus size={24}/> TAMBAH
+                      <button onClick={addToCart} disabled={!inputQty} className="h-11 px-6 bg-paper-blue text-white font-black rounded-xl shadow-lg hover:bg-paper-blueHover disabled:opacity-20 transition-all active:scale-95 flex items-center justify-center gap-2 uppercase tracking-widest text-[10px]">
+                          <Plus size={16}/> TAMBAH
                       </button>
                   </div>
                </div>
           </div>
 
-          {/* Cart Section - Modern Enterprise Table */}
-          <div className="flex-1 overflow-hidden flex flex-col bg-slate-50 dark:bg-gray-900/50 rounded-[3rem] border border-slate-100 dark:border-gray-700">
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+          {/* Cart Table - Ramping & Jelas */}
+          <div className="flex-1 overflow-hidden flex flex-col bg-slate-50 dark:bg-gray-900/50 rounded-xl border border-slate-100 dark:border-gray-700">
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
                   {cart.length > 0 ? (
                       <table className="w-full text-left">
-                        <thead className="bg-white dark:bg-gray-800 border-b border-slate-100 dark:border-gray-700 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10 shadow-sm">
+                        <thead className="bg-white dark:bg-gray-800 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest sticky top-0 z-10">
                             <tr>
-                                <th className="p-6 rounded-tl-[1.5rem]">Barang</th>
-                                <th className="p-6 text-center">Jumlah Input</th>
-                                <th className="p-6 text-center">Qty Base (Sistem)</th>
-                                <th className="p-6 text-right rounded-tr-[1.5rem]">Aksi</th>
+                                <th className="p-4">BARANG</th>
+                                <th className="p-4 text-center">INPUT</th>
+                                <th className="p-4 text-center">QTY DASAR</th>
+                                <th className="p-4 text-right">AKSI</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
                             {cart.map((item, idx) => (
-                                <tr key={idx} className="group hover:bg-white dark:hover:bg-gray-800 transition-all animate-in slide-in-from-right-8">
-                                    <td className="p-6">
-                                        <div className="flex items-center gap-5">
-                                            <div className="w-12 h-12 bg-slate-100 dark:bg-gray-700 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-paper-blue transition-colors">
-                                                <Package size={20}/>
-                                            </div>
-                                            <div>
-                                                <div className="font-black text-base text-slate-800 dark:text-white uppercase tracking-tight leading-none mb-1.5">{item.name}</div>
-                                                <div className="text-[10px] font-mono text-slate-400 tracking-widest">{item.sku}</div>
-                                            </div>
-                                        </div>
+                                <tr key={idx} className="bg-white dark:bg-gray-800 hover:bg-slate-50 transition-all text-xs">
+                                    <td className="p-4">
+                                        <div className="font-bold text-slate-800 dark:text-white uppercase">{item.name}</div>
+                                        <div className="text-[9px] font-mono text-slate-400 tracking-wider">{item.sku}</div>
                                     </td>
-                                    <td className="p-6 text-center">
-                                        <div className="inline-flex flex-col items-center px-6 py-2 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/30">
-                                            <div className="font-black text-paper-blue text-lg leading-none">{item.inputQty}</div>
-                                            <div className="text-[9px] text-paper-blue font-black uppercase tracking-widest mt-1">{item.inputUnit}</div>
-                                        </div>
+                                    <td className="p-4 text-center">
+                                        <span className="font-black text-paper-blue">{item.inputQty} {item.inputUnit}</span>
                                     </td>
-                                    <td className="p-6 text-center">
+                                    <td className="p-4 text-center">
                                         <div className="flex flex-col items-center">
-                                           <div className="flex items-center gap-2 font-black text-slate-700 dark:text-gray-300 text-base tracking-tighter">
-                                               <Calculator size={14} className="text-slate-300"/>
-                                               {item.qty.toFixed(3)} {item.uom}
-                                           </div>
-                                           {item.inputUnit !== item.uom && <span className="text-[10px] font-bold text-slate-300 italic uppercase">Auto-Conversion</span>}
+                                           <div className="font-bold text-slate-600 dark:text-gray-300">{item.qty.toFixed(3)} {item.uom}</div>
                                         </div>
                                     </td>
-                                    <td className="p-6 text-right">
-                                        <button onClick={() => removeFromCart(idx)} className="p-4 text-slate-200 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-2xl transition-all"><Trash size={20}/></button>
+                                    <td className="p-4 text-right">
+                                        <button onClick={() => removeFromCart(idx)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash size={16}/></button>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                   ) : (
-                      <div className="h-full flex flex-col items-center justify-center p-24 text-center space-y-8 opacity-20">
-                          <ShoppingCart size={120} />
-                          <div>
-                              <p className="text-xl font-black uppercase tracking-[0.5em] mb-2">Keranjang Kosong</p>
-                              <p className="text-xs font-bold uppercase tracking-widest">Gunakan Input Cepat di atas untuk mulai memutasi barang.</p>
-                          </div>
+                      <div className="h-full flex flex-col items-center justify-center p-12 text-center opacity-20">
+                          <ShoppingCart size={48} className="mb-3" />
+                          <p className="text-[10px] font-black uppercase tracking-widest">Gunakan Form Input Cepat</p>
                       </div>
                   )}
               </div>
 
-              {/* Summary Bottom Bar */}
-              <div className="p-10 bg-white dark:bg-gray-800 border-t border-slate-100 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-8">
-                  <div className="flex items-center gap-8">
-                      <div className="p-6 bg-slate-900 rounded-[1.5rem] text-white shadow-2xl">
-                          <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mb-2">Estimasi Nilai Transaksi</p>
-                          <h4 className="text-3xl font-black tracking-tighter leading-none">Rp {cart.reduce((acc, curr) => acc + curr.total, 0).toLocaleString('id-ID')}</h4>
+              {/* Action Bar - Ramping */}
+              <div className="p-6 bg-white dark:bg-gray-800 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex items-center gap-6">
+                      <div className="bg-slate-900 px-6 py-3 rounded-xl text-white shadow-lg">
+                          <p className="text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">TOTAL NILAI</p>
+                          <h4 className="text-xl font-black tracking-tight leading-none">Rp {cart.reduce((acc, curr) => acc + curr.total, 0).toLocaleString('id-ID')}</h4>
                       </div>
-                      <div className="hidden lg:block border-l border-slate-100 dark:border-gray-700 pl-8 h-16">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Penanggung Jawab</p>
-                          <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-paper-blue flex items-center justify-center text-[10px] font-black text-white">{user.name.charAt(0)}</div>
-                              <span className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{user.name}</span>
-                          </div>
+                      <div className="hidden lg:block">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">OPERATOR</p>
+                          <span className="text-[11px] font-black text-slate-800 dark:text-white uppercase tracking-tight">{user.name}</span>
                       </div>
                   </div>
-                  <div className="flex gap-5 w-full md:w-auto">
-                      <button onClick={() => setMode('menu')} className="flex-1 md:flex-none px-10 py-6 text-slate-400 font-black hover:bg-slate-50 dark:hover:bg-gray-700 rounded-[2rem] uppercase tracking-widest text-xs transition-all">Batal</button>
+                  <div className="flex gap-3 w-full md:w-auto">
+                      <button onClick={() => setMode('menu')} className="px-6 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl uppercase tracking-widest text-[9px]">BATAL</button>
                       <button 
                           onClick={handleSubmit} 
                           disabled={cart.length === 0} 
-                          className="flex-[2] md:flex-none px-16 py-6 bg-paper-blue hover:bg-paper-blueHover text-white font-black rounded-[2rem] shadow-[0_20px_60px_-10px_rgba(91,164,230,0.5)] transition-all active:scale-[0.98] disabled:opacity-30 uppercase tracking-[0.3em] text-xs flex items-center justify-center gap-4"
+                          className="flex-1 md:flex-none px-10 py-3 bg-paper-blue hover:bg-paper-blueHover text-white font-black rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-30 uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-2"
                       >
-                          <FileText size={24}/> Simpan Transaksi
+                          <FileText size={16}/> SIMPAN TRANSAKSI
                       </button>
                   </div>
               </div>
@@ -512,16 +475,15 @@ export const Transactions: React.FC<TransactionsProps> = ({ items, user, onSucce
 
 const MenuButton = ({ title, sub, icon, color, onClick }: any) => {
     const colors: any = {
-        emerald: "bg-emerald-50 text-emerald-500 border-emerald-100 hover:shadow-emerald-500/20 dark:bg-emerald-900/10 dark:border-emerald-900/20",
-        rose: "bg-rose-50 text-rose-500 border-rose-100 hover:shadow-rose-500/20 dark:bg-rose-900/10 dark:border-rose-900/20",
-        blue: "bg-blue-50 text-paper-blue border-blue-100 hover:shadow-blue-500/20 dark:bg-blue-900/10 dark:border-blue-900/20"
+        emerald: "bg-emerald-50 text-emerald-500 border-emerald-100 dark:bg-emerald-900/10",
+        rose: "bg-rose-50 text-rose-500 border-rose-100 dark:bg-rose-900/10",
     };
     return (
-        <button onClick={onClick} className={`group bg-white dark:bg-gray-800 p-16 rounded-[4rem] shadow-card border-4 border-transparent transition-all flex flex-col items-center gap-8 ${colors[color]} hover:border-current hover:-translate-y-2`}>
-            <div className={`p-10 rounded-[2.5rem] transition-transform group-hover:scale-110 group-active:scale-95 shadow-2xl ${colors[color]}`}>{icon}</div>
+        <button onClick={onClick} className={`group bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border-2 border-transparent transition-all flex flex-col items-center gap-4 ${colors[color]} hover:border-current hover:shadow-lg`}>
+            <div className={`p-4 rounded-xl transition-transform group-hover:scale-105 group-active:scale-95 ${colors[color]}`}>{icon}</div>
             <div className="text-center">
-                <h3 className="text-3xl font-black text-slate-800 dark:text-white mb-3 tracking-tighter uppercase">{title}</h3>
-                <p className="text-sm font-bold text-slate-400 dark:text-gray-400 tracking-widest uppercase">{sub}</p>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">{title}</h3>
+                <p className="text-[9px] font-bold text-slate-400 tracking-widest uppercase">{sub}</p>
             </div>
         </button>
     );
