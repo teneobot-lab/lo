@@ -53,42 +53,83 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     const reader = new FileReader();
     reader.onload = (evt) => {
         try {
-            const bstr = evt.target?.result;
-            const wb = XLSX.read(bstr, { type: 'binary' });
+            const arrayBuffer = evt.target?.result;
+            if (!arrayBuffer) {
+                alert("Gagal membaca file.");
+                return;
+            }
+            
+            const wb = XLSX.read(arrayBuffer, { type: 'array' });
+            if (!wb.SheetNames.length) {
+                alert("File Excel tidak valid (tidak ada sheet).");
+                return;
+            }
+
             const ws = wb.Sheets[wb.SheetNames[0]];
             const data = XLSX.utils.sheet_to_json(ws);
             
-            const newItems: RejectItem[] = data.map((row: any) => ({
-                id: `REJ-${Math.random().toString(36).substr(2, 9)}`,
-                sku: row.SKU || row.sku || '',
-                name: row.Nama || row.nama || 'Unnamed',
-                baseUnit: row.Satuan_Dasar || row.base_unit || 'Pcs',
-                unit2: row.Satuan_2 || row.unit2 || undefined,
-                ratio2: row.Rasio_2 || row.ratio2 ? Number(row.Rasio_2 || row.ratio2) : undefined,
-                op2: (row.Operasi_2 || row.op2 || 'multiply') as 'multiply' | 'divide',
-                unit3: row.Satuan_3 || row.unit3 || undefined,
-                ratio3: row.Rasio_3 || row.ratio3 ? Number(row.Rasio_3 || row.ratio3) : undefined,
-                op3: (row.Operasi_3 || row.op3 || 'multiply') as 'multiply' | 'divide',
-                lastUpdated: new Date().toISOString()
-            }));
+            if (!data || data.length === 0) {
+                alert("Data kosong.");
+                return;
+            }
 
-            // Merge with existing or replace? Let's append/update based on SKU
+            const newItems: RejectItem[] = [];
+            
+            data.forEach((row: any) => {
+                // Support various column naming conventions
+                const sku = row.SKU || row.sku || row['Kode Barang'];
+                const name = row.Nama || row.nama || row['Nama Barang'];
+                
+                if (!sku || !name) return; // Skip rows without SKU or Name
+
+                const op2Val = (row.Operasi_2 || row.op2 || 'multiply').toLowerCase();
+                const op3Val = (row.Operasi_3 || row.op3 || 'multiply').toLowerCase();
+
+                const item: RejectItem = {
+                    id: `REJ-${Math.random().toString(36).substr(2, 9)}`,
+                    sku: String(sku).trim(),
+                    name: String(name).trim(),
+                    baseUnit: row.Satuan_Dasar || row.base_unit || 'Pcs',
+                    
+                    // Parsing optional units with validation
+                    unit2: row.Satuan_2 || row.unit2 || undefined,
+                    ratio2: (row.Rasio_2 || row.ratio2) && !isNaN(Number(row.Rasio_2 || row.ratio2)) ? Number(row.Rasio_2 || row.ratio2) : undefined,
+                    op2: (op2Val === 'divide' ? 'divide' : 'multiply'),
+                    
+                    unit3: row.Satuan_3 || row.unit3 || undefined,
+                    ratio3: (row.Rasio_3 || row.ratio3) && !isNaN(Number(row.Rasio_3 || row.ratio3)) ? Number(row.Rasio_3 || row.ratio3) : undefined,
+                    op3: (op3Val === 'divide' ? 'divide' : 'multiply'),
+                    
+                    lastUpdated: new Date().toISOString()
+                };
+                newItems.push(item);
+            });
+
+            if (newItems.length === 0) {
+                alert("Tidak ada data valid yang ditemukan. Pastikan kolom SKU dan Nama terisi.");
+                return;
+            }
+
+            // Merge Strategy: Update existing by SKU, Append new
             const combined = [...rejectMasterData];
             newItems.forEach(ni => {
                 const idx = combined.findIndex(ex => ex.sku === ni.sku);
-                if (idx >= 0) combined[idx] = { ...combined[idx], ...ni, id: combined[idx].id };
-                else combined.push(ni);
+                if (idx >= 0) {
+                    combined[idx] = { ...combined[idx], ...ni, id: combined[idx].id };
+                } else {
+                    combined.push(ni);
+                }
             });
             
             onUpdateMaster(combined);
-            alert(`Berhasil mengimpor ${newItems.length} data master.`);
+            // alert handled by App notification
         } catch (error) {
-            console.error(error);
-            alert("Gagal membaca file Excel.");
+            console.error("Import Error:", error);
+            alert("Terjadi kesalahan saat memproses file Excel.");
         }
     };
-    reader.readAsBinaryString(file);
-    e.target.value = ''; // Reset input
+    reader.readAsArrayBuffer(file); // Use ArrayBuffer for better compatibility
+    e.target.value = ''; 
   };
 
   const copyLogToClipboard = (log: RejectLog) => {
@@ -103,12 +144,10 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
       
       log.items.forEach(item => {
           // Format: - [Nama Barang] [Qty] [Alasan]
-          // Optional: Include unit for clarity, but prompt asked "nama barang qty alasan"
           text += `- ${item.itemName} ${item.quantity} ${item.unit} ${item.reason}\n`;
       });
 
       navigator.clipboard.writeText(text).then(() => {
-          // You might want a toast here, but for now standard alert or rely on UI feedback
           alert("Disalin ke clipboard:\n" + text);
       });
   };
@@ -201,6 +240,15 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
        </div>
 
        {isLogModalOpen && <RejectLogModal log={editingLog} masterData={rejectMasterData} onClose={() => setIsLogModalOpen(false)} onSave={onAddLog} />}
+       {isMasterModalOpen && <MasterItemModal item={editingMasterItem} onClose={() => setIsMasterModalOpen(false)} onSave={(item: RejectItem) => {
+           // Handle single item save/update
+           const combined = [...rejectMasterData];
+           const idx = combined.findIndex(ex => ex.id === item.id);
+           if (idx >= 0) combined[idx] = item;
+           else combined.push(item);
+           onUpdateMaster(combined);
+           setIsMasterModalOpen(false);
+       }} />}
     </div>
   );
 };
@@ -344,3 +392,30 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
         </div>
     );
 }
+
+// Simple Modal for adding single Master Item (if needed manually)
+const MasterItemModal = ({ item, onClose, onSave }: any) => {
+    const [formData, setFormData] = useState(item || { id: `REJ-${Date.now()}`, sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: '', op2: 'multiply', unit3: '', ratio3: '', op3: 'multiply', lastUpdated: new Date().toISOString() });
+    
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl w-full max-w-lg shadow-2xl">
+                <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Master Barang Reject</h3>
+                <div className="space-y-4">
+                    <input value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                    <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Barang" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                    <input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="Satuan Dasar" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                    <div className="grid grid-cols-3 gap-2">
+                        <input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Unit 2" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                        <input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} placeholder="Rasio" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
+                        <select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white"><option value="multiply">Kali</option><option value="divide">Bagi</option></select>
+                    </div>
+                </div>
+                <div className="mt-8 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-6 py-2 text-slate-500">Batal</button>
+                    <button onClick={() => onSave(formData)} className="px-6 py-2 bg-paper-blue text-white rounded-xl font-bold">Simpan</button>
+                </div>
+            </div>
+        </div>
+    );
+};
