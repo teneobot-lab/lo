@@ -22,10 +22,16 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Helper untuk membersihkan parameter query dari 'undefined' dan 'NaN'
+// Helper untuk membersihkan parameter query dari 'undefined', 'NaN', dan memformat Tanggal untuk MySQL
 const cleanParams = (arr) => arr.map(p => {
-    if (p === undefined) return null;
+    if (p === undefined || p === null) return null;
     if (typeof p === 'number' && isNaN(p)) return null;
+    
+    // Konversi string tanggal ISO (2026-01-30T04:52:24.540Z) ke format MySQL (2026-01-30 04:52:24)
+    if (typeof p === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(p)) {
+        return p.replace('T', ' ').replace(/\..*$/, '').replace('Z', '');
+    }
+    
     return p;
 });
 
