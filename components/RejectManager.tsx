@@ -36,9 +36,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   const [editingMasterItem, setEditingMasterItem] = useState<RejectItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Selection State
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredLogs = useMemo(() => rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase()))), [rejectLogs, searchTerm]);
@@ -111,42 +109,27 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     const targetLogs = rejectLogs.filter(l => selectedLogIds.has(l.id));
     if (targetLogs.length === 0) return alert("Pilih minimal satu log untuk diekspor.");
 
-    // 1. Dapatkan semua tanggal unik dan urutkan
     const uniqueDates = Array.from(new Set(targetLogs.map(l => l.date))).sort();
-    
-    // 2. Kelompokkan data berdasarkan SKU/Barang
     const matrix: Record<string, { name: string, sku: string, unit: string, values: Record<string, number> }> = {};
 
     targetLogs.forEach(log => {
         log.items.forEach(item => {
             if (!matrix[item.sku]) {
-                matrix[item.sku] = { 
-                    name: item.itemName, 
-                    sku: item.sku, 
-                    unit: item.baseUnit, 
-                    values: {} 
-                };
+                matrix[item.sku] = { name: item.itemName, sku: item.sku, unit: item.baseUnit, values: {} };
             }
             const currentVal = matrix[item.sku].values[log.date] || 0;
             matrix[item.sku].values[log.date] = currentVal + item.totalBaseQuantity;
         });
     });
 
-    // 3. Konversi ke format Flat untuk SheetJS
     const exportData = Object.values(matrix).map(row => {
-        const rowData: any = {
-            'SKU': row.sku,
-            'Nama Barang': row.name,
-            'Satuan': row.unit
-        };
-
+        const rowData: any = { 'SKU': row.sku, 'Nama Barang': row.name, 'Satuan': row.unit };
         let totalRow = 0;
         uniqueDates.forEach(date => {
             const val = row.values[date] || 0;
             rowData[date] = val;
             totalRow += val;
         });
-
         rowData['TOTAL AKHIR'] = totalRow;
         return rowData;
     });
@@ -155,8 +138,6 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Reject_Flattened");
     XLSX.writeFile(wb, `Report_Reject_Flattened_${new Date().toISOString().slice(0,10)}.xlsx`);
-    
-    alert("Export Berhasil! Data diatur secara horizontal berdasarkan tanggal.");
   };
 
   const copyLogToClipboard = (log: RejectLog) => {
@@ -176,13 +157,11 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                <button onClick={() => setActiveTab('logs')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'logs' ? 'bg-white dark:bg-gray-700 text-paper-blue shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:text-gray-500 dark:hover:text-gray-300'}`}>Log Kejadian</button>
                <button onClick={() => setActiveTab('master')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'master' ? 'bg-white dark:bg-gray-700 text-paper-blue shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:text-gray-500 dark:hover:text-gray-300'}`}>Master Barang</button>
            </div>
-           
            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                <div className="relative flex-1 md:w-72">
                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                    <input type="text" placeholder="Cari Log atau Produk..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-paper-blue transition-all dark:text-white" />
                </div>
-               
                {activeTab === 'master' ? (
                    <>
                      <button onClick={handleDownloadTemplate} className="p-3 bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 rounded-xl hover:bg-slate-200" title="Download Template"><Download size={20}/></button>
@@ -200,7 +179,6 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                        </button>
                    )
                )}
-
                <button onClick={() => { if (activeTab === 'logs') { setEditingLog(null); setIsLogModalOpen(true); } else { setEditingMasterItem(null); setIsMasterModalOpen(true); } }} className="flex items-center gap-3 bg-paper-blue hover:bg-paper-blueHover text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95"><Plus size={20} /> {activeTab === 'logs' ? 'Catat Reject' : 'Tambah Master'}</button>
            </div>
        </div>
@@ -295,13 +273,16 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
     const [itemSearch, setItemSearch] = useState('');
     const [showItemDropdown, setShowItemDropdown] = useState(false);
     const [selectedMasterId, setSelectedMasterId] = useState('');
+    const [focusedIndex, setFocusedIndex] = useState(-1);
     
     const [qty, setQty] = useState('');
     const [unit, setUnit] = useState('');
     const [reason, setReason] = useState('');
     
     const itemSearchRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const qtyInputRef = useRef<HTMLInputElement>(null);
+    const reasonInputRef = useRef<HTMLInputElement>(null);
 
     const selectedMaster = useMemo(() => masterData.find((m: any) => m.id === selectedMasterId), [selectedMasterId, masterData]);
 
@@ -324,13 +305,41 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Load Smart Unit Memory from Local Storage
     const handleSelectItem = (m: RejectItem) => {
         setSelectedMasterId(m.id);
         setItemSearch(m.name);
-        setUnit(m.baseUnit);
+        
+        // Smart Unit Preference: Check user habits from local storage
+        const savedUnit = localStorage.getItem(`reject_unit_pref_${m.id}`);
+        if (savedUnit && (savedUnit === m.baseUnit || savedUnit === m.unit2 || savedUnit === m.unit3)) {
+            setUnit(savedUnit);
+        } else {
+            setUnit(m.baseUnit);
+        }
+
         setShowItemDropdown(false);
-        // Focus Qty after selection
+        setFocusedIndex(-1);
         setTimeout(() => qtyInputRef.current?.focus(), 50);
+    };
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+        if (!showItemDropdown || filteredMasters.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setFocusedIndex(prev => (prev < filteredMasters.length - 1 ? prev + 1 : 0));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setFocusedIndex(prev => (prev > 0 ? prev - 1 : filteredMasters.length - 1));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (focusedIndex >= 0) {
+                handleSelectItem(filteredMasters[focusedIndex]);
+            } else if (filteredMasters.length > 0) {
+                handleSelectItem(filteredMasters[0]);
+            }
+        }
     };
 
     const handleAddItem = () => {
@@ -342,28 +351,23 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
         else if (unit === selectedMaster.unit3) { ratio = selectedMaster.ratio3; op = selectedMaster.op3 || 'multiply'; }
         
         const numQty = parseFloat(qty);
-        // LOGIC: If input is sub-unit (e.g. PRS) and ratio is 10, then KG = input / 10
         let baseQty = op === 'multiply' ? numQty * ratio : numQty / ratio;
         
         const newItem: RejectItemDetail = { 
-            itemId: selectedMaster.id, 
-            itemName: selectedMaster.name, 
-            sku: selectedMaster.sku, 
-            baseUnit: selectedMaster.baseUnit, 
-            quantity: numQty, 
-            unit: unit, 
-            ratio: ratio, 
-            operation: op as any, 
-            totalBaseQuantity: baseQty, 
-            reason: reason 
+            itemId: selectedMaster.id, itemName: selectedMaster.name, sku: selectedMaster.sku, 
+            baseUnit: selectedMaster.baseUnit, quantity: numQty, unit: unit, ratio: ratio, 
+            operation: op as any, totalBaseQuantity: baseQty, reason: reason 
         };
         
+        // Save Smart Unit Memory
+        localStorage.setItem(`reject_unit_pref_${selectedMaster.id}`, unit);
+        
         setItems([...items, newItem]);
-        // Reset Item Fields
         setItemSearch('');
         setSelectedMasterId('');
         setQty('');
         setReason('');
+        setTimeout(() => searchInputRef.current?.focus(), 50);
     };
 
     const handleSave = () => {
@@ -387,20 +391,17 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
                     <div className="bg-slate-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-slate-100 dark:border-gray-700">
                         <label className="text-[10px] font-bold text-rose-500 uppercase tracking-widest block ml-2 mb-4">Input Barang Reject</label>
                         <div className="grid grid-cols-12 gap-4 items-end">
-                            {/* Autocomplete Item Field */}
                             <div className="col-span-4 relative" ref={itemSearchRef}>
                                 <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Cari Barang (Nama/SKU)</label>
                                 <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14}/>
                                     <input 
+                                        ref={searchInputRef}
                                         type="text" 
                                         value={itemSearch} 
-                                        onChange={e => {
-                                            setItemSearch(e.target.value);
-                                            setSelectedMasterId('');
-                                            setShowItemDropdown(true);
-                                        }}
+                                        onChange={e => { setItemSearch(e.target.value); setSelectedMasterId(''); setShowItemDropdown(true); setFocusedIndex(-1); }}
                                         onFocus={() => setShowItemDropdown(true)}
+                                        onKeyDown={handleSearchKeyDown}
                                         className={`w-full pl-9 pr-3 py-3 rounded-xl border-2 transition-all outline-none text-sm font-bold ${selectedMasterId ? 'border-paper-blue bg-blue-50/30 dark:bg-blue-900/10 text-paper-blue' : 'border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:border-rose-300'}`}
                                         placeholder="Ketik nama produk..."
                                     />
@@ -408,20 +409,19 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
                                         <button onClick={() => { setItemSearch(''); setSelectedMasterId(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500"><X size={12}/></button>
                                     )}
                                 </div>
-                                
                                 {showItemDropdown && filteredMasters.length > 0 && (
                                     <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-100 dark:border-gray-700 z-[110] max-h-56 overflow-y-auto">
-                                        {filteredMasters.map(m => (
+                                        {filteredMasters.map((m, idx) => (
                                             <div 
                                                 key={m.id} 
                                                 onClick={() => handleSelectItem(m)}
-                                                className="p-3 hover:bg-slate-50 dark:hover:bg-gray-700 cursor-pointer border-b last:border-0 border-slate-50 dark:border-gray-700 flex justify-between items-center group"
+                                                className={`p-3 cursor-pointer border-b last:border-0 border-slate-50 dark:border-gray-700 flex justify-between items-center group transition-colors ${focusedIndex === idx ? 'bg-blue-50 dark:bg-blue-900/30 text-paper-blue' : 'hover:bg-slate-50 dark:hover:bg-gray-700'}`}
                                             >
                                                 <div>
-                                                    <div className="text-sm font-bold text-slate-800 dark:text-gray-200 group-hover:text-paper-blue">{m.name}</div>
+                                                    <div className={`text-sm font-bold ${focusedIndex === idx ? 'text-paper-blue' : 'text-slate-800 dark:text-gray-200'}`}>{m.name}</div>
                                                     <div className="text-[10px] font-mono text-slate-400 tracking-widest">{m.sku}</div>
                                                 </div>
-                                                <ChevronRight size={14} className="text-slate-200 group-hover:text-paper-blue"/>
+                                                <ChevronRight size={14} className={focusedIndex === idx ? 'text-paper-blue' : 'text-slate-200'}/>
                                             </div>
                                         ))}
                                     </div>
@@ -436,6 +436,7 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
                                     step="0.001" 
                                     value={qty} 
                                     onChange={e => setQty(e.target.value)} 
+                                    onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); reasonInputRef.current?.focus(); } }}
                                     className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none focus:border-rose-300 font-bold text-center" 
                                     placeholder="0.00" 
                                 />
@@ -446,7 +447,7 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
                                 <select value={unit} onChange={e => setUnit(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none appearance-none cursor-pointer">
                                     {selectedMaster ? (
                                         <>
-                                            <option value={selectedMaster.baseUnit}>{selectedMaster.baseUnit} (Dasar)</option>
+                                            <option value={selectedMaster.baseUnit}>{selectedMaster.baseUnit}</option>
                                             {selectedMaster.unit2 && <option value={selectedMaster.unit2}>{selectedMaster.unit2}</option>}
                                             {selectedMaster.unit3 && <option value={selectedMaster.unit3}>{selectedMaster.unit3}</option>}
                                         </>
@@ -456,24 +457,24 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
 
                             <div className="col-span-3">
                                 <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Alasan</label>
-                                <input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none focus:border-rose-300" placeholder="Pecah/Basah/dll" />
+                                <input 
+                                    ref={reasonInputRef}
+                                    value={reason} 
+                                    onChange={e => setReason(e.target.value)} 
+                                    onKeyDown={e => { if(e.key === 'Enter') { e.preventDefault(); handleAddItem(); } }}
+                                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none focus:border-rose-300" 
+                                    placeholder="Pecah/Basah/dll" 
+                                />
                             </div>
 
                             <div className="col-span-1">
-                                <button 
-                                    onClick={handleAddItem} 
-                                    disabled={!selectedMasterId || !qty || !reason}
-                                    className="w-full h-[46px] bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
-                                >
-                                    <Plus size={20}/>
-                                </button>
+                                <button onClick={handleAddItem} disabled={!selectedMasterId || !qty || !reason} className="w-full h-[46px] bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"><Plus size={20}/></button>
                             </div>
                         </div>
 
-                        {/* Conversion Preview */}
                         {selectedMaster && qty && (
                             <div className="mt-3 ml-1 flex items-center gap-2 text-[10px] font-bold text-rose-400 uppercase tracking-widest animate-in fade-in slide-in-from-left-2">
-                                <Calculator size={12}/> Estimasi Stok Berkurang: {(() => {
+                                <Calculator size={12}/> Konversi: {(() => {
                                     let ratio = 1;
                                     let op = 'multiply';
                                     if (unit === selectedMaster.baseUnit) ratio = 1; 
@@ -492,10 +493,7 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
                                         <div className="w-10 h-10 bg-rose-50 dark:bg-rose-900/20 rounded-xl flex items-center justify-center text-rose-500 font-black text-xs uppercase">{it.unit.charAt(0)}</div>
                                         <div>
                                             <div className="text-sm font-black text-slate-800 dark:text-gray-200 uppercase tracking-tight">{it.itemName} <span className="text-rose-500 ml-1">{it.quantity} {it.unit}</span></div>
-                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                                Alasan: <span className="text-slate-500 dark:text-gray-400">{it.reason}</span>
-                                                {it.unit !== it.baseUnit && <span className="text-paper-blue">• Konversi: {it.totalBaseQuantity.toFixed(3)} {it.baseUnit}</span>}
-                                            </div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">Alasan: <span className="text-slate-500 dark:text-gray-400">{it.reason}</span>{it.unit !== it.baseUnit && <span className="text-paper-blue">• Konversi: {it.totalBaseQuantity.toFixed(3)} {it.baseUnit}</span>}</div>
                                         </div>
                                     </div>
                                     <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={16}/></button>
@@ -525,7 +523,6 @@ const MasterItemModal = ({ item, onClose, onSave }: any) => {
                         <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Satuan Dasar</label><input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="KG/Pcs" className="w-full p-4 border-2 border-slate-100 rounded-2xl dark:bg-gray-800 dark:text-white outline-none focus:border-paper-blue font-bold text-center" /></div>
                     </div>
                     <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Nama Barang</label><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Lengkap" className="w-full p-4 border-2 border-slate-100 rounded-2xl dark:bg-gray-800 dark:text-white outline-none focus:border-paper-blue font-black" /></div>
-                    
                     <div className="p-6 bg-slate-50 dark:bg-gray-800 rounded-2xl border border-slate-100 dark:border-gray-700">
                         <p className="text-[10px] font-bold text-paper-blue uppercase mb-4 tracking-widest flex items-center gap-2"><Layers size={12}/> Konversi Satuan Alternatif</p>
                         <div className="grid grid-cols-3 gap-2">
