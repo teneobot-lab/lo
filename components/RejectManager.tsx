@@ -10,6 +10,7 @@ interface RejectManagerProps {
   onAddLog: (log: RejectLog) => void;
   onUpdateLog: (log: RejectLog) => void;
   onDeleteLog: (id: string) => void;
+  onDeleteMaster: (id: string) => void;
   onUpdateMaster: (items: RejectItem[]) => void;
 }
 
@@ -19,6 +20,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   onAddLog,
   onUpdateLog,
   onDeleteLog,
+  onDeleteMaster,
   onUpdateMaster
 }) => {
   const [activeTab, setActiveTab] = useState<'logs' | 'master'>('logs');
@@ -32,8 +34,6 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
 
   const filteredLogs = useMemo(() => rejectLogs.filter(l => l.id.toLowerCase().includes(searchTerm.toLowerCase()) || l.items.some(i => i.itemName.toLowerCase().includes(searchTerm.toLowerCase()))), [rejectLogs, searchTerm]);
   const filteredMaster = useMemo(() => rejectMasterData.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase())), [rejectMasterData, searchTerm]);
-
-  // --- Features ---
 
   const handleDownloadTemplate = () => {
     const template = [
@@ -54,33 +54,18 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
     reader.onload = (evt) => {
         try {
             const arrayBuffer = evt.target?.result;
-            if (!arrayBuffer) {
-                alert("Gagal membaca file.");
-                return;
-            }
-            
+            if (!arrayBuffer) return;
             const wb = XLSX.read(arrayBuffer, { type: 'array' });
-            if (!wb.SheetNames.length) {
-                alert("File Excel tidak valid (tidak ada sheet).");
-                return;
-            }
-
+            if (!wb.SheetNames.length) return;
             const ws = wb.Sheets[wb.SheetNames[0]];
             const data = XLSX.utils.sheet_to_json(ws);
-            
-            if (!data || data.length === 0) {
-                alert("Data kosong.");
-                return;
-            }
+            if (!data || data.length === 0) return;
 
             const newItems: RejectItem[] = [];
-            
             data.forEach((row: any) => {
-                // Support various column naming conventions
                 const sku = row.SKU || row.sku || row['Kode Barang'];
                 const name = row.Nama || row.nama || row['Nama Barang'];
-                
-                if (!sku || !name) return; // Skip rows without SKU or Name
+                if (!sku || !name) return;
 
                 const op2Val = (row.Operasi_2 || row.op2 || 'multiply').toLowerCase();
                 const op3Val = (row.Operasi_3 || row.op3 || 'multiply').toLowerCase();
@@ -90,63 +75,40 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                     sku: String(sku).trim(),
                     name: String(name).trim(),
                     baseUnit: row.Satuan_Dasar || row.base_unit || 'Pcs',
-                    
-                    // Parsing optional units with validation
                     unit2: row.Satuan_2 || row.unit2 || undefined,
                     ratio2: (row.Rasio_2 || row.ratio2) && !isNaN(Number(row.Rasio_2 || row.ratio2)) ? Number(row.Rasio_2 || row.ratio2) : undefined,
                     op2: (op2Val === 'divide' ? 'divide' : 'multiply'),
-                    
                     unit3: row.Satuan_3 || row.unit3 || undefined,
                     ratio3: (row.Rasio_3 || row.ratio3) && !isNaN(Number(row.Rasio_3 || row.ratio3)) ? Number(row.Rasio_3 || row.ratio3) : undefined,
                     op3: (op3Val === 'divide' ? 'divide' : 'multiply'),
-                    
                     lastUpdated: new Date().toISOString()
                 };
                 newItems.push(item);
             });
 
-            if (newItems.length === 0) {
-                alert("Tidak ada data valid yang ditemukan. Pastikan kolom SKU dan Nama terisi.");
-                return;
-            }
-
-            // Merge Strategy: Update existing by SKU, Append new
             const combined = [...rejectMasterData];
             newItems.forEach(ni => {
                 const idx = combined.findIndex(ex => ex.sku === ni.sku);
-                if (idx >= 0) {
-                    combined[idx] = { ...combined[idx], ...ni, id: combined[idx].id };
-                } else {
-                    combined.push(ni);
-                }
+                if (idx >= 0) combined[idx] = { ...combined[idx], ...ni, id: combined[idx].id };
+                else combined.push(ni);
             });
-            
             onUpdateMaster(combined);
-            // alert handled by App notification
-        } catch (error) {
-            console.error("Import Error:", error);
-            alert("Terjadi kesalahan saat memproses file Excel.");
-        }
+        } catch (error) { console.error(error); }
     };
-    reader.readAsArrayBuffer(file); // Use ArrayBuffer for better compatibility
+    reader.readAsArrayBuffer(file);
     e.target.value = ''; 
   };
 
   const copyLogToClipboard = (log: RejectLog) => {
-      // Format: ddmmyy
       const d = new Date(log.date);
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yy = String(d.getFullYear()).slice(-2);
       const dateStr = `${dd}${mm}${yy}`;
-
       let text = `Data Reject KKL ${dateStr}\n`;
-      
       log.items.forEach(item => {
-          // Format: - [Nama Barang] [Qty] [Alasan]
           text += `- ${item.itemName} ${item.quantity} ${item.unit} ${item.reason}\n`;
       });
-
       navigator.clipboard.writeText(text).then(() => {
           alert("Disalin ke clipboard:\n" + text);
       });
@@ -204,7 +166,7 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
                                <td className="p-6 text-right">
                                    <div className="flex justify-end gap-2">
                                        <button onClick={() => { setEditingMasterItem(item); setIsMasterModalOpen(true); }} className="p-2 text-slate-400 hover:text-paper-blue hover:bg-white dark:hover:bg-gray-600 rounded-xl transition-all shadow-sm"><Edit2 size={18}/></button>
-                                       <button onClick={() => onDeleteLog(item.id)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all shadow-sm"><Trash2 size={18}/></button>
+                                       <button onClick={() => onDeleteMaster(item.id)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all shadow-sm"><Trash2 size={18}/></button>
                                    </div>
                                </td>
                            </tr>
@@ -241,7 +203,6 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
 
        {isLogModalOpen && <RejectLogModal log={editingLog} masterData={rejectMasterData} onClose={() => setIsLogModalOpen(false)} onSave={onAddLog} />}
        {isMasterModalOpen && <MasterItemModal item={editingMasterItem} onClose={() => setIsMasterModalOpen(false)} onSave={(item: RejectItem) => {
-           // Handle single item save/update
            const combined = [...rejectMasterData];
            const idx = combined.findIndex(ex => ex.id === item.id);
            if (idx >= 0) combined[idx] = item;
@@ -253,68 +214,33 @@ export const RejectManager: React.FC<RejectManagerProps> = ({
   );
 };
 
-// Updated RejectLogModal with Item Entry
 const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
     const [date, setDate] = useState(log ? log.date : new Date().toISOString().slice(0, 10));
     const [notes, setNotes] = useState(log ? log.notes : '');
     const [items, setItems] = useState<RejectItemDetail[]>(log ? log.items : []);
-
-    // Temp inputs
     const [selectedMasterId, setSelectedMasterId] = useState('');
     const [qty, setQty] = useState('');
     const [unit, setUnit] = useState('');
     const [reason, setReason] = useState('');
-
     const selectedMaster = useMemo(() => masterData.find((m: any) => m.id === selectedMasterId), [selectedMasterId, masterData]);
 
     const handleAddItem = () => {
         if (!selectedMaster || !qty || !reason) return;
-        
         let ratio = 1;
         let op = 'multiply';
-
-        if (unit === selectedMaster.baseUnit) {
-            ratio = 1; 
-        } else if (unit === selectedMaster.unit2) {
-            ratio = selectedMaster.ratio2;
-            op = selectedMaster.op2 || 'multiply';
-        } else if (unit === selectedMaster.unit3) {
-            ratio = selectedMaster.ratio3;
-            op = selectedMaster.op3 || 'multiply';
-        }
-
+        if (unit === selectedMaster.baseUnit) ratio = 1; 
+        else if (unit === selectedMaster.unit2) { ratio = selectedMaster.ratio2; op = selectedMaster.op2 || 'multiply'; }
+        else if (unit === selectedMaster.unit3) { ratio = selectedMaster.ratio3; op = selectedMaster.op3 || 'multiply'; }
         const numQty = parseFloat(qty);
-        let baseQty = numQty;
-        if (op === 'multiply') baseQty = numQty * ratio;
-        else if (op === 'divide') baseQty = numQty / ratio;
-
-        const newItem: RejectItemDetail = {
-            itemId: selectedMaster.id,
-            itemName: selectedMaster.name,
-            sku: selectedMaster.sku,
-            baseUnit: selectedMaster.baseUnit,
-            quantity: numQty,
-            unit: unit,
-            ratio: ratio,
-            operation: op as any,
-            totalBaseQuantity: baseQty,
-            reason: reason
-        };
-
+        let baseQty = op === 'multiply' ? numQty * ratio : numQty / ratio;
+        const newItem: RejectItemDetail = { itemId: selectedMaster.id, itemName: selectedMaster.name, sku: selectedMaster.sku, baseUnit: selectedMaster.baseUnit, quantity: numQty, unit: unit, ratio: ratio, operation: op as any, totalBaseQuantity: baseQty, reason: reason };
         setItems([...items, newItem]);
         setQty('');
         setReason('');
     };
 
     const handleSave = () => {
-        const newLog: RejectLog = {
-            id: log ? log.id : `LOG-${Date.now()}`,
-            date,
-            items,
-            notes,
-            timestamp: new Date().toISOString()
-        };
-        onSave(newLog);
+        onSave({ id: log ? log.id : `LOG-${Date.now()}`, date, items, notes, timestamp: new Date().toISOString() });
         onClose();
     };
 
@@ -322,68 +248,26 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
             <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-white/10">
                 <div className="p-8 border-b border-slate-50 dark:border-gray-800 flex justify-between items-center bg-rose-50 dark:bg-gray-800">
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                        <AlertTriangle size={24} className="text-rose-500"/> {log ? 'Perbarui Log Reject' : 'Catat Barang Reject'}
-                    </h3>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter flex items-center gap-3"><AlertTriangle size={24} className="text-rose-500"/> {log ? 'Perbarui Log Reject' : 'Catat Barang Reject'}</h3>
                     <button onClick={onClose} className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-full transition-all"><X size={24} className="text-slate-400"/></button>
                 </div>
-                
                 <div className="p-8 overflow-y-auto flex-1 space-y-6">
                     <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Waktu Kejadian</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-rose-400 rounded-2xl outline-none dark:text-white dark:[color-scheme:dark]" /></div>
                         <div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-2">Catatan Umum</label><input value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-gray-800 border-2 border-transparent focus:border-rose-400 rounded-2xl outline-none dark:text-white" placeholder="Keterangan..." /></div>
                     </div>
-
                     <div className="bg-slate-50 dark:bg-gray-800/50 p-6 rounded-3xl border border-slate-100 dark:border-gray-700">
                         <label className="text-[10px] font-bold text-rose-500 uppercase tracking-widest block ml-2 mb-4">Input Barang Reject</label>
                         <div className="grid grid-cols-12 gap-4 items-end">
-                            <div className="col-span-4">
-                                <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Barang</label>
-                                <select value={selectedMasterId} onChange={e => { setSelectedMasterId(e.target.value); const m = masterData.find((x:any) => x.id === e.target.value); if(m) setUnit(m.baseUnit); }} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none">
-                                    <option value="">Pilih Produk...</option>
-                                    {masterData.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Jml (Desimal OK)</label>
-                                <input type="number" step="0.001" value={qty} onChange={e => setQty(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none" placeholder="0.00" />
-                            </div>
-                            <div className="col-span-2">
-                                <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Satuan</label>
-                                <select value={unit} onChange={e => setUnit(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none">
-                                    {selectedMaster && (
-                                        <>
-                                            <option value={selectedMaster.baseUnit}>{selectedMaster.baseUnit}</option>
-                                            {selectedMaster.unit2 && <option value={selectedMaster.unit2}>{selectedMaster.unit2}</option>}
-                                            {selectedMaster.unit3 && <option value={selectedMaster.unit3}>{selectedMaster.unit3}</option>}
-                                        </>
-                                    )}
-                                </select>
-                            </div>
-                            <div className="col-span-3">
-                                <label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Alasan</label>
-                                <input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none" placeholder="Pecah/Basah/dll" />
-                            </div>
-                            <div className="col-span-1">
-                                <button onClick={handleAddItem} disabled={!selectedMasterId} className="w-full p-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center justify-center"><Plus size={18}/></button>
-                            </div>
+                            <div className="col-span-4"><label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Barang</label><select value={selectedMasterId} onChange={e => { setSelectedMasterId(e.target.value); const m = masterData.find((x:any) => x.id === e.target.value); if(m) setUnit(m.baseUnit); }} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none"><option value="">Pilih Produk...</option>{masterData.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+                            <div className="col-span-2"><label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Jml</label><input type="number" step="0.001" value={qty} onChange={e => setQty(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none" placeholder="0.00" /></div>
+                            <div className="col-span-2"><label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Satuan</label><select value={unit} onChange={e => setUnit(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none">{selectedMaster && (<><option value={selectedMaster.baseUnit}>{selectedMaster.baseUnit}</option>{selectedMaster.unit2 && <option value={selectedMaster.unit2}>{selectedMaster.unit2}</option>}{selectedMaster.unit3 && <option value={selectedMaster.unit3}>{selectedMaster.unit3}</option>}</>)}</select></div>
+                            <div className="col-span-3"><label className="text-[10px] font-bold text-slate-400 block ml-1 mb-1">Alasan</label><input value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm outline-none" placeholder="Pecah/Basah/dll" /></div>
+                            <div className="col-span-1"><button onClick={handleAddItem} disabled={!selectedMasterId} className="w-full p-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center justify-center"><Plus size={18}/></button></div>
                         </div>
-
-                        <div className="mt-4 space-y-2">
-                            {items.map((it: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 rounded-xl border border-slate-200 dark:border-gray-700">
-                                    <div className="text-sm font-bold text-slate-700 dark:text-gray-200">
-                                        {it.itemName} <span className="text-rose-500">{it.quantity} {it.unit}</span>
-                                        <span className="text-xs text-slate-400 font-normal ml-2">({it.reason})</span>
-                                        {it.unit !== it.baseUnit && <span className="text-[10px] text-slate-400 block">Konversi: {it.totalBaseQuantity.toFixed(3)} {it.baseUnit}</span>}
-                                    </div>
-                                    <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-rose-500"><Trash2 size={16}/></button>
-                                </div>
-                            ))}
-                        </div>
+                        <div className="mt-4 space-y-2">{items.map((it: any, idx: number) => (<div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-gray-800 rounded-xl border border-slate-200 dark:border-gray-700"><div className="text-sm font-bold text-slate-700 dark:text-gray-200">{it.itemName} <span className="text-rose-500">{it.quantity} {it.unit}</span><span className="text-xs text-slate-400 font-normal ml-2">({it.reason})</span>{it.unit !== it.baseUnit && <span className="text-[10px] text-slate-400 block">Konversi: {it.totalBaseQuantity.toFixed(3)} {it.baseUnit}</span>}</div><button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-slate-300 hover:text-rose-500"><Trash2 size={16}/></button></div>))}</div>
                     </div>
                 </div>
-
                 <div className="p-8 border-t border-slate-50 dark:border-gray-800 flex justify-end gap-4 bg-slate-50 dark:bg-gray-800">
                     <button onClick={onClose} className="px-8 py-3 text-slate-400 font-black hover:bg-white dark:hover:bg-gray-700 rounded-2xl uppercase tracking-widest">Batal</button>
                     <button onClick={handleSave} className="px-10 py-3 bg-slate-800 dark:bg-gray-700 text-white font-black rounded-2xl shadow-xl hover:bg-slate-900 dark:hover:bg-gray-600 uppercase tracking-widest active:scale-95 transition-all">Simpan Log</button>
@@ -393,29 +277,9 @@ const RejectLogModal = ({ log, masterData, onClose, onSave }: any) => {
     );
 }
 
-// Simple Modal for adding single Master Item (if needed manually)
 const MasterItemModal = ({ item, onClose, onSave }: any) => {
     const [formData, setFormData] = useState(item || { id: `REJ-${Date.now()}`, sku: '', name: '', baseUnit: 'Pcs', unit2: '', ratio2: '', op2: 'multiply', unit3: '', ratio3: '', op3: 'multiply', lastUpdated: new Date().toISOString() });
-    
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl w-full max-w-lg shadow-2xl">
-                <h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Master Barang Reject</h3>
-                <div className="space-y-4">
-                    <input value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Barang" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    <input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="Satuan Dasar" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                    <div className="grid grid-cols-3 gap-2">
-                        <input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Unit 2" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                        <input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} placeholder="Rasio" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" />
-                        <select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white"><option value="multiply">Kali</option><option value="divide">Bagi</option></select>
-                    </div>
-                </div>
-                <div className="mt-8 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-6 py-2 text-slate-500">Batal</button>
-                    <button onClick={() => onSave(formData)} className="px-6 py-2 bg-paper-blue text-white rounded-xl font-bold">Simpan</button>
-                </div>
-            </div>
-        </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"><div className="bg-white dark:bg-gray-900 p-8 rounded-3xl w-full max-w-lg shadow-2xl"><h3 className="text-xl font-bold mb-6 text-slate-800 dark:text-white">Master Barang Reject</h3><div className="space-y-4"><input value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} placeholder="SKU" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nama Barang" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input value={formData.baseUnit} onChange={e => setFormData({...formData, baseUnit: e.target.value})} placeholder="Satuan Dasar" className="w-full p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><div className="grid grid-cols-3 gap-2"><input value={formData.unit2 || ''} onChange={e => setFormData({...formData, unit2: e.target.value})} placeholder="Unit 2" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><input type="number" value={formData.ratio2 || ''} onChange={e => setFormData({...formData, ratio2: Number(e.target.value)})} placeholder="Rasio" className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white" /><select value={formData.op2 || 'multiply'} onChange={e => setFormData({...formData, op2: e.target.value})} className="p-3 border rounded-xl dark:bg-gray-800 dark:text-white"><option value="multiply">Kali</option><option value="divide">Bagi</option></select></div></div><div className="mt-8 flex justify-end gap-3"><button onClick={onClose} className="px-6 py-2 text-slate-500">Batal</button><button onClick={() => onSave(formData)} className="px-6 py-2 bg-paper-blue text-white rounded-xl font-bold">Simpan</button></div></div></div>
     );
 };

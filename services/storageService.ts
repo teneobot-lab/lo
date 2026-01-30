@@ -1,5 +1,4 @@
 
-
 import { InventoryItem, Transaction, User, DashboardStats, RejectItem, RejectLog } from '../types';
 import CryptoJS from 'crypto-js';
 
@@ -54,7 +53,6 @@ const apiCall = async (endpoint: string, method: string = 'GET', body?: any) => 
         return await res.json();
     } catch (e: any) {
         console.error(`[NEXUS CONNECTION ERROR] ${method} ${url}:`, e);
-        // Berikan pesan yang lebih informatif untuk debugging user
         throw new Error(e.message || "Network Error");
     }
 };
@@ -175,9 +173,6 @@ export const storageService = {
             } else if (transaction.type === 'outbound') {
                 items[itemIndex].stock -= tItem.qty;
             }
-            // For 'transfer', stock remains same globally in this simple schema
-            // unless we track per warehouse, which this simple local version doesn't.
-            // It just records the movement.
         }
     });
     safeSet(KEYS.ITEMS, items);
@@ -196,26 +191,21 @@ export const storageService = {
           transactions[idx] = newTx;
           safeSet(KEYS.TRANSACTIONS, transactions);
 
-          // Update Stocks locally
           const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
           
-          // Revert Old
           oldTx.items.forEach(oldItem => {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === oldItem.itemId);
               if (iIdx >= 0) {
                   if (oldTx.type === 'inbound') items[iIdx].stock -= oldItem.qty;
                   else if (oldTx.type === 'outbound') items[iIdx].stock += oldItem.qty;
-                  // Transfer revert = no op
               }
           });
 
-          // Apply New
           newTx.items.forEach(newItem => {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === newItem.itemId);
               if (iIdx >= 0) {
                   if (newTx.type === 'inbound') items[iIdx].stock += newItem.qty;
                   else if (newTx.type === 'outbound') items[iIdx].stock -= newItem.qty;
-                  // Transfer apply = no op
               }
           });
           
@@ -230,14 +220,12 @@ export const storageService = {
       const txToDelete = transactions.find((t: Transaction) => t.id === id);
       
       if (txToDelete) {
-          // Revert stock before deleting
           const items = safeGet(KEYS.ITEMS) || INITIAL_ITEMS;
           txToDelete.items.forEach((item: any) => {
               const iIdx = items.findIndex((i: InventoryItem) => i.id === item.itemId);
               if (iIdx >= 0) {
                   if (txToDelete.type === 'inbound') items[iIdx].stock -= item.qty;
                   else if (txToDelete.type === 'outbound') items[iIdx].stock += item.qty;
-                  // Transfer revert = no op
               }
           });
           safeSet(KEYS.ITEMS, items);
@@ -253,6 +241,11 @@ export const storageService = {
   saveRejectMaster: async (items: RejectItem[]) => {
       if (isApiMode()) return apiCall('reject_master', 'POST', items);
       safeSet(KEYS.REJECT_MASTER, items);
+  },
+  deleteRejectMaster: async (id: string) => {
+      if (isApiMode()) return apiCall(`reject_master/${id}`, 'DELETE');
+      const items = safeGet(KEYS.REJECT_MASTER) || [];
+      safeSet(KEYS.REJECT_MASTER, items.filter((i: RejectItem) => i.id !== id));
   },
   getRejectLogs: async (): Promise<RejectLog[]> => {
       if (isApiMode()) return apiCall('reject_logs');

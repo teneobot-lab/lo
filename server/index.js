@@ -290,6 +290,13 @@ app.post('/api/reject_master', async (req, res) => {
     }
 });
 
+app.delete('/api/reject_master/:id', async (req, res) => {
+    try {
+        await query('DELETE FROM reject_master WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/reject_logs', async (req, res) => {
     try {
         const rows = await query('SELECT * FROM reject_logs ORDER BY timestamp DESC');
