@@ -22,8 +22,12 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Helper untuk membersihkan parameter query dari 'undefined'
-const cleanParams = (arr) => arr.map(p => p === undefined ? null : p);
+// Helper untuk membersihkan parameter query dari 'undefined' dan 'NaN'
+const cleanParams = (arr) => arr.map(p => {
+    if (p === undefined) return null;
+    if (typeof p === 'number' && isNaN(p)) return null;
+    return p;
+});
 
 async function query(sql, params) {
     const [rows] = await pool.execute(sql, cleanParams(params || []));
@@ -84,7 +88,6 @@ app.get('/api/items', async (req, res) => {
 app.post('/api/items', async (req, res) => {
     const i = req.body;
     try {
-        // Menggunakan cleanParams di helper 'query' memastikan i.unit2 dsb yang undefined jadi null
         await query(
             `INSERT INTO items (id, sku, name, category, price, location, unit, stock, min_level, active, unit2, ratio2, op2, unit3, ratio3, op3)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -246,17 +249,39 @@ app.get('/api/reject_master', async (req, res) => {
 
 app.post('/api/reject_master', async (req, res) => {
     const items = req.body;
+    const conn = await pool.getConnection();
     try {
-        await query('DELETE FROM reject_master');
+        await conn.beginTransaction();
+        await conn.query('DELETE FROM reject_master');
+        
         for (const i of items) {
-            await query(
+            await conn.query(
                 `INSERT INTO reject_master (id, sku, name, base_unit, unit2, ratio2, op2, unit3, ratio3, op3, last_updated)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [i.id, i.sku, i.name, i.baseUnit, i.unit2, i.ratio2, i.op2, i.unit3, i.ratio3, i.op3, i.lastUpdated]
+                cleanParams([
+                    i.id, 
+                    i.sku, 
+                    i.name, 
+                    i.baseUnit, 
+                    i.unit2, 
+                    i.ratio2 ? Number(i.ratio2) : null, 
+                    i.op2, 
+                    i.unit3, 
+                    i.ratio3 ? Number(i.ratio3) : null, 
+                    i.op3, 
+                    i.lastUpdated
+                ])
             );
         }
+        await conn.commit();
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        await conn.rollback();
+        console.error("Master Insert Error:", e);
+        res.status(500).json({ error: e.message }); 
+    } finally {
+        conn.release();
+    }
 });
 
 app.get('/api/reject_logs', async (req, res) => {
@@ -272,9 +297,10 @@ app.get('/api/reject_logs', async (req, res) => {
 app.post('/api/reject_logs', async (req, res) => {
     const l = req.body;
     try {
+        const itemsJson = JSON.stringify(l.items || []);
         await query(
             `INSERT INTO reject_logs (id, date, notes, timestamp, items_json) VALUES (?, ?, ?, ?, ?)`,
-            [l.id, l.date, l.notes, l.timestamp, JSON.stringify(l.items)]
+            cleanParams([l.id, l.date, l.notes, l.timestamp, itemsJson])
         );
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -283,9 +309,10 @@ app.post('/api/reject_logs', async (req, res) => {
 app.put('/api/reject_logs/:id', async (req, res) => {
     const l = req.body;
     try {
+        const itemsJson = JSON.stringify(l.items || []);
         await query(
             `UPDATE reject_logs SET date=?, notes=?, timestamp=?, items_json=? WHERE id=?`,
-            [l.date, l.notes, l.timestamp, JSON.stringify(l.items), req.params.id]
+            cleanParams([l.date, l.notes, l.timestamp, itemsJson, req.params.id])
         );
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
